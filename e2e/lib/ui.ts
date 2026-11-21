@@ -25,11 +25,11 @@ export async function createSession(
   await pickFolder(phone, daemon, opts.folder ?? 'project');
   if (opts.model !== undefined) {
     await sheet.getByTestId('new-model').click();
-    await page.getByRole('menuitemradio', { name: opts.model }).or(page.getByRole('menuitem', { name: opts.model })).click();
+    await page.getByRole('menuitem', { name: opts.model }).click();
   }
   if (opts.mode !== undefined) {
     await sheet.getByTestId('new-permission').click();
-    await page.getByRole('menuitemradio', { name: opts.mode }).or(page.getByRole('menuitem', { name: opts.mode })).click();
+    await page.getByRole('menuitem', { name: opts.mode }).click();
   }
   await sheet.getByTestId('new-start').click();
   await expect(sheet).toBeHidden();

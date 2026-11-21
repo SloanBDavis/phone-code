@@ -7,3 +7,6 @@ playwright-report
 .env*
 states
 *.log
+release/
+formal/.tools/
+formal/*_TTrace_*
