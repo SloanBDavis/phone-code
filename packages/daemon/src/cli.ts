@@ -82,8 +82,9 @@ async function devicesCommand(home: string): Promise<number> {
   }
   for (const d of list) {
     const push = d.push > 0 ? dim(' · push') : '';
+    const via = d.parent === undefined ? '' : dim(` · via ${d.parent}`);
     process.stdout.write(
-      `${bold(d.id)}  ${d.name}  ${dim(`paired ${fmtTime(d.createdAt)} · last seen ${fmtTime(d.lastSeenAt)}`)}${push}\n`,
+      `${bold(d.id)}  ${d.name}  ${dim(`paired ${fmtTime(d.createdAt)} · last seen ${fmtTime(d.lastSeenAt)}`)}${via}${push}\n`,
     );
   }
   return 0;
@@ -95,7 +96,7 @@ async function revokeCommand(home: string, id: string | undefined): Promise<numb
     return 1;
   }
   const client = await ControlClient.connect(home);
-  let revoked: { id: string; name: string } | null | undefined;
+  let revoked: Array<{ id: string; name: string }>;
   if (client === undefined) {
     // Editing devices.json under a running daemon would be silently undone by it.
     const pid = await liveDaemonPid(home);
@@ -107,13 +108,17 @@ async function revokeCommand(home: string, id: string | undefined): Promise<numb
     revoked = store.revoke(id);
     await store.flush();
   } else {
-    revoked = await client.revoke(id);
+    const r = await client.revoke(id);
+    revoked = r === null ? [] : [r.revoked, ...r.also];
   }
-  if (revoked === null || revoked === undefined) {
+  const [target, ...also] = revoked;
+  if (target === undefined) {
     process.stderr.write(`No device matches "${id}" (run \`phonecode devices\`).\n`);
     return 1;
   }
-  process.stdout.write(`Revoked ${revoked.name} (${revoked.id}).\n`);
+  process.stdout.write(`Revoked ${target.name} (${target.id}).\n`);
+  // Devices paired through its handoff codes (e.g. its Home Screen app) go with it.
+  for (const d of also) process.stdout.write(`Also revoked ${d.name} (${d.id}), paired through it.\n`);
   return 0;
 }
 

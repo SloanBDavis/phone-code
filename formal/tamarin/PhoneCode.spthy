@@ -58,6 +58,9 @@ begin
  *    private to the owner. A paired device gets a shell, which can read
  *    control.json; that is "a paired device is your computer" (SECURITY.md)
  *    and is not modelled as a protocol step.
+ *  - No type confusion: the web client accepts only JSON strings as ids,
+ *    tokens and codes (api.ts isPairResponse / isHandoff), so the phone
+ *    rules take them as atomic names (~L, ~t, ~h), not arbitrary terms.
  *  - One daemon epoch; crashes, persistence and in-flight rpcs are the TLA+
  *    model's job.
  *  - The device store is a set of persistent facts !Dev(id, lineage, token).
@@ -65,8 +68,10 @@ begin
  *    restrictions: a lookup (DeviceStore.authenticate, or redeeming a handoff
  *    code whose issuer was forgotten) at time i succeeds only if the device,
  *    and with the cascade every ancestor of it, was not revoked before i. A
- *    device paired through a handoff code of P has the lineage <id, lineage
- *    of P>, so "A is an ancestor of L" is the subterm relation A << L.
+ *    device paired through a handoff code of P has the lineage <id, P, lineage
+ *    of P>: it contains the ids of all its ancestors, so "A is the device or
+ *    an ancestor of it" is the subterm relation A << lineage (for a root,
+ *    whose lineage is its bare id, only equality).
  */
 
 builtins: hashing
@@ -148,9 +153,9 @@ rule Phone_PairReq:
 
 // boot.ts redeem: creds -> localStorage (storage.ts creds), origin-scoped.
 rule Phone_Paired:
-  [ PhonePairing(s, c), PhoneRecv(s, <'paired', L, t>) ]
-  --[ PhonePaired(L, t, c) ]->
-  [ !PhoneStore(L, t) ]
+  [ PhonePairing(s, c), PhoneRecv(s, <'paired', ~L, ~t>) ]
+  --[ PhonePaired(~L, ~t, c) ]->
+  [ !PhoneStore(~L, ~t) ]
 
 // web/src/lib/ws.ts WsTransport.connect: open /ws, send hello with the token.
 rule Phone_Hello:
@@ -167,9 +172,9 @@ rule Phone_HandoffReq:
 // The code goes into the URL (?h=) and the manifest start_url; the installed
 // Home Screen app (fresh storage) redeems it like a pairing code.
 rule Phone_HandoffGot:
-  [ PhoneHandoffWait(s, L), PhoneRecv(s, <'handoff_code', h>) ]
-  --[ HandoffGot(h, L) ]->
-  [ PhoneCode(h), HandoffInUrl(h) ]
+  [ PhoneHandoffWait(s, L), PhoneRecv(s, <'handoff_code', ~h>) ]
+  --[ HandoffGot(~h, L) ]->
+  [ PhoneCode(~h), HandoffInUrl(~h) ]
 
 #ifdef HANDOFF_LEAK
 rule Leak_HandoffUrl: [ HandoffInUrl(h) ] --[ HandoffLeaked(h) ]-> [ Out(h) ]
@@ -195,7 +200,7 @@ rule Compromise_Token:
 //
 // The store holds !Dev(id, lin, token): `id` is the device id the client sees
 // (a fresh name), `lin` its lineage: `id` for a device paired with a pairing
-// code, <id, lin of P> for one paired with a handoff code of P
+// code, <id, P, lin of P> for one paired with a handoff code of P
 // (DeviceRecord.parent). Lineages never go on the wire. Every rule that reads
 // the store records DevLin(id, lin).
 
@@ -212,14 +217,14 @@ rule D_Pair:
 rule D_PairHandoff:
   [ Req(ch, s, <'pair', h>), HandoffCode(h, P, plin), Fr(~id), Fr(~t) ]
   --[ ApiReq(ch), PairedVia(ch, ~id, h), Paired(~id, h), Child(~id, P, h),
-      DevLin(~id, <~id, plin>), DeviceToken(~id, ~t) ]->
-  [ Res(ch, s, <'paired', ~id, ~t>), !Dev(~id, <~id, plin>, ~t) ]
+      DevLin(~id, <~id, P, plin>), DeviceToken(~id, ~t) ]->
+  [ Res(ch, s, <'paired', ~id, ~t>), !Dev(~id, <~id, P, plin>, ~t) ]
 #else
 rule D_PairHandoff:
   [ Req(ch, s, <'pair', h>), HandoffCode(h, P, plin), Fr(~id), Fr(~t) ]
   --[ ApiReq(ch), PairedVia(ch, ~id, h), Paired(~id, h), Child(~id, P, h),
-      DevLin(~id, <~id, plin>), DeviceToken(~id, ~t), Live(P, plin) ]->
-  [ Res(ch, s, <'paired', ~id, ~t>), !Dev(~id, <~id, plin>, ~t) ]
+      DevLin(~id, <~id, P, plin>), DeviceToken(~id, ~t), Live(P, plin) ]->
+  [ Res(ch, s, <'paired', ~id, ~t>), !Dev(~id, <~id, P, plin>, ~t) ]
 #endif
 
 // ws-client.ts Connection.hello -> DeviceStore.authenticate.
@@ -243,13 +248,13 @@ rule D_Unpair:
 // /_control/pair: controlAllowed (loopback, no proxy headers, secret) -> newPairCode.
 rule D_CtlPair:
   [ Req(ch, s, <'ctl_pair', ct>), !CtlSecret(ct), Fr(~c) ]
-  --[ CtlReq(ch), Issued(~c) ]->
+  --[ CtlReq(ch), CtlSecretUsed(ct), Issued(~c) ]->
   [ PairCode(~c), !Banner(~c), Res(ch, s, 'ok') ]
 
 // /_control/revoke -> control.revoke (device ids are not secret).
 rule D_CtlRevoke:
   [ Req(ch, s, <'ctl_revoke', ct, id>), !CtlSecret(ct), !Dev(id, lin, t) ]
-  --[ CtlReq(ch), DevLin(id, lin), Revoked(id, lin) ]->
+  --[ CtlReq(ch), CtlSecretUsed(ct), DevLin(id, lin), Revoked(id, lin) ]->
   [ Res(ch, s, 'ok') ]
 
 // The owner runs `phonecode pair` / `phonecode revoke <id>` (cli.ts,
@@ -270,14 +275,14 @@ restriction only_once:
 // The device store: a revoked device is gone (devices.ts revoke deletes it;
 // ws-client.ts registry.closeDevice closes its sockets).
 restriction live_self:
-  "All id lin a #i #j. Live(id, lin)@i & Revoked(a, lin)@j ==> not (#j < #i)"
+  "All id lin alin #i #j. Live(id, lin)@i & Revoked(id, alin)@j ==> not (#j < #i)"
 
 #ifdef NO_CASCADE
 #else
 // DeviceStore.revoke also removes every device paired through the revoked
 // one (DeviceRecord.parent, transitively); forgetDevice drops their codes.
 restriction live_cascade:
-  "All id lin a alin #i #j. Live(id, lin)@i & Revoked(a, alin)@j & alin << lin ==> not (#j < #i)"
+  "All id lin a alin #i #j. Live(id, lin)@i & Revoked(a, alin)@j & a << lin ==> not (#j < #i)"
 #endif
 
 #ifdef NO_HOST_CHECK
@@ -316,6 +321,11 @@ restriction one_compromise:
 // requires every [reuse] lemma to verify in every variant that defines it: a
 // falsified one would make the later proofs unsound.
 
+// The control secret the daemon checks is never known to the attacker
+// (control.json is the owner's; the secret never goes on the wire).
+lemma src_control_secret [reuse]:
+  "All ct #i #j. CtlSecretUsed(ct)@i & K(ct)@j ==> F"
+
 #ifdef PLAIN
 #else
 // The attacker knows a pairing code only if the QR leaked.
@@ -350,23 +360,31 @@ lemma no_att_auth [use_induction, reuse]:
 // device paired through it.
 lemma src_auth_thief [use_induction, reuse]:
   "All ch id lin #i. Auth(ch, id)@i & DevLin(id, lin)@i & not (ch = 'ph') ==>
-     Ex A alin #k #n. Compromised(A)@k & DevLin(A, alin)@n & (alin = lin | alin << lin)"
+     Ex A #k. Compromised(A)@k & (A = id | A << lin)"
 #endif
 
 // ---- sanity: the honest protocol runs (the model is not vacuous)
+// Restricted to traces without attacker requests, which is all they need to
+// show and keeps the search short where the attacker has many moves.
 
 lemma exec_pair_hello:
   exists-trace
-  "Ex ch s L t c #i #j #k. PhonePaired(L, t, c)@i & PhoneHello(s, L)@j & Accept(ch, s, L)@k"
+  "(Ex ch s L t c #i #j #k. PhonePaired(L, t, c)@i & PhoneHello(s, L)@j & Accept(ch, s, L)@k)
+   & (All ch #x. ApiReq(ch)@x ==> ch = 'ph' | ch = 'net')
+   & (All ch #x. WsReq(ch)@x ==> ch = 'ph' | ch = 'net')"
 
 lemma exec_handoff_child:
   exists-trace
-  "Ex ch s C P h t #i #j #k #l. Child(C, P, h)@i & PhonePaired(C, t, h)@j
-     & PhoneHello(s, C)@k & Accept(ch, s, C)@l"
+  "(Ex ch s C P h t #i #j #k #l. Child(C, P, h)@i & PhonePaired(C, t, h)@j
+     & PhoneHello(s, C)@k & Accept(ch, s, C)@l)
+   & (All ch #x. ApiReq(ch)@x ==> ch = 'ph' | ch = 'net')
+   & (All ch #x. WsReq(ch)@x ==> ch = 'ph' | ch = 'net')"
 
 lemma exec_owner_revoke:
   exists-trace
-  "Ex L lin t c #i #j #k. PhonePaired(L, t, c)@i & OwnerRevoke(L)@j & Revoked(L, lin)@k"
+  "(Ex L lin t c #i #j #k. PhonePaired(L, t, c)@i & OwnerRevoke(L)@j & Revoked(L, lin)@k)
+   & (All ch #x. ApiReq(ch)@x ==> ch = 'ph' | ch = 'net')
+   & (All ch #x. CtlReq(ch)@x ==> ch = 'loc')"
 
 // ---- secrecy
 
@@ -447,7 +465,7 @@ lemma revoked_no_session:
 // Revoking a device also ends every device paired through it (transitively).
 lemma revoke_cascades:
   "All ch s L lin A alin #i #j. Accept(ch, s, L)@i & DevLin(L, lin)@i & Revoked(A, alin)@j
-     & alin << lin ==> #i < #j"
+     & A << lin ==> #i < #j"
 
 // Only the owner (CLI) or a holder of the device's token revokes it.
 lemma revoke_only_owner_or_holder:

@@ -36,7 +36,8 @@ fi
 DEFAULT=(
   ChatSync.cfg ChatSync_bug.cfg ChatSync_ghost.cfg
   PairingAuth.cfg PairingAuth_live.cfg PairingAuth_fixedcode.cfg
-  PairingAuth_bug_handoff.cfg PairingAuth_bug_durable.cfg PairingAuth_bug_offline.cfg PairingAuth_inflight.cfg
+  PairingAuth_bug_handoff.cfg PairingAuth_bug_durable.cfg PairingAuth_bug_offline.cfg PairingAuth_bug_cascade.cfg
+  PairingAuth_inflight.cfg
   PermissionReq.cfg PermissionReq_bug_status.cfg PermissionReq_forward.cfg
 )
 if [[ $# -gt 0 && "$1" == "--extended" ]]; then

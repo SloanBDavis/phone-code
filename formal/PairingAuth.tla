@@ -5,10 +5,12 @@
 (*                                                                         *)
 (* Code being modelled (packages/daemon/src):                               *)
 (*   auth/pairing.ts   PairingCodes.create (MAX_ACTIVE_CODES eviction),     *)
-(*                     addFixed (PHONECODE_PAIR_CODE), redeem (rate limit,  *)
-(*                     prune, single use), isRateLimited / recordFailure    *)
-(*   auth/devices.ts   DeviceStore.add / authenticate / revoke, JsonWriter  *)
-(*                     persistence (500 ms debounce), load                  *)
+(*                     addFixed (PHONECODE_PAIR_CODE), redeem (rate limit   *)
+(*                     on the typed form only, prune, single use),          *)
+(*                     isRateLimited / recordFailure, forgetDevices         *)
+(*   auth/devices.ts   DeviceStore.add (parent) / authenticate / revoke     *)
+(*                     (cascade to descendants), JsonWriter persistence     *)
+(*                     (500 ms debounce), load                              *)
 (*   http/server.ts    pair(), handoff() (Bearer token), control revoke     *)
 (*   daemon.ts         startDaemon order (devices loaded, server listening, *)
 (*                     control.json written last), control.revoke ->        *)
@@ -26,7 +28,9 @@
 (*  - Time: TTL expiry, the rate-limit minute and the hello deadline are    *)
 (*    actions that may happen at any moment.                                *)
 (*  - The rate limit is modelled with small limits (FailIp / FailGlobal     *)
-(*    stand for 8 / 40) and one window at a time.                           *)
+(*    stand for 8 / 40) and one window at a time. IPs are the rate-limit    *)
+(*    keys (http/server.ts clientKey). Only the typed form of a pairing     *)
+(*    code is limited; the link form (QR, handoff) never is.                *)
 (*  - "Work" is an rpc whose handler awaits I/O (session.create's           *)
 (*    assertDirectory, chat.send on a not yet loaded transcript, ...).      *)
 (***************************************************************************)
@@ -42,7 +46,8 @@ CONSTANTS
     MaxRestarts,
     FixHandoffRevoke,   \* revoke also drops handoff codes minted by the device
     FixDurableRevoke,   \* control revoke answers only after devices.json is written
-    FixOfflineRevoke    \* offline `phonecode revoke` refuses while a daemon process is alive
+    FixOfflineRevoke,   \* offline `phonecode revoke` refuses while a daemon process is alive
+    FixCascade          \* revoking a device also revokes the devices paired through it
 
 VARIABLES
     phase,       \* "down" | "starting" (devices loaded, HTTP+ws served, no control.json) | "up"
@@ -53,6 +58,7 @@ VARIABLES
     queue,       \* PairingCodes.codes in insertion order (Codes and Fixed)
     issuer,      \* [Codes -> Devs \cup {None}]: device that minted a handoff code
     via,         \* [Devs -> Codes \cup {Fixed, None}]: code a device was paired with
+    parent,      \* [Devs -> Devs \cup {None}]: DeviceRecord.parent (issuer of its handoff code)
     orphan,      \* [Devs -> BOOLEAN]: paired with a handoff code of an already revoked device
     revoked,     \* revocations the CLI reported as done
     conn, cdev,  \* [Conns -> {"none","pre","authed","closed"}], [Conns -> Devs \cup {None}]
@@ -61,7 +67,7 @@ VARIABLES
     restarts,
     actedAfterRevoke, effectAfterRevoke
 
-vars == <<phase, mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked,
+vars == <<phase, mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked,
           conn, cdev, work, fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 Served == phase /= "down"
@@ -70,7 +76,8 @@ Init ==
     /\ phase = "down" /\ mem = {} /\ persisted = {} /\ minted = {}
     /\ codeSt = [c \in Codes |-> "unused"] /\ queue = <<>>
     /\ issuer = [c \in Codes |-> None]
-    /\ via = [d \in Devs |-> None] /\ orphan = [d \in Devs |-> FALSE]
+    /\ via = [d \in Devs |-> None] /\ parent = [d \in Devs |-> None]
+    /\ orphan = [d \in Devs |-> FALSE]
     /\ revoked = {}
     /\ conn = [k \in Conns |-> "none"] /\ cdev = [k \in Conns |-> None]
     /\ work = {}
@@ -97,7 +104,16 @@ Create(c, iss) ==
                                          ELSE IF x \in evicted THEN "gone" ELSE PruneSt[x]]
     /\ issuer' = [issuer EXCEPT ![c] = iss]
 
-CloseConns(d) == [k \in Conns |-> IF cdev[k] = d /\ conn[k] \in {"pre", "authed"} THEN "closed" ELSE conn[k]]
+CloseConns(R) == [k \in Conns |-> IF cdev[k] \in R /\ conn[k] \in {"pre", "authed"} THEN "closed" ELSE conn[k]]
+
+(* DeviceStore.revoke: the device and, with the cascade, every device whose *)
+(* parent chain reaches it.                                                 *)
+RECURSIVE Close(_)
+Close(S) == LET T == S \cup {e \in minted : parent[e] \in S} IN IF T = S THEN S ELSE Close(T)
+Revokes(d) == IF FixCascade THEN Close({d}) ELSE {d}
+
+RECURSIVE Ancestors(_)
+Ancestors(e) == IF parent[e] = None THEN {} ELSE {parent[e]} \cup Ancestors(parent[e])
 
 ------------------------------------------------------------------------------
 (* ---------------- daemon process lifecycle ------------------------------ *)
@@ -112,7 +128,7 @@ Start ==
     /\ codeSt' = [c \in Codes |-> IF codeSt[c] = "unused" THEN "unused" ELSE "gone"]
     /\ queue' = <<>>
     /\ fails' = [i \in IPs |-> 0] /\ gfails' = 0
-    /\ UNCHANGED <<persisted, minted, issuer, via, orphan, revoked, conn, cdev, work,
+    /\ UNCHANGED <<persisted, minted, issuer, via, parent, orphan, revoked, conn, cdev, work,
                    actedAfterRevoke, effectAfterRevoke>>
 
 (* Pairing code shown in the banner (or the fixed test code), control.json. *)
@@ -122,7 +138,7 @@ Ready ==
     /\ IF HasFixed
        THEN /\ queue' = Append(queue, Fixed) /\ UNCHANGED <<codeSt, issuer>>
        ELSE \E c \in Codes : Create(c, None)
-    /\ UNCHANGED <<mem, persisted, minted, via, orphan, revoked, conn, cdev, work, fails, gfails,
+    /\ UNCHANGED <<mem, persisted, minted, via, parent, orphan, revoked, conn, cdev, work, fails, gfails,
                    restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* Crash: memory gone, sockets gone; devices.json is what JsonWriter wrote. *)
@@ -131,7 +147,7 @@ Crash ==
     /\ phase' = "down"
     /\ conn' = [k \in Conns |-> IF conn[k] = "none" THEN "none" ELSE "closed"]
     /\ work' = {}
-    /\ UNCHANGED <<mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked, cdev,
+    /\ UNCHANGED <<mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked, cdev,
                    fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* Daemon.stop: closeAll, ..., devices.flush(). *)
@@ -141,14 +157,14 @@ Stop ==
     /\ persisted' = mem
     /\ conn' = [k \in Conns |-> IF conn[k] = "none" THEN "none" ELSE "closed"]
     /\ work' = {}
-    /\ UNCHANGED <<mem, minted, codeSt, queue, issuer, via, orphan, revoked, cdev,
+    /\ UNCHANGED <<mem, minted, codeSt, queue, issuer, via, parent, orphan, revoked, cdev,
                    fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* JsonWriter timer for devices.json (DeviceStore.add / touch / revoke schedule it). *)
 WriteDevices ==
     /\ Served /\ persisted /= mem
     /\ persisted' = mem
-    /\ UNCHANGED <<phase, mem, minted, codeSt, queue, issuer, via, orphan, revoked, conn, cdev,
+    /\ UNCHANGED <<phase, mem, minted, codeSt, queue, issuer, via, parent, orphan, revoked, conn, cdev,
                    work, fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* ---------------- codes --------------------------------------------------- *)
@@ -157,30 +173,34 @@ WriteDevices ==
 NewPairCode ==
     /\ phase = "up"
     /\ \E c \in Codes : Create(c, None)
-    /\ UNCHANGED <<phase, mem, persisted, minted, via, orphan, revoked, conn, cdev, work,
+    /\ UNCHANGED <<phase, mem, persisted, minted, via, parent, orphan, revoked, conn, cdev, work,
                    fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* POST /api/handoff with Authorization: Bearer <token of d>. *)
 Handoff(d) ==
     /\ Served /\ d \in minted /\ d \in mem
     /\ \E c \in Codes : Create(c, d)
-    /\ UNCHANGED <<phase, mem, persisted, minted, via, orphan, revoked, conn, cdev, work,
+    /\ UNCHANGED <<phase, mem, persisted, minted, via, parent, orphan, revoked, conn, cdev, work,
                    fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* PAIR_CODE_TTL_MS elapses. *)
 Expire(c) ==
     /\ codeSt[c] = "active"
     /\ codeSt' = [codeSt EXCEPT ![c] = "expired"]
-    /\ UNCHANGED <<phase, mem, persisted, minted, queue, issuer, via, orphan, revoked, conn, cdev,
+    /\ UNCHANGED <<phase, mem, persisted, minted, queue, issuer, via, parent, orphan, revoked, conn, cdev,
                    work, fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 RateLimited(ip) == fails[ip] >= FailIp \/ gfails >= FailGlobal
 
 (* POST /api/pair {code}: PairingCodes.redeem then DeviceStore.add.         *)
-(* redeem: rate-limit check, prune, constant-time match, delete if not      *)
-(* reusable.  All synchronous: two requests cannot interleave inside it.    *)
-Pair(c, ip) ==
-    /\ Served /\ ~RateLimited(ip)
+(* redeem: rate-limit check (typed form only), prune, constant-time match,  *)
+(* delete if not reusable.  All synchronous: two requests cannot interleave *)
+(* inside it.  A handoff code has only the link form; the fixed test code   *)
+(* only the typed one.  The new device's parent is the code's issuer.       *)
+Pair(c, ip, form) ==
+    /\ Served
+    /\ form = "typed" => ~RateLimited(ip)
+    /\ IF c = Fixed THEN form = "typed" ELSE (issuer[c] /= None => form = "link")
     /\ IF c = Fixed THEN TRUE ELSE codeSt[c] \in {"active", "expired"}  \* the client holds an issued code
     /\ LET q == Pruned IN
        \E i \in 1..Len(q) : q[i] = c                         \* still there after prune: match
@@ -189,6 +209,7 @@ Pair(c, ip) ==
         /\ minted' = minted \cup {e}
         /\ mem' = mem \cup {e}
         /\ via' = [via EXCEPT ![e] = c]
+        /\ parent' = [parent EXCEPT ![e] = IF c = Fixed THEN None ELSE issuer[c]]
         /\ orphan' = [orphan EXCEPT ![e] = IF c = Fixed THEN FALSE ELSE issuer[c] \in revoked]
     /\ queue' = IF c = Fixed THEN Pruned ELSE Remove(Pruned, c)
     /\ codeSt' = IF c = Fixed THEN PruneSt ELSE [PruneSt EXCEPT ![c] = "gone"]
@@ -200,14 +221,14 @@ BadPair(ip) ==
     /\ Served /\ ~RateLimited(ip)
     /\ fails' = [fails EXCEPT ![ip] = @ + 1] /\ gfails' = gfails + 1
     /\ queue' = Pruned /\ codeSt' = PruneSt
-    /\ UNCHANGED <<phase, mem, persisted, minted, issuer, via, orphan, revoked, conn, cdev, work,
+    /\ UNCHANGED <<phase, mem, persisted, minted, issuer, via, parent, orphan, revoked, conn, cdev, work,
                    restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* The 60 s window slides past all recorded failures. *)
 MinutePasses ==
     /\ gfails > 0
     /\ fails' = [i \in IPs |-> 0] /\ gfails' = 0
-    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked,
+    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked,
                    conn, cdev, work, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* ---------------- websocket ------------------------------------------------ *)
@@ -215,7 +236,7 @@ MinutePasses ==
 Open(k) ==
     /\ Served /\ conn[k] = "none"
     /\ conn' = [conn EXCEPT ![k] = "pre"]
-    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked, cdev,
+    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked, cdev,
                    work, fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* Connection.hello with the token of device d (any token a phone holds).  *)
@@ -225,7 +246,7 @@ Hello(k, d) ==
     /\ IF d \in mem
        THEN conn' = [conn EXCEPT ![k] = "authed"] /\ cdev' = [cdev EXCEPT ![k] = d]
        ELSE conn' = [conn EXCEPT ![k] = "closed"] /\ UNCHANGED cdev
-    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked,
+    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked,
                    work, fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* Any non-hello frame before hello, a bad token, a wrong version, or       *)
@@ -233,7 +254,7 @@ Hello(k, d) ==
 PreAuthFail(k) ==
     /\ conn[k] = "pre"
     /\ conn' = [conn EXCEPT ![k] = "closed"]
-    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked, cdev,
+    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked, cdev,
                    work, fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* onMessage -> dispatch (returns if closed) -> route.  An rpc whose        *)
@@ -243,7 +264,7 @@ Message(k) ==
     /\ actedAfterRevoke' = (actedAfterRevoke \/ cdev[k] \in revoked)
     /\ \/ UNCHANGED work
        \/ work' = work \cup {<<k, cdev[k]>>}
-    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked,
+    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked,
                    conn, cdev, fails, gfails, restarts, effectAfterRevoke>>
 
 (* The awaited I/O returns and the handler performs its effect (create /    *)
@@ -253,45 +274,50 @@ WorkDone(w) ==
     /\ w \in work
     /\ work' = work \ {w}
     /\ effectAfterRevoke' = (effectAfterRevoke \/ w[2] \in revoked)
-    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked,
+    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked,
                    conn, cdev, fails, gfails, restarts, actedAfterRevoke>>
 
 ClientClose(k) ==
     /\ conn[k] \in {"pre", "authed"}
     /\ conn' = [conn EXCEPT ![k] = "closed"]
-    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, orphan, revoked, cdev,
+    /\ UNCHANGED <<phase, mem, persisted, minted, codeSt, queue, issuer, via, parent, orphan, revoked, cdev,
                    work, fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 (* ---------------- revocation --------------------------------------------- *)
 
-DropHandoffs(d) ==
+(* PairingCodes.forgetDevices: drop the handoff codes minted by revoked devices. *)
+DropHandoffs(R) ==
     IF FixHandoffRevoke
-    THEN /\ queue' = SelectSeq(queue, LAMBDA y : IF y = Fixed THEN TRUE ELSE issuer[y] /= d)
-         /\ codeSt' = [c \in Codes |-> IF issuer[c] = d /\ codeSt[c] \in {"active", "expired"}
+    THEN /\ queue' = SelectSeq(queue, LAMBDA y : IF y = Fixed THEN TRUE ELSE issuer[y] \notin R)
+         /\ codeSt' = [c \in Codes |-> IF issuer[c] \in R /\ codeSt[c] \in {"active", "expired"}
                                          THEN "gone" ELSE codeSt[c]]
     ELSE UNCHANGED <<queue, codeSt>>
 
-(* `phonecode revoke` -> POST /_control/revoke -> control.revoke:           *)
-(* devices.revoke (JsonWriter.schedule) + registry.closeDevice, then the    *)
-(* CLI prints "Revoked".                                                    *)
+(* `phonecode revoke` -> POST /_control/revoke -> control.revoke (and        *)
+(* /api/unpair): devices.revoke (the device and, with the cascade, its       *)
+(* descendants; JsonWriter.schedule) + registry.closeDevice for each, then   *)
+(* the CLI prints "Revoked".                                                 *)
 RevokeViaControl(d) ==
     /\ phase = "up" /\ d \in mem
-    /\ mem' = mem \ {d}
-    /\ conn' = CloseConns(d)
-    /\ DropHandoffs(d)
-    /\ persisted' = IF FixDurableRevoke THEN mem \ {d} ELSE persisted
-    /\ revoked' = revoked \cup {d}
-    /\ UNCHANGED <<phase, minted, issuer, via, orphan, cdev, work, fails, gfails, restarts,
+    /\ LET R == Revokes(d) \cap mem IN
+       /\ mem' = mem \ R
+       /\ conn' = CloseConns(R)
+       /\ DropHandoffs(R)
+       /\ persisted' = IF FixDurableRevoke THEN mem \ R ELSE persisted
+       /\ revoked' = revoked \cup R
+    /\ UNCHANGED <<phase, minted, issuer, via, parent, orphan, cdev, work, fails, gfails, restarts,
                    actedAfterRevoke, effectAfterRevoke>>
 
 (* ControlClient.connect failed (no control.json, or it does not answer):   *)
-(* the CLI edits devices.json itself and prints "Revoked".                  *)
+(* the CLI edits devices.json itself (DeviceStore.revoke, same cascade) and *)
+(* prints "Revoked".                                                        *)
 RevokeOffline(d) ==
     /\ IF FixOfflineRevoke THEN phase = "down" ELSE phase \in {"down", "starting"}
     /\ d \in persisted
-    /\ persisted' = persisted \ {d}
-    /\ revoked' = revoked \cup {d}
-    /\ UNCHANGED <<phase, mem, minted, codeSt, queue, issuer, via, orphan, conn, cdev, work,
+    /\ LET R == Revokes(d) \cap persisted IN
+       /\ persisted' = persisted \ R
+       /\ revoked' = revoked \cup R
+    /\ UNCHANGED <<phase, mem, minted, codeSt, queue, issuer, via, parent, orphan, conn, cdev, work,
                    fails, gfails, restarts, actedAfterRevoke, effectAfterRevoke>>
 
 ------------------------------------------------------------------------------
@@ -300,7 +326,7 @@ Next ==
     \/ NewPairCode \/ MinutePasses
     \/ \E d \in Devs : Handoff(d) \/ RevokeViaControl(d) \/ RevokeOffline(d)
     \/ \E c \in Codes : Expire(c)
-    \/ \E c \in Codes \cup {Fixed}, ip \in IPs : Pair(c, ip)
+    \/ \E c \in Codes \cup {Fixed}, ip \in IPs, form \in {"typed", "link"} : Pair(c, ip, form)
     \/ \E ip \in IPs : BadPair(ip)
     \/ \E k \in Conns : Open(k) \/ PreAuthFail(k) \/ Message(k) \/ ClientClose(k)
                         \/ \E d \in Devs : Hello(k, d)
@@ -342,6 +368,13 @@ RevokedStaysRevoked ==
 (* ... and it cannot come back as a new device through a handoff code it    *)
 (* minted before the revocation.                                            *)
 NoHandoffAfterRevoke == \A e \in minted : ~orphan[e]
+
+(* ... and no device paired through it (its handoff codes, transitively)  *)
+(* stays authorised: none is in the store or has an authorised socket.     *)
+RevokeCascades ==
+    \A e \in minted : Ancestors(e) \cap revoked /= {} =>
+        /\ (Served => e \notin mem)
+        /\ \A k \in Conns : conn[k] = "authed" => cdev[k] /= e
 
 (* ... and no message of it is acted on after the revocation. *)
 NoActAfterRevoke == ~actedAfterRevoke

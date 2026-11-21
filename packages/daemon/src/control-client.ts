@@ -12,7 +12,8 @@ function isPublicDevice(v: unknown): v is PublicDevice {
     typeof v['name'] === 'string' &&
     typeof v['createdAt'] === 'number' &&
     typeof v['lastSeenAt'] === 'number' &&
-    typeof v['push'] === 'number'
+    typeof v['push'] === 'number' &&
+    (v['parent'] === undefined || typeof v['parent'] === 'string')
   );
 }
 
@@ -78,9 +79,12 @@ export class ControlClient {
     return Array.isArray(list) ? list.filter(isPublicDevice) : [];
   }
 
-  async revoke(id: string): Promise<PublicDevice | null> {
+  /** The revoked device and the devices paired through it, or null if none matches. */
+  async revoke(id: string): Promise<{ revoked: PublicDevice; also: PublicDevice[] } | null> {
     const r = await this.call('POST', '/_control/revoke', { id });
     const revoked: unknown = isRecord(r) ? r['revoked'] : undefined;
-    return isPublicDevice(revoked) ? revoked : null;
+    const also: unknown = isRecord(r) ? r['also'] : undefined;
+    if (!isPublicDevice(revoked)) return null;
+    return { revoked, also: Array.isArray(also) ? also.filter(isPublicDevice) : [] };
   }
 }

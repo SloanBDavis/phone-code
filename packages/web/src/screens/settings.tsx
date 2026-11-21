@@ -220,7 +220,8 @@ export function SettingsScreen(): JSX.Element {
                 onClick={() =>
                   void alertDialog({
                     title: 'Unpair this phone?',
-                    message: 'You will need to scan a new QR code from your computer to connect again.',
+                    message:
+                      'You will need to scan a new QR code from your computer to connect again. A Home Screen app set up from this page is unpaired too.',
                     confirm: 'Unpair',
                     destructive: true,
                     testid: 'unpair-dialog',

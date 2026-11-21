@@ -36,6 +36,12 @@ export interface DaemonOptions {
   insecure?: boolean;
 }
 
+/** How to (re)start the process: `local: false` drops `--local` (tailscale auto-setup). */
+export interface LaunchOptions {
+  local?: boolean;
+  env?: Record<string, string>;
+}
+
 export class Daemon {
   readonly root: string;
   /** PHONECODE_HOME */
@@ -96,11 +102,12 @@ export class Daemon {
     };
   }
 
-  private async launch(): Promise<void> {
-    const mode = this.opts.insecure === true ? ['--insecure', '--no-qr'] : ['--local'];
+  private async launch(opts: LaunchOptions = {}): Promise<void> {
+    const mode =
+      this.opts.insecure === true ? ['--insecure', '--no-qr'] : opts.local === false ? [] : ['--local'];
     const proc = spawn('bun', [CLI, ...mode, '--port', String(this.port)], {
       cwd: this.userHome,
-      env: this.env(),
+      env: { ...this.env(), ...opts.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     this.proc = proc;
@@ -147,6 +154,27 @@ export class Daemon {
   async restart(): Promise<void> {
     await this.stop();
     await this.launch();
+  }
+
+  /** Crash: SIGKILL, nothing gets flushed. */
+  async kill(): Promise<void> {
+    const p = this.proc;
+    if (p === undefined) return;
+    this.proc = undefined;
+    if (p.exitCode === null) p.kill('SIGKILL');
+    await this.exited;
+  }
+
+  /**
+   * Stop, then start with different options on the same port and state. The
+   * returned promise resolves at PHONECODE_READY; the process is already
+   * running (and may already serve HTTP) before that.
+   */
+  async relaunch(opts: LaunchOptions): Promise<{ ready: Promise<void> }> {
+    await this.stop();
+    const ready = this.launch(opts);
+    ready.catch(() => undefined);
+    return { ready };
   }
 
   async dispose(): Promise<void> {
@@ -205,12 +233,37 @@ export class Daemon {
 
   /** Pair over HTTP, as a script would. */
   async pairToken(): Promise<string> {
+    return (await this.pairDevice()).token;
+  }
+
+  /** Pair over HTTP with a fresh code; the new device's id and token. */
+  async pairDevice(): Promise<{ deviceId: string; token: string }> {
     const { code } = await this.newPairCode();
+    const res = await this.pairWith(code);
+    if (res.status !== 200) throw new Error(`pairing failed: ${res.status} ${JSON.stringify(res.body)}`);
+    return { deviceId: str(res.body, 'deviceId'), token: str(res.body, 'token') };
+  }
+
+  /** POST /api/pair with `code` (and extra headers, e.g. what a proxy would add). */
+  async pairWith(
+    code: string,
+    headers: Record<string, string> = {},
+  ): Promise<{ status: number; body: unknown }> {
     const res = await fetch(`${this.url}/api/pair`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify({ code, deviceName: 'script' }),
     });
-    return str(await res.json(), 'token');
+    return { status: res.status, body: await res.json() };
+  }
+
+  /** POST /api/handoff with a device token: a fresh handoff code. */
+  async handoff(token: string): Promise<string> {
+    const res = await fetch(`${this.url}/api/handoff`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (res.status !== 200) throw new Error(`handoff failed: ${res.status}`);
+    return str(await res.json(), 'code');
   }
 }

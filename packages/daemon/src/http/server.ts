@@ -1,11 +1,18 @@
 import { timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { HandoffResponse, PairResponse } from '@phone-code/protocol';
 import type { DeviceStore, PublicDevice } from '../auth/devices.ts';
 import { PAIR_CODE_TTL_MS, type PairingCodes } from '../auth/pairing.ts';
 import { DAEMON_VERSION } from '../config.ts';
 import type { HostInfoProvider } from '../host-info.ts';
 import { log } from '../log.ts';
-import { arrivedOverHttps, isLoopbackIp, isProxied, transportRefusal } from '../net/transport.ts';
+import {
+  arrivedOverHttps,
+  isLoopbackHost,
+  isLoopbackIp,
+  isProxied,
+  transportRefusal,
+} from '../net/transport.ts';
 import { isRecord, parseJson } from '../util/guards.ts';
 import { Connection, type ClientContext, type WsData } from '../ws-client.ts';
 import { SECURITY_HEADERS, serveManifest, serveStatic } from './static.ts';
@@ -19,7 +26,8 @@ export interface ControlApi {
   token: string;
   newPairCode(): { code: string; expiresAt: number; pairUrl: string };
   status(): { url: string; port: number; pid: number };
-  revoke(id: string): PublicDevice | undefined;
+  /** The device and the devices paired through it (`also`), or undefined if none matches. */
+  revoke(id: string): { revoked: PublicDevice; also: PublicDevice[] } | undefined;
 }
 
 export interface ServerOptions {
@@ -80,6 +88,58 @@ function originAllowed(req: Request, publicOrigin: string | undefined): boolean 
   return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]';
 }
 
+function hostnameOf(hostHeader: string): string | undefined {
+  try {
+    return new URL(`http://${hostHeader}`).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+const extraHosts = new Set(
+  [...extraOrigins].flatMap((o) => {
+    try {
+      return [new URL(o).hostname.toLowerCase()];
+    } catch {
+      return [];
+    }
+  }),
+);
+
+/**
+ * DNS rebinding: a web page can point its own name at 127.0.0.1 and then talk
+ * to the daemon as same-origin, reading the answers. Its requests carry that
+ * name in Host. /api, /ws and /_control therefore only answer a Host that is
+ * loopback, an IP literal (nothing to rebind), the advertised URL's host, or a
+ * host of PHONECODE_ALLOWED_ORIGINS.
+ */
+export function hostAllowed(hostHeader: string | null, publicHost: string | undefined): boolean {
+  if (hostHeader === null) return false;
+  const h = hostnameOf(hostHeader);
+  if (h === undefined || h === '') return false;
+  if (isLoopbackHost(h) || h.endsWith('.localhost') || isIP(h) !== 0) return true;
+  return h === publicHost || extraHosts.has(h);
+}
+
+/**
+ * Rate-limit key for typed pairing codes. Behind a local proxy (cloudflared,
+ * tailscale serve, nginx) every request comes from loopback, so the key is the
+ * client address the proxy reports: CF-Connecting-IP, else the last
+ * X-Forwarded-For entry (the one the proxy appended), else the Tailscale login.
+ * Those headers are believed only from a loopback peer. A client that forges
+ * them only picks its own key; the global limit bounds guessing regardless.
+ */
+export function clientKey(req: Request, ip: string): string {
+  if (!isLoopbackIp(ip) || !isProxied(req)) return ip;
+  const cf = req.headers.get('cf-connecting-ip')?.trim();
+  if (cf !== undefined && cf !== '') return `cf:${cf}`;
+  const xff = req.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim();
+  if (xff !== undefined && xff !== '') return `xff:${xff}`;
+  const ts = req.headers.get('tailscale-user-login')?.trim();
+  if (ts !== undefined && ts !== '') return `ts:${ts}`;
+  return 'proxy';
+}
+
 function sanitizeName(v: unknown): string {
   const name = typeof v === 'string' ? v.replaceAll(/[\p{Cc}\p{Cf}]/gu, '').trim() : '';
   return name === '' ? 'Phone' : name.slice(0, 64);
@@ -106,13 +166,20 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
   async function pair(req: Request, ip: string): Promise<Response> {
     const body = await readJsonBody(req);
     if (body === undefined || typeof body['code'] !== 'string') return json({ error: 'bad request' }, 400);
-    const result = opts.pairing.redeem(body['code'], ip);
+    const client = clientKey(req, ip);
+    const result = opts.pairing.redeem(body['code'], client);
     if (!result.ok) {
-      if (result.reason === 'rate_limited') return json({ error: 'too many attempts, wait a minute' }, 429);
-      log.info(`pairing attempt with an invalid code from ${ip}`);
+      if (result.reason === 'rate_limited') {
+        return json(
+          { error: 'Too many wrong codes were typed. Wait a minute, or scan the QR code instead.' },
+          429,
+        );
+      }
+      log.info(`pairing attempt with an invalid code from ${client}`);
       return json({ error: 'invalid or expired code' }, 401);
     }
-    const { device, token } = opts.devices.add(sanitizeName(body['deviceName']));
+    // A handoff code makes the new device a child of the one that minted it.
+    const { device, token } = opts.devices.add(sanitizeName(body['deviceName']), result.issuer);
     log.info(`paired new device "${device.name}" (${device.id}) via ${result.kind}`);
     const res: PairResponse = { deviceId: device.id, token, host: opts.host.short };
     return json(res);
@@ -122,7 +189,8 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     const token = bearer(req);
     const device = token === undefined ? undefined : opts.devices.authenticate(token);
     if (device === undefined) return json({ error: 'unauthorized' }, 401);
-    const res: HandoffResponse = opts.pairing.create('handoff', PAIR_CODE_TTL_MS, device.id);
+    const { code, expiresAt } = opts.pairing.create('handoff', PAIR_CODE_TTL_MS, device.id);
+    const res: HandoffResponse = { code, expiresAt };
     return json(res);
   }
 
@@ -144,10 +212,10 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
       const body = await readJsonBody(req);
       const id = body?.['id'];
       if (typeof id !== 'string') return json({ error: 'bad request' }, 400);
-      const revoked = opts.control.revoke(id) ?? null;
+      const result = opts.control.revoke(id);
       // Answer only once devices.json no longer has it: a crash must not bring it back.
-      if (revoked !== null) await opts.devices.flush();
-      return json({ revoked });
+      if (result !== undefined) await opts.devices.flush();
+      return json({ revoked: result?.revoked ?? null, also: result?.also ?? [] });
     }
     return json({ error: 'not found' }, 404);
   }
@@ -157,6 +225,11 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     return u === undefined ? undefined : new URL(u).origin;
   }
 
+  function publicHost(): string | undefined {
+    const u = opts.publicUrl();
+    return u === undefined ? undefined : new URL(u).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  }
+
   const route = async (
     req: Request,
     server: Bun.Server<WsData>,
@@ -164,6 +237,17 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     ip: string,
   ): Promise<Response | undefined> => {
     const path = url.pathname;
+    const sensitive = path === '/ws' || path.startsWith('/api/') || path.startsWith('/_control/');
+    if (sensitive && !hostAllowed(req.headers.get('host'), publicHost())) {
+      log.info(`refused ${path} for host ${req.headers.get('host') ?? ''} (not this daemon's address)`);
+      return json(
+        {
+          error:
+            'Unknown host. Open the URL phonecode printed, or list this origin in PHONECODE_ALLOWED_ORIGINS.',
+        },
+        421,
+      );
+    }
     if (!opts.insecure && (path === '/ws' || path.startsWith('/api/'))) {
       const refusal = transportRefusal(req, ip);
       if (refusal !== undefined) {
@@ -185,6 +269,12 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
       return control(req, path);
     }
     if (path.startsWith('/api/')) {
+      // CSRF: a foreign page can POST a simple request here (and burn the
+      // pairing rate limit or a leaked code) even though it cannot read the answer.
+      if (req.method === 'POST' && !originAllowed(req, publicOrigin())) {
+        log.info(`refused ${path} from origin ${req.headers.get('origin') ?? ''}`);
+        return json({ error: 'forbidden origin' }, 403);
+      }
       if (path === '/api/pair' && req.method === 'POST') return pair(req, ip);
       if (path === '/api/handoff' && req.method === 'POST') return handoff(req);
       if (path === '/api/unpair' && req.method === 'POST') return unpair(req);

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { AdapterRegistry } from './agents/types.ts';
-import { DeviceStore } from './auth/devices.ts';
+import { DeviceStore, publicDevice } from './auth/devices.ts';
 import { PairingCodes } from './auth/pairing.ts';
 import { DEFAULT_PORT, stateDir, statePaths } from './config.ts';
 import { HostInfoProvider } from './host-info.ts';
@@ -111,12 +111,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   const hostname = opts.hostname ?? (insecure ? '0.0.0.0' : '127.0.0.1');
   let publicUrl = '';
 
-  const pairUrlFor = (code: string): string => `${publicUrl}/#/pair?c=${encodeURIComponent(code)}`;
+  // The link carries the long form of the code (never rate limited); the banner shows the typed form.
+  const pairUrlFor = (link: string): string => `${publicUrl}/#/pair?c=${encodeURIComponent(link)}`;
   // Test hook: a shorter pairing code lifetime (the e2e suite checks expiry).
   const pairTtl = Number(process.env['PHONECODE_PAIR_TTL_MS']);
   const newPairCode = (): PairCode => {
-    const { code, expiresAt } = pairing.create('pair', pairTtl > 0 ? pairTtl : undefined);
-    return { code, expiresAt, pairUrl: pairUrlFor(code) };
+    const { code, link, expiresAt } = pairing.create('pair', pairTtl > 0 ? pairTtl : undefined);
+    return { code, expiresAt, pairUrl: pairUrlFor(link) };
   };
 
   const server = startServer({
@@ -134,18 +135,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
       newPairCode,
       status: () => ({ url: publicUrl, port: serverRef.current?.port ?? 0, pid: process.pid }),
       revoke(id) {
+        // The device and every device paired through it (DeviceStore.revoke).
         const removed = devices.revoke(id);
-        if (removed === undefined) return undefined;
-        registry.closeDevice(removed.id);
-        pairing.forgetDevice(removed.id);
-        log.info(`revoked device "${removed.name}" (${removed.id})`);
-        return {
-          id: removed.id,
-          name: removed.name,
-          createdAt: removed.createdAt,
-          lastSeenAt: removed.lastSeenAt,
-          push: 0,
-        };
+        const [target, ...also] = removed;
+        if (target === undefined) return undefined;
+        for (const d of removed) registry.closeDevice(d.id);
+        pairing.forgetDevices(new Set(removed.map((d) => d.id)));
+        for (const d of removed) log.info(`revoked device "${d.name}" (${d.id})`);
+        return { revoked: publicDevice(target), also: also.map(publicDevice) };
       },
     },
   });

@@ -14,9 +14,24 @@ export interface DeviceRecord {
   /** sha256(token), base64url. The token itself is never stored. */
   tokenHash: string;
   push: PushSubscriptionRecord[];
+  /** Paired with a handoff code this device minted. Revoking it revokes this one too. */
+  parent?: string;
 }
 
-export type PublicDevice = Pick<DeviceRecord, 'id' | 'name' | 'createdAt' | 'lastSeenAt'> & { push: number };
+export type PublicDevice = Pick<DeviceRecord, 'id' | 'name' | 'createdAt' | 'lastSeenAt' | 'parent'> & {
+  push: number;
+};
+
+export function publicDevice(d: DeviceRecord): PublicDevice {
+  return {
+    id: d.id,
+    name: d.name,
+    createdAt: d.createdAt,
+    lastSeenAt: d.lastSeenAt,
+    push: d.push.length,
+    ...(d.parent === undefined ? {} : { parent: d.parent }),
+  };
+}
 
 function hashToken(token: string): Buffer {
   return Buffer.from(new Bun.CryptoHasher('sha256').update(token).digest());
@@ -30,7 +45,8 @@ function isDeviceRecord(v: unknown): v is DeviceRecord {
     typeof r.name === 'string' &&
     typeof r.tokenHash === 'string' &&
     typeof r.createdAt === 'number' &&
-    typeof r.lastSeenAt === 'number'
+    typeof r.lastSeenAt === 'number' &&
+    (r.parent === undefined || typeof r.parent === 'string')
   );
 }
 
@@ -61,7 +77,7 @@ export class DeviceStore {
   }
 
   /** Create a device and return its (only ever shown once) token. */
-  add(name: string): { device: DeviceRecord; token: string } {
+  add(name: string, parent?: string): { device: DeviceRecord; token: string } {
     const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
     const hash = hashToken(token);
     const now = Date.now();
@@ -72,6 +88,7 @@ export class DeviceStore {
       lastSeenAt: now,
       tokenHash: hash.toString('base64url'),
       push: [],
+      ...(parent === undefined ? {} : { parent }),
     };
     this.devices.set(device.id, device);
     this.hashes.set(device.id, hash);
@@ -103,31 +120,42 @@ export class DeviceStore {
   }
 
   list(): PublicDevice[] {
-    return [...this.devices.values()]
-      .map((d) => ({
-        id: d.id,
-        name: d.name,
-        createdAt: d.createdAt,
-        lastSeenAt: d.lastSeenAt,
-        push: d.push.length,
-      }))
-      .toSorted((a, b) => b.lastSeenAt - a.lastSeenAt);
+    return [...this.devices.values()].map(publicDevice).toSorted((a, b) => b.lastSeenAt - a.lastSeenAt);
   }
 
   all(): DeviceRecord[] {
     return [...this.devices.values()];
   }
 
-  /** Accepts an exact id or a unique id prefix. */
-  revoke(idOrPrefix: string): DeviceRecord | undefined {
+  /**
+   * Revoke a device (exact id or unique id prefix) and every device paired
+   * through it, transitively: a handoff code minted with a token pairs a
+   * device that must not outlive that token. Returns the target first, or an
+   * empty list when nothing matches.
+   */
+  revoke(idOrPrefix: string): DeviceRecord[] {
     const exact = this.devices.get(idOrPrefix);
     const matches = exact === undefined ? this.all().filter((d) => d.id.startsWith(idOrPrefix)) : [exact];
     const [target] = matches;
-    if (matches.length !== 1 || target === undefined || idOrPrefix === '') return undefined;
-    this.devices.delete(target.id);
-    this.hashes.delete(target.id);
+    if (matches.length !== 1 || target === undefined || idOrPrefix === '') return [];
+    const removed = [target];
+    const gone = new Set([target.id]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const d of this.devices.values()) {
+        if (d.parent !== undefined && gone.has(d.parent) && !gone.has(d.id)) {
+          gone.add(d.id);
+          removed.push(d);
+          grew = true;
+        }
+      }
+    }
+    for (const id of gone) {
+      this.devices.delete(id);
+      this.hashes.delete(id);
+    }
     this.writer.schedule();
-    return target;
+    return removed;
   }
 
   addPush(device: DeviceRecord, sub: PushSubscriptionRecord): void {
