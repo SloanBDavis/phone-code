@@ -49,6 +49,7 @@ function FullImage({ pic, near }: { pic: Pic; near: boolean }): JSX.Element {
     return () => {
       alive = false;
     };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- a pic is identified by its key; url only gates the first load
   }, [near, pic.key]);
   if (url === 'error') return <p class="viewer-missing">This image is not available.</p>;
   if (!url) return <Spinner size={26} />;
@@ -74,14 +75,18 @@ export default function Viewer({
 }): JSX.Element {
   const [index, setIndex] = useState(Math.max(0, Math.min(pics.length - 1, start)));
   const [entered, setEntered] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDialogElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef<Zoom>({ s: 1, x: 0, y: 0 });
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const gRef = useRef<Gesture | null>(null);
-  const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null);
   const indexRef = useRef(index);
-  indexRef.current = index;
+  const closeRef = useRef(close);
+  useLayoutEffect(() => {
+    indexRef.current = index;
+    closeRef.current = close;
+  });
 
   useLayoutEffect(() => soon(() => setEntered(true)), []);
 
@@ -90,7 +95,9 @@ export default function Viewer({
     return {
       root,
       track: trackRef.current ?? undefined,
-      img: root?.querySelector<HTMLElement>(`.viewer-slide[data-i="${indexRef.current}"] .viewer-zoom`) ?? undefined,
+      img:
+        root?.querySelector<HTMLElement>(`.viewer-slide[data-i="${indexRef.current}"] .viewer-zoom`) ??
+        undefined,
       bg: root?.querySelector<HTMLElement>('.viewer-bg') ?? undefined,
     };
   };
@@ -139,7 +146,7 @@ export default function Viewer({
 
   const end = (): void => {
     const g = gRef.current;
-    pointers.current.clear();
+    pointersRef.current.clear();
     if (!g) return;
     gRef.current = null;
     clearTimeout(g.watchdog);
@@ -178,10 +185,10 @@ export default function Viewer({
       case 'idle': {
         // A tap: two of them close together zoom in (on that spot) or back out.
         const now = performance.now();
-        const lt = lastTap.current;
+        const lt = lastTapRef.current;
         if (now - g.t0 < 300 && Math.hypot(dx, dy) < 10) {
           if (lt && now - lt.t < 320 && Math.hypot(g.x - lt.x, g.y - lt.y) < 30) {
-            lastTap.current = null;
+            lastTapRef.current = null;
             const z = zoomRef.current;
             if (z.s > 1) settleTo({ s: 1, x: 0, y: 0 });
             else {
@@ -190,7 +197,7 @@ export default function Viewer({
             }
             return;
           }
-          lastTap.current = { t: now, x: g.x, y: g.y };
+          lastTapRef.current = { t: now, x: g.x, y: g.y };
         }
         settleTo(zoomRef.current);
         return;
@@ -203,15 +210,17 @@ export default function Viewer({
   };
 
   const endRef = useRef(end);
+  const goRef = useRef(go);
   useLayoutEffect(() => {
     endRef.current = end;
+    goRef.current = go;
   });
 
   useEffect(() => {
     const onEnd = (e: Event): void => {
       // A finger lifting while another stays down is not the end of a pinch.
-      if (e.type === 'pointerup' && pointers.current.size > 1 && e instanceof PointerEvent) {
-        pointers.current.delete(e.pointerId);
+      if (e.type === 'pointerup' && pointersRef.current.size > 1 && e instanceof PointerEvent) {
+        pointersRef.current.delete(e.pointerId);
         return;
       }
       if (e.type === 'touchend' && e instanceof TouchEvent && e.touches.length > 0) return;
@@ -221,7 +230,7 @@ export default function Viewer({
       if (document.visibilityState === 'hidden') endRef.current();
     };
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') closeRef.current();
       else if (e.key === 'ArrowRight') goRef.current(indexRef.current + 1);
       else if (e.key === 'ArrowLeft') goRef.current(indexRef.current - 1);
     };
@@ -240,8 +249,6 @@ export default function Viewer({
       if (g) clearTimeout(g.watchdog);
     };
   }, []);
-  const goRef = useRef(go);
-  goRef.current = go;
 
   // The track follows the index (taps on arrows, keys) as well as gestures.
   useLayoutEffect(() => paint(), [index]);
@@ -249,7 +256,7 @@ export default function Viewer({
   const onDown = (e: PointerEvent): void => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (e.target instanceof Element && e.target.closest('.viewer-bar')) return;
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try {
       if (e.currentTarget instanceof Element) e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
@@ -257,8 +264,8 @@ export default function Viewer({
     }
     const now = performance.now();
     const g = gRef.current;
-    if (pointers.current.size === 2) {
-      const [a, b] = [...pointers.current.values()];
+    if (pointersRef.current.size === 2) {
+      const [a, b] = [...pointersRef.current.values()];
       if (!a || !b) return;
       const base = g ?? null;
       if (base) clearTimeout(base.watchdog);
@@ -300,8 +307,8 @@ export default function Viewer({
 
   const onMove = (e: PointerEvent): void => {
     const g = gRef.current;
-    if (!g || !pointers.current.has(e.pointerId)) return;
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!g || !pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const now = performance.now();
     const dt = Math.max(1, now - g.t);
     g.vx = 0.7 * ((e.clientX - g.x) / dt) + 0.3 * g.vx;
@@ -314,9 +321,12 @@ export default function Viewer({
     const dx = g.x - g.x0;
     const dy = g.y - g.y0;
     if (g.mode === 'pinch') {
-      const [a, b] = [...pointers.current.values()];
+      const [a, b] = [...pointersRef.current.values()];
       if (!a || !b) return;
-      const s = Math.max(0.6, Math.min(MAX_ZOOM * 1.2, (g.zoom0.s * Math.hypot(a.x - b.x, a.y - b.y)) / g.d0));
+      const s = Math.max(
+        0.6,
+        Math.min(MAX_ZOOM * 1.2, (g.zoom0.s * Math.hypot(a.x - b.x, a.y - b.y)) / g.d0),
+      );
       const m = center((a.x + b.x) / 2, (a.y + b.y) / 2);
       // The point under the fingers stays under them.
       const k = s / g.zoom0.s;
@@ -326,7 +336,8 @@ export default function Viewer({
     }
     if (g.mode === 'pending') {
       if (Math.hypot(dx, dy) < 8) return;
-      g.mode = zoomRef.current.s > 1 ? 'pan' : Math.abs(dx) > Math.abs(dy) ? 'swipe' : dy > 0 ? 'dismiss' : 'swipe';
+      g.mode =
+        zoomRef.current.s > 1 ? 'pan' : Math.abs(dx) > Math.abs(dy) ? 'swipe' : dy > 0 ? 'dismiss' : 'swipe';
       rootRef.current?.classList.add('dragging');
     }
     if (g.mode === 'swipe') {
@@ -350,7 +361,7 @@ export default function Viewer({
       const ext = blob.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
       const name = pic.name ?? `image-${indexRef.current + 1}.${ext}`;
       const file = new File([blob], name, { type: blob.type });
-      if (navigator.canShare?.({ files: [file] })) {
+      if ('canShare' in navigator && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file] });
         return;
       }
@@ -366,10 +377,10 @@ export default function Viewer({
   const canShare = typeof navigator.share === 'function';
 
   return (
-    <div
+    <dialog
+      open
       ref={rootRef}
       class={`viewer ${closing ? 'out' : entered ? 'in' : 'pre'}`}
-      role="dialog"
       aria-modal="true"
       aria-label="Image viewer"
       data-testid="image-viewer"
@@ -377,7 +388,7 @@ export default function Viewer({
       onPointerDown={onDown}
       onPointerMove={onMove}
       onLostPointerCapture={(e) => {
-        if (e.target === e.currentTarget && pointers.current.size <= 1) end();
+        if (e.target === e.currentTarget && pointersRef.current.size <= 1) end();
       }}
     >
       <div class="viewer-bg" />
@@ -402,6 +413,6 @@ export default function Viewer({
           testid="viewer-share"
         />
       </div>
-    </div>
+    </dialog>
   );
 }

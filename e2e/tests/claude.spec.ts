@@ -1,7 +1,17 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../lib/fixtures.ts';
-import { lastText, newChat, openSidebar, row, searchAll, send, shot, startChat, waitTurn } from '../lib/ui.ts';
+import {
+  lastText,
+  newChat,
+  openSidebar,
+  row,
+  searchAll,
+  send,
+  shot,
+  startChat,
+  waitTurn,
+} from '../lib/ui.ts';
 
 test('streams a markdown answer', async ({ phone }) => {
   await newChat(phone, 'claude');

@@ -29,8 +29,20 @@ export const MODES: Array<{
   icon: IconName;
   hint: string;
 }> = [
-  { mode: 'default', label: 'Ask before acting', short: 'Ask', icon: 'shield', hint: 'Approve edits and commands' },
-  { mode: 'acceptEdits', label: 'Accept edits', short: 'Edits', icon: 'pencil', hint: 'Edits apply, commands still ask' },
+  {
+    mode: 'default',
+    label: 'Ask before acting',
+    short: 'Ask',
+    icon: 'shield',
+    hint: 'Approve edits and commands',
+  },
+  {
+    mode: 'acceptEdits',
+    label: 'Accept edits',
+    short: 'Edits',
+    icon: 'pencil',
+    hint: 'Edits apply, commands still ask',
+  },
   { mode: 'plan', label: 'Plan only', short: 'Plan', icon: 'list', hint: 'Read and plan, change nothing' },
   {
     mode: 'auto',
@@ -39,11 +51,25 @@ export const MODES: Array<{
     icon: 'shieldAuto',
     hint: 'Claude approves safe actions, asks for risky ones',
   },
-  { mode: 'bypassPermissions', label: 'Bypass permissions', short: 'Bypass', icon: 'bolt', hint: 'Never ask. Use with care' },
+  {
+    mode: 'bypassPermissions',
+    label: 'Bypass permissions',
+    short: 'Bypass',
+    icon: 'bolt',
+    hint: 'Never ask. Use with care',
+  },
 ];
 
+const DEFAULT_MODE = {
+  mode: 'default',
+  label: 'Ask before acting',
+  short: 'Ask',
+  icon: 'shield',
+  hint: 'Approve edits and commands',
+} as const;
+
 export function modeInfo(m: PermissionMode | undefined): (typeof MODES)[number] {
-  return MODES.find((x) => x.mode === m) ?? (MODES[0] as (typeof MODES)[number]);
+  return MODES.find((x) => x.mode === m) ?? DEFAULT_MODE;
 }
 
 const SHORT: Record<string, string> = { claude: 'Claude', codex: 'Codex', terminal: 'Terminal' };
@@ -88,7 +114,11 @@ export function HarnessChip({
   /** A different harness in a chat with messages starts a new chat. */
   onSwitch?: () => void;
 }): JSX.Element {
-  const current: Harness = session ? (session.kind === 'terminal' ? 'terminal' : (session.agent ?? 'claude')) : draft.value.harness;
+  const current: Harness = session
+    ? session.kind === 'terminal'
+      ? 'terminal'
+      : (session.agent ?? 'claude')
+    : draft.value.harness;
   const cwd = session?.cwd ?? draft.value.cwd;
   const list = harnessList();
   const choose = (id: Harness): void => {
@@ -131,7 +161,10 @@ export function HarnessChip({
         openMenu(
           e.currentTarget,
           [
-            { title: `On ${host.value?.name ?? 'this computer'}`, items: list.filter((h) => h.available).map(item) },
+            {
+              title: `On ${host.value?.name ?? 'this computer'}`,
+              items: list.filter((h) => h.available).map(item),
+            },
             { title: 'Not set up', items: list.filter((h) => !h.available).map(item) },
           ],
           { testid: 'harness-menu' },
@@ -170,7 +203,14 @@ export function ModelChip({ session }: { session?: SessionInfo }): JSX.Element |
               items: [
                 // Before a session, "Default" sends no model: the agent's own default.
                 ...(!session && !models.some((m) => m.isDefault)
-                  ? [{ label: 'Default', checked: !model, testid: 'model-default', onSelect: () => pickModel(undefined) }]
+                  ? [
+                      {
+                        label: 'Default',
+                        checked: !model,
+                        testid: 'model-default',
+                        onSelect: () => pickModel(undefined),
+                      },
+                    ]
                   : []),
                 ...models.map((m) => ({
                   label: m.name ?? m.id,

@@ -12,7 +12,13 @@ import { Markdown } from './md';
 
 const srcPics = (urls: string[]): Pic[] => urls.map((src, i) => ({ key: `${i}:${src.slice(-24)}`, src }));
 
-export function UserBubble({ item, sessionId }: { item: Signal<ChatItem>; sessionId: string }): JSX.Element | null {
+export function UserBubble({
+  item,
+  sessionId,
+}: {
+  item: Signal<ChatItem>;
+  sessionId: string;
+}): JSX.Element | null {
   const u = item.value;
   if (u.kind !== 'user') return null;
   // Newer daemons send refs; older ones inline the bytes (or drop them: say how many).
@@ -53,14 +59,20 @@ export function PendingBubble({
           class="bubble-retry"
           onClick={() => (onRetry ? onRetry() : sessionId && client.retrySend(sessionId, p.localId))}
         >
-          <Icon name="warn" size={14} stroke={2.2} /> Not sent. Tap to retry
+          <Icon name="warn" size={14} stroke={2.2} /> Not sent{p.error ? `: ${p.error}` : ''}. Tap to retry
         </button>
       )}
     </div>
   );
 }
 
-export function TextBlock({ item, sessionId }: { item: Signal<ChatItem>; sessionId: string }): JSX.Element | null {
+export function TextBlock({
+  item,
+  sessionId,
+}: {
+  item: Signal<ChatItem>;
+  sessionId: string;
+}): JSX.Element | null {
   const t = item.value;
   if (t.kind !== 'text') return null;
   return (

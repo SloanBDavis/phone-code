@@ -12,7 +12,7 @@ import { chatOf, conn, host, isDemo } from '../../lib/state';
 import { loadDraft, markSeen, seen } from '../../lib/storage';
 import { basename, copyText, soon, tildify } from '../../lib/util';
 import { TopBar } from '../../ui/chrome';
-import { PaneButtons } from '../../ui/drawer';
+import { paneButtons } from '../../ui/drawer';
 import { GlassButton } from '../../ui/glass';
 import { Glyph, agentGlyph, glyphOf } from '../../ui/glyph';
 import { Icon, Spinner } from '../../ui/icons';
@@ -154,7 +154,12 @@ function TitleCapsule({ s }: { s?: SessionInfo }): JSX.Element {
               hint: tildify(s.cwd, host.value?.home),
               onSelect: () => void copyText(s.cwd).then((ok) => ok && toast('Copied', 'check')),
             },
-            { label: 'Archive', icon: 'archive', onSelect: () => void archiveSession(s), testid: 'menu-archive' },
+            {
+              label: 'Archive',
+              icon: 'archive',
+              onSelect: () => void archiveSession(s),
+              testid: 'menu-archive',
+            },
           ],
         },
         {
@@ -203,7 +208,7 @@ export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Eleme
   const apiRef = useRef<ScrollApi>(null);
   const jump = useSignal(false);
   const [text, setText] = useState(() => loadDraft(sessionId ?? 'new'));
-  const { left, right } = PaneButtons();
+  const { left, right } = paneButtons();
 
   useEffect(() => (sessionId ? client.subscribe(sessionId) : undefined), [sessionId]);
 
@@ -226,7 +231,9 @@ export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Eleme
     };
   }, []);
 
-  const agent = s ? agentShortLabel(s, host.value) : agentShortLabel({ agent: draft.value.harness }, host.value);
+  const agent = s
+    ? agentShortLabel(s, host.value)
+    : agentShortLabel({ agent: draft.value.harness }, host.value);
   const loaded = chat?.loaded.value ?? true;
   const first = starting.value;
   const empty = !chat || (loaded && chat.ids.value.length === 0 && chat.pending.value.length === 0);
@@ -271,17 +278,15 @@ export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Eleme
             </p>
           </div>
         ) : (
-          chat && (
-            <Transcript
-              key={s.id}
-              chat={chat}
-              sessionId={s.id}
-              agent={agent}
-              apiRef={apiRef}
-              scrollRef={scrollRef}
-              jump={jump}
-            />
-          )
+          <Transcript
+            key={s.id}
+            chat={chat}
+            sessionId={s.id}
+            agent={agent}
+            apiRef={apiRef}
+            scrollRef={scrollRef}
+            jump={jump}
+          />
         )}
       </div>
       <TopBar fade left={left} titleSlot={<TitleCapsule s={s} />} right={right} />

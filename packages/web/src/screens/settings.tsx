@@ -138,10 +138,9 @@ export default function ComputerSheet({ close }: { close: () => void }): JSX.Ele
             </div>
             {!secure && (
               <p class="footnote fix" data-testid="connection-fix">
-                These need an https address for your computer. The simple way is Tailscale, free for
-                personal use: on your computer run <code class="cmd">npx phone-code setup</code>. It checks
-                Tailscale and tells you the one thing to do. Then pair this phone again from the new QR
-                code.
+                These need an https address for your computer. The simple way is Tailscale, free for personal
+                use: on your computer run <code class="cmd">npx phone-code setup</code>. It checks Tailscale
+                and tells you the one thing to do. Then pair this phone again from the new QR code.
               </p>
             )}
           </section>
@@ -160,7 +159,9 @@ export default function ComputerSheet({ close }: { close: () => void }): JSX.Ele
                 >
                   <Glyph kind={a.id === 'terminal' ? 'terminal' : agentGlyph(a.id)} size={30} />
                   <span class="cell-main">
-                    <span class="cell-title">{a.id === 'terminal' ? 'Terminal' : (a.info?.name ?? a.id)}</span>
+                    <span class="cell-title">
+                      {a.id === 'terminal' ? 'Terminal' : (a.info?.name ?? a.id)}
+                    </span>
                     {!a.available && (
                       <span class="cell-sub" data-testid="setup-hint">
                         {a.info?.setupHint ?? 'Not installed on this computer'}
@@ -280,9 +281,11 @@ export default function ComputerSheet({ close }: { close: () => void }): JSX.Ele
                     destructive: true,
                     testid: 'unpair-dialog',
                   }).then((ok) => {
-                    if (!ok) return;
-                    close();
-                    unpairDevice();
+                    if (ok) {
+                      close();
+                      unpairDevice();
+                    }
+                    return ok;
                   })
                 }
               >

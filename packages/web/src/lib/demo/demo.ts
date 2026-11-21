@@ -118,12 +118,16 @@ export class DemoTransport implements Transport {
   }
 
   /** "All chats": past conversations plus this host's sessions, searched like the daemon does. */
-  private search(agent: string | undefined, q: { text?: string; limit?: number; before?: number }): ResumableSession[] {
+  private search(
+    agent: string | undefined,
+    q: { text?: string; limit?: number; before?: number },
+  ): ResumableSession[] {
     const text = q.text?.trim().toLowerCase() ?? '';
     const past = history();
     const known = new Set(past.map((h) => h.sessionId).filter(Boolean));
     const live: Array<ResumableSession & { body: string }> = [...this.sims.values()]
       .filter((x) => x.info.kind === 'agent' && !known.has(x.info.id))
+      // oxlint-disable-next-line oxc/no-map-spread -- small simulated lists, clarity first
       .map((x) => ({
         agent: x.info.agent ?? 'claude',
         agentName: x.info.agentName,
@@ -137,6 +141,7 @@ export class DemoTransport implements Transport {
         body: x.items.map((i) => (i.kind === 'user' || i.kind === 'text' ? i.text : '')).join(' \n '),
       }));
     const all = [
+      // oxlint-disable-next-line oxc/no-map-spread -- small simulated lists, clarity first
       ...past.map((h) => ({
         ...h,
         ...(h.sessionId && this.sims.get(h.sessionId)
@@ -152,18 +157,21 @@ export class DemoTransport implements Transport {
       const from = Math.max(0, at - 40);
       return `${from > 0 ? '…' : ''}${body.slice(from, at + text.length + 60).trim()}…`;
     };
-    return all
-      .filter((h) => !agent || h.agent === agent)
-      .filter((h) => !q.before || h.updatedAt < q.before)
-      .map(({ body, ...h }) => {
-        if (!text) return h;
-        if (h.title.toLowerCase().includes(text) || h.cwd.toLowerCase().includes(text)) return h;
-        const sn = snippet(body);
-        return sn ? { ...h, snippet: sn } : null;
-      })
-      .filter((h): h is ResumableSession => h !== null)
-      .toSorted((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, Math.min(200, q.limit ?? 50));
+    return (
+      all
+        .filter((h) => !agent || h.agent === agent)
+        .filter((h) => !q.before || h.updatedAt < q.before)
+        // oxlint-disable-next-line oxc/no-map-spread -- small simulated lists, clarity first
+        .map(({ body, ...h }) => {
+          if (!text) return h;
+          if (h.title.toLowerCase().includes(text) || h.cwd.toLowerCase().includes(text)) return h;
+          const sn = snippet(body);
+          return sn ? { ...h, snippet: sn } : null;
+        })
+        .filter((h): h is ResumableSession => h !== null)
+        .toSorted((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, Math.min(200, q.limit ?? 50))
+    );
   }
 
   send(msg: ClientMessage): boolean {
@@ -667,7 +675,9 @@ export class DemoTransport implements Transport {
           const id = this.nid('up');
           const bytes = Uint8Array.from(atob(a.data), (c) => c.charCodeAt(0));
           this.images.set(id, new Blob([bytes], { type: a.mediaType }));
-          return { id, mediaType: a.mediaType, ...(a.name ? { name: a.name } : {}), bytes: bytes.length };
+          const ref: ImageRef = { id, mediaType: a.mediaType, bytes: bytes.length };
+          if (a.name) ref.name = a.name;
+          return ref;
         });
         // Sending brings an archived chat back to the sidebar.
         if (sim.info.archived) sim.info = { ...sim.info, archived: false };

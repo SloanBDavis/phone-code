@@ -326,24 +326,24 @@ by induction) name the only ways the attacker learns a code or token: a
 leaked QR, a leaked handoff URL, a stolen token. They must verify wherever
 they are defined. The others:
 
-| Lemma | In plain words |
-| --- | --- |
-| `exec_*` | The honest runs exist: pair + hello, handoff child + hello, owner revoke. |
-| `token_secret` | The token of a device your phone paired stays secret (unless stolen). |
-| `pair_code_secret`, `handoff_code_secret`, `control_secret` | A code you did not leak, a handoff code minted for your phone, the control secret: never learned. |
-| `sessions_only_owner_devices` | A socket is authorized only for a device your phone paired. |
-| `hello_injective_agreement` | Every authorized socket is one your phone opened for that device; a captured hello authorizes no other. |
-| `codes_redeemed_only_by_owner` | Every device created from a code was created by your phone's request. |
-| `code_single_use` | A code yields at most one device, even when leaked. |
-| `owner_first_excludes_others` | Once your phone redeemed a code, nobody else gets a device from it. |
-| `race_loss_is_visible` | If someone else redeemed it first, your phone got no device from it (it shows the error). |
-| `no_pair_after_expiry` | An expired or evicted code pairs nothing. |
-| `handoff_bound_to_minter` | A handoff device is the child of the device that minted the code, and only a holder of that device's token minted it. |
-| `no_handoff_after_revoke` | A handoff code minted before its device was revoked pairs nothing afterwards. |
-| `revoked_no_session`, `revoke_cascades` | After a revocation, no socket for the device or any device paired through it. |
-| `revoke_only_owner_or_holder` | Only your CLI, the device itself, or a holder of its token revokes it. |
-| `revoke_evicts_thief` | After you revoke a stolen device, the thief has no socket left, through it or anything it paired. |
-| `control_only_owner_cli` | Only your CLI is accepted on `/_control` (no network attacker, no CSRF or rebinding page). |
+| Lemma                                                       | In plain words                                                                                                        |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `exec_*`                                                    | The honest runs exist: pair + hello, handoff child + hello, owner revoke.                                             |
+| `token_secret`                                              | The token of a device your phone paired stays secret (unless stolen).                                                 |
+| `pair_code_secret`, `handoff_code_secret`, `control_secret` | A code you did not leak, a handoff code minted for your phone, the control secret: never learned.                     |
+| `sessions_only_owner_devices`                               | A socket is authorized only for a device your phone paired.                                                           |
+| `hello_injective_agreement`                                 | Every authorized socket is one your phone opened for that device; a captured hello authorizes no other.               |
+| `codes_redeemed_only_by_owner`                              | Every device created from a code was created by your phone's request.                                                 |
+| `code_single_use`                                           | A code yields at most one device, even when leaked.                                                                   |
+| `owner_first_excludes_others`                               | Once your phone redeemed a code, nobody else gets a device from it.                                                   |
+| `race_loss_is_visible`                                      | If someone else redeemed it first, your phone got no device from it (it shows the error).                             |
+| `no_pair_after_expiry`                                      | An expired or evicted code pairs nothing.                                                                             |
+| `handoff_bound_to_minter`                                   | A handoff device is the child of the device that minted the code, and only a holder of that device's token minted it. |
+| `no_handoff_after_revoke`                                   | A handoff code minted before its device was revoked pairs nothing afterwards.                                         |
+| `revoked_no_session`, `revoke_cascades`                     | After a revocation, no socket for the device or any device paired through it.                                         |
+| `revoke_only_owner_or_holder`                               | Only your CLI, the device itself, or a holder of its token revokes it.                                                |
+| `revoke_evicts_thief`                                       | After you revoke a stolen device, the thief has no socket left, through it or anything it paired.                     |
+| `control_only_owner_cli`                                    | Only your CLI is accepted on `/_control` (no network attacker, no CSRF or rebinding page).                            |
 
 ### Results
 

@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { AgentId, HistoryQuery, ResumableSession } from '@phone-code/protocol';
 import { openSession } from '../lib/actions';
 import { agentCatalog } from '../lib/agents';
@@ -80,6 +80,7 @@ export default function AllChats({ text, onOpen }: { text: string; onOpen: () =>
       q ? DEBOUNCE_MS : 0,
     );
     return () => clearTimeout(t);
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- fetchPage reads only q and agent
   }, [q, agent]);
 
   const loadMore = (): void => {
@@ -89,26 +90,33 @@ export default function AllChats({ text, onOpen }: { text: string; onOpen: () =>
     setState({ ...state, loadingMore: true });
     fetchPage(last?.updatedAt).then(
       (r) => {
-        if (gen !== genRef.current) return;
-        setState((s) =>
+        if (gen !== genRef.current) return undefined;
+        return setState((s) =>
           s.k === 'ok'
             ? {
                 k: 'ok',
-                items: [...s.items, ...r.items.filter((x) => !s.items.some((y) => y.resumeId === x.resumeId))],
+                items: [
+                  ...s.items,
+                  ...r.items.filter((x) => !s.items.some((y) => y.resumeId === x.resumeId)),
+                ],
                 more: r.more && r.items.length > 0,
                 loadingMore: false,
               }
             : s,
         );
       },
-      () => gen === genRef.current && setState((s) => (s.k === 'ok' ? { ...s, more: false, loadingMore: false } : s)),
+      () =>
+        gen === genRef.current &&
+        setState((s) => (s.k === 'ok' ? { ...s, more: false, loadingMore: false } : s)),
     );
   };
 
   const hasMore = state.k === 'ok' && state.more;
   // Next page when the end of the list scrolls into view.
   const moreRef = useRef(loadMore);
-  moreRef.current = loadMore;
+  useLayoutEffect(() => {
+    moreRef.current = loadMore;
+  });
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !('IntersectionObserver' in window)) return undefined;
@@ -132,7 +140,7 @@ export default function AllChats({ text, onOpen }: { text: string; onOpen: () =>
   return (
     <div class="all-chats" data-testid="all-chats">
       {agents.length > 1 && (
-        <div class="filter-chips" role="group" aria-label="Harness">
+        <fieldset class="filter-chips" aria-label="Harness">
           <button
             type="button"
             class={`chip ${agent === null ? 'on' : ''}`}
@@ -154,7 +162,7 @@ export default function AllChats({ text, onOpen }: { text: string; onOpen: () =>
               {a.name}
             </button>
           ))}
-        </div>
+        </fieldset>
       )}
       <h2 class="sb-head">{q ? 'Results' : 'Recent on this computer'}</h2>
       {state.k === 'loading' && (

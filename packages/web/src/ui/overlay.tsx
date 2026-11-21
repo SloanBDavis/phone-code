@@ -366,40 +366,42 @@ function Menu({
           {sections
             .filter((s) => s.items.length > 0)
             .map((s) => (
-            <div class="menu-section" key={s.title ?? s.items[0]?.label}>
-              {s.title && <div class="menu-title">{s.title}</div>}
-              {s.items.map((it) => (
-                <button
-                  key={it.label}
-                  type="button"
-                  role="menuitem"
-                  class={`menu-item ${it.destructive ? 'destructive' : ''} ${it.checked ? 'checked' : ''} ${it.dim ? 'dim' : ''} ${it.lead ? 'has-lead' : ''}`}
-                  disabled={it.disabled}
-                  data-testid={it.testid}
-                  onClick={() => {
-                    haptic('light');
-                    close();
-                    it.onSelect();
-                  }}
-                >
-                  {it.lead ? (
-                    <span class="menu-lead">{it.lead}</span>
-                  ) : (
-                    <span class="menu-check">{it.checked && <Icon name="check" size={16} stroke={2.4} />}</span>
-                  )}
-                  <span class="menu-label">
-                    {it.label}
-                    {it.hint && <small>{it.hint}</small>}
-                  </span>
-                  {it.lead && it.checked ? (
-                    <Icon name="check" size={17} stroke={2.4} />
-                  ) : (
-                    it.icon && <Icon name={it.icon} size={19} />
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
+              <div class="menu-section" key={s.title ?? s.items[0]?.label}>
+                {s.title && <div class="menu-title">{s.title}</div>}
+                {s.items.map((it) => (
+                  <button
+                    key={it.label}
+                    type="button"
+                    role="menuitem"
+                    class={`menu-item ${it.destructive ? 'destructive' : ''} ${it.checked ? 'checked' : ''} ${it.dim ? 'dim' : ''} ${it.lead ? 'has-lead' : ''}`}
+                    disabled={it.disabled}
+                    data-testid={it.testid}
+                    onClick={() => {
+                      haptic('light');
+                      close();
+                      it.onSelect();
+                    }}
+                  >
+                    {it.lead ? (
+                      <span class="menu-lead">{it.lead}</span>
+                    ) : (
+                      <span class="menu-check">
+                        {it.checked && <Icon name="check" size={16} stroke={2.4} />}
+                      </span>
+                    )}
+                    <span class="menu-label">
+                      {it.label}
+                      {it.hint && <small>{it.hint}</small>}
+                    </span>
+                    {it.lead && it.checked ? (
+                      <Icon name="check" size={17} stroke={2.4} />
+                    ) : (
+                      it.icon && <Icon name={it.icon} size={19} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            ))}
         </div>
       </div>
     </div>

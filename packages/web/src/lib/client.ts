@@ -1,6 +1,7 @@
 import { batch } from '@preact/signals';
 import type { Attachment, ClientMessage, RpcResults, ServerMessage } from '@phone-code/protocol';
 import {
+  applySessions,
   appendDelta,
   chatOf,
   conn,
@@ -168,15 +169,14 @@ class Client {
       c.pending.value = c.pending.value.map((x) => (x.localId === localId ? withPatch(x, p) : x));
     };
     // Upload progress: how much of the message the socket has handed to the network.
-    let stopProgress = (): void => undefined;
+    let timer: number | undefined;
     if (attachments.length) {
       const total = attachments.reduce((n, a) => n + a.data.length, text.length + 200);
       patch({ progress: 0 });
-      const timer = window.setInterval(() => {
+      timer = window.setInterval(() => {
         const left = this.transport?.buffered() ?? 0;
         patch({ progress: Math.max(0, Math.min(1, 1 - left / total)) });
       }, 120);
-      stopProgress = () => clearInterval(timer);
     }
     try {
       const res = await this.rpc({
@@ -184,15 +184,16 @@ class Client {
         sessionId,
         text,
         ...(attachments.length ? { attachments } : {}),
-      }).finally(stopProgress);
+      }).finally(() => clearInterval(timer));
       if (c.items.has(res.itemId)) c.pending.value = c.pending.value.filter((p) => p.localId !== localId);
       else
         c.pending.value = c.pending.value.map((p) =>
           p.localId === localId ? withPatch(p, { awaitId: res.itemId }) : p,
         );
-    } catch {
+    } catch (e) {
+      const error = e instanceof Error ? e.message : undefined;
       c.pending.value = c.pending.value.map((p) =>
-        p.localId === localId ? withPatch(p, { status: 'failed', progress: undefined }) : p,
+        p.localId === localId ? withPatch(p, { status: 'failed', progress: undefined, error }) : p,
       );
     }
   }
@@ -290,7 +291,7 @@ class Client {
       for (const m of msgs) {
         switch (m.t) {
           case 'sessions':
-            sessions.value = m.sessions;
+            applySessions(m.sessions);
             sessionsLoaded.value = true;
             break;
           case 'chat.snapshot':

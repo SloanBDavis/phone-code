@@ -14,7 +14,7 @@ import { resolvedTheme } from '../lib/theme';
 import { keyboardOpen } from '../lib/viewport';
 import { haptic, isIOS, tildify } from '../lib/util';
 import { TopBar } from '../ui/chrome';
-import { PaneButtons } from '../ui/drawer';
+import { paneButtons } from '../ui/drawer';
 import { GlassButton, GlassSurface } from '../ui/glass';
 import { Icon } from '../ui/icons';
 import { openMenu, toast } from '../ui/overlay';
@@ -286,7 +286,12 @@ export default function TerminalScreen({
         items: [
           { label: 'Rename', icon: 'pencil', onSelect: () => void renameSession(s) },
           { label: 'Clear screen', icon: 'refresh', onSelect: () => termRef.current?.clear() },
-          { label: 'Archive', icon: 'archive', onSelect: () => void archiveSession(s), testid: 'menu-archive' },
+          {
+            label: 'Archive',
+            icon: 'archive',
+            onSelect: () => void archiveSession(s),
+            testid: 'menu-archive',
+          },
         ],
       },
       {
@@ -308,7 +313,7 @@ export default function TerminalScreen({
       </div>
       <TopBar
         fade
-        left={PaneButtons().left}
+        left={paneButtons().left}
         titleSlot={
           <GlassButton class="title-capsule" onClick={menu} testid="term-title">
             <span class="title-main">{s.title}</span>

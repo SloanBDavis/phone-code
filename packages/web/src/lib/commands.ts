@@ -4,7 +4,8 @@ import { client } from './client';
 
 /**
  * Slash commands a session accepts (`session.commands`), fetched when the
- * chat opens and again, at most every 30 s, when the palette opens. A daemon
+ * chat opens and again when the composer is focused or the palette opens
+ * (every 30 s at most; every 2 s while the agent has reported none yet). A daemon
  * without the call leaves the agent's built-in list (`AgentInfo.commands`).
  */
 interface Entry {
@@ -21,11 +22,14 @@ export function sessionCommands(sessionId: string, refresh = false): Signal<Slas
     cache.set(sessionId, e);
   }
   const entry = e;
-  if (entry.at === 0 || (refresh && Date.now() - entry.at > 30_000)) {
+  const stale = Date.now() - entry.at > (entry.list.peek()?.length ? 30_000 : 2_000);
+  // Agents can report their list only after starting: an empty one is asked again soon.
+  if (entry.at === 0 || (refresh && stale)) {
     entry.at = Date.now();
     client.rpc({ t: 'session.commands', sessionId }).then(
       (r) => {
-        if (Array.isArray(r)) entry.list.value = r;
+        entry.list.value = Array.isArray(r) ? r : [];
+        return r;
       },
       () => undefined,
     );

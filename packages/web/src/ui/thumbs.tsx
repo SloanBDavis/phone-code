@@ -68,7 +68,13 @@ export function Thumbs({
   return (
     <div class={`thumbs thumbs-${variant} n-${Math.min(pics.length, 3)}`}>
       {pics.map((p, i) => (
-        <Thumb key={p.key} pic={p} width={WIDTH[variant]} progress={progress} onOpen={() => openViewer(pics, i)} />
+        <Thumb
+          key={p.key}
+          pic={p}
+          width={WIDTH[variant]}
+          progress={progress}
+          onOpen={() => openViewer(pics, i)}
+        />
       ))}
     </div>
   );

@@ -107,12 +107,16 @@ effect(() => save('pc.harness', harnessPrefs.value));
 export function setHarnessPrefs(harness: string, patch: HarnessPrefs): void {
   const cur = harnessPrefs.value[harness] ?? {};
   const next: HarnessPrefs = { ...cur, ...patch };
-  for (const k of Object.keys(patch) as Array<keyof HarnessPrefs>) if (patch[k] === undefined) delete next[k];
+  if ('model' in patch && patch.model === undefined) delete next.model;
+  if ('mode' in patch && patch.mode === undefined) delete next.mode;
+  if ('cwd' in patch && patch.cwd === undefined) delete next.cwd;
   harnessPrefs.value = { ...harnessPrefs.value, [harness]: next };
 }
 
 /** The harness the last new chat used (an agent id or `terminal`). */
-export const lastHarness = signal<string | null>(load<string | null>('pc.lastHarness', null, (v): v is string | null => v === null || isString(v)));
+export const lastHarness = signal<string | null>(
+  load<string | null>('pc.lastHarness', null, (v): v is string | null => v === null || isString(v)),
+);
 effect(() => save('pc.lastHarness', lastHarness.value));
 
 /** "Said once" notes (e.g. what plain http leaves out), so the app never nags. */

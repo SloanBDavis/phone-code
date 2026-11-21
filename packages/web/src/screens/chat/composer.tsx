@@ -32,23 +32,21 @@ function Palette({
   active: number;
   onPick: (c: SlashCommand) => void;
 }): JSX.Element {
-  let i = -1;
+  const activeName = groups.flatMap((g) => g.items)[active]?.name;
   return (
-    <GlassSurface class="slash-palette" data-testid="slash-palette" role="listbox" aria-label="Commands">
+    <GlassSurface class="slash-palette" data-testid="slash-palette" aria-label="Commands">
       <div class="slash-scroll">
         {groups.length === 0 && <div class="slash-empty">No matching commands</div>}
         {groups.map((g) => (
           <div class="slash-group" key={g.source} data-testid="slash-group" data-source={g.source}>
             <div class="slash-head">{SOURCE_LABEL[g.source]}</div>
             {g.items.map((c) => {
-              i++;
-              const on = i === active;
+              const on = c.name === activeName;
               return (
                 <button
                   key={c.name}
                   type="button"
-                  role="option"
-                  aria-selected={on}
+                  aria-current={on}
                   class={`slash-item ${on ? 'on' : ''}`}
                   data-testid="slash-item"
                   data-command={c.name}
@@ -105,7 +103,7 @@ export function Composer({
     setText(loadDraft(key));
     setAtts([]);
     setBrowse(false);
-  }, [key]);
+  }, [key, setText]);
 
   const d = draft.value;
   const isDraft = !session;
@@ -118,7 +116,10 @@ export function Composer({
 
   // Commands: the session's own list, else what the agent offers before one exists.
   const fromSession = session ? sessionCommands(session.id).value : null;
-  const commands = fromSession ?? (isDraft ? d.info?.commands : agentInfo(session.agent ?? 'claude')?.commands) ?? [];
+  const commands =
+    (fromSession?.length ? fromSession : null) ??
+    (isDraft ? d.info?.commands : agentInfo(session.agent ?? 'claude')?.commands) ??
+    [];
   const token = slashToken(text);
   const paletteOpen = commands.length > 0 && (token !== null || browse);
   const groups = paletteOpen ? groupCommands(commands, token ?? '') : [];
@@ -127,6 +128,7 @@ export function Composer({
   useEffect(() => setActive(0), [token]);
   useEffect(() => {
     if (paletteOpen && session) sessionCommands(session.id, true);
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refetch per session id, not per session update
   }, [paletteOpen, session?.id]);
 
   // Auto-grow: measure once per change, one style write.
@@ -223,25 +225,25 @@ export function Composer({
           </div>
         )}
         <div class="composer-main">
-            <button
-              type="button"
-              class="c-btn"
-              aria-label="Add photos"
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-              data-testid="composer-attach"
-            >
-              <Icon name={busy ? 'refresh' : 'plus'} size={22} stroke={2.1} />
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              onChange={(e) => void addPhotos([...(e.currentTarget.files ?? [])])}
-              data-testid="composer-file"
-            />
+          <button
+            type="button"
+            class="c-btn"
+            aria-label="Add photos"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            data-testid="composer-attach"
+          >
+            <Icon name={busy ? 'refresh' : 'plus'} size={22} stroke={2.1} />
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => void addPhotos([...(e.currentTarget.files ?? [])])}
+            data-testid="composer-file"
+          />
           <textarea
             ref={taRef}
             class="composer-input"
@@ -278,34 +280,39 @@ export function Composer({
               }
               if (e.key === 'Escape' && browse) setBrowse(false);
               // Desktop: Enter sends, Shift+Enter is a newline. On touch keyboards Return is a newline.
-              if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
+              if (
+                e.key === 'Enter' &&
+                !e.shiftKey &&
+                !e.isComposing &&
+                matchMedia('(pointer: fine)').matches
+              ) {
                 e.preventDefault();
                 send();
               }
             }}
           />
-            {stoppable && !canSend ? (
-              <button
-                type="button"
-                class="send-btn stop"
-                aria-label="Stop"
-                onClick={stop}
-                data-testid="composer-stop"
-              >
-                <span class="stop-square" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                class="send-btn"
-                aria-label="Send"
-                disabled={!canSend}
-                onClick={send}
-                data-testid="composer-send"
-              >
-                <Icon name="send" size={20} stroke={2.6} />
-              </button>
-            )}
+          {stoppable && !canSend ? (
+            <button
+              type="button"
+              class="send-btn stop"
+              aria-label="Stop"
+              onClick={stop}
+              data-testid="composer-stop"
+            >
+              <span class="stop-square" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              class="send-btn"
+              aria-label="Send"
+              disabled={!canSend}
+              onClick={send}
+              data-testid="composer-send"
+            >
+              <Icon name="send" size={20} stroke={2.6} />
+            </button>
+          )}
         </div>
         <div class="composer-bar pickers" data-testid="composer-pickers">
           {commands.length > 0 && (
@@ -326,10 +333,10 @@ export function Composer({
               <Icon name="slash" size={15} stroke={2.6} />
             </button>
           )}
-            <HarnessChip session={session} onSwitch={() => saveDraft(NEW, text)} />
-            {session?.kind !== 'terminal' && <ModelChip session={session} />}
-            <ModeChip session={session} />
-            {isDraft && <FolderChip />}
+          <HarnessChip session={session} onSwitch={() => saveDraft(NEW, text)} />
+          {session?.kind !== 'terminal' && <ModelChip session={session} />}
+          <ModeChip session={session} />
+          {isDraft && <FolderChip />}
         </div>
       </GlassSurface>
     </>

@@ -46,6 +46,8 @@ test('the first message creates the chat with the bar’s harness, model, mode a
   // Launch: a ready new chat, nothing to set up.
   await expect(phone.testId('composer-harness')).toHaveAttribute('data-harness', 'claude');
   await shot(phone, 'new-chat');
+  // Terminal on the picker opens one right away, in the chosen folder.
+  const term = await openTerminal(phone, { folder: 'other' });
   await newChat(phone, 'claude', { mode: 'Plan only' });
   await expect(phone.testId('composer-mode')).toHaveText(/Plan/);
   await send(phone, 'hello');
@@ -59,7 +61,6 @@ test('the first message creates the chat with the bar’s harness, model, mode a
 
   const codex = await startChat(phone, 'codex', 'hello codex', { folder: 'project/src' });
   await expect(phone.testId('chat-title')).toContainText('src');
-  const term = await openTerminal(phone, { folder: 'other' });
 
   await openSidebar(phone);
   for (const id of [claude, codex, term]) await expect(row(phone, id)).toBeVisible();
@@ -158,7 +159,9 @@ test('archive: swipe, undo, every phone, and back through All chats', async ({ p
   const other = await newPhone();
   await other.pair();
   await openSidebar(other);
-  await expect(other.testId('session-row')).toHaveCount(0);
+  // Once its list has loaded, the archived chat is not in it.
+  await expect(other.page.locator('[data-testid="sidebar-list"] .spinner')).toHaveCount(0);
+  await expect(row(other, id)).toHaveCount(0);
   // Still on the host: reload agrees.
   await phone.page.reload();
   await openSidebar(phone);

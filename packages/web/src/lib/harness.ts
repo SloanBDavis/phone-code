@@ -4,7 +4,7 @@ import { toast } from '../ui/overlay';
 import { CLASSIC_MODES, agentCatalog, modelOptions } from './agents';
 import { client, uid } from './client';
 import { openChat } from './nav';
-import { host, type PendingSend, sessions } from './state';
+import { host, type PendingSend, rememberCreated } from './state';
 import { harnessPrefs, lastHarness, pushRecentDir, setHarnessPrefs, settings } from './storage';
 import { haptic } from './util';
 
@@ -94,7 +94,7 @@ function termSize(): { cols: number; rows: number } {
 }
 
 function remember(s: SessionInfo): void {
-  if (!sessions.peek().some((x) => x.id === s.id)) sessions.value = [s, ...sessions.peek()];
+  rememberCreated({ ...s, createdAt: Date.now() });
 }
 
 /** Choosing Terminal opens one right away, in the new chat's folder. */
@@ -152,7 +152,7 @@ export async function startChat(text: string, attachments: Attachment[] = []): P
     });
   } catch (e) {
     if (starting.peek()?.localId !== pending.localId) return;
-    starting.value = { ...pending, status: 'failed' };
+    starting.value = { ...pending, status: 'failed', ...(e instanceof Error ? { error: e.message } : {}) };
     toast(e instanceof Error ? e.message : 'Could not start the chat', 'warn');
   }
 }

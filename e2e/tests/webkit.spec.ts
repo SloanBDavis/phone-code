@@ -9,6 +9,7 @@
 import { expect, test, type Phone } from '../lib/fixtures.ts';
 import {
   closeComputer,
+  shot,
   newChat,
   openChat,
   openComputer,
@@ -38,6 +39,39 @@ test('pairs over plain http and says what needs https', async ({ newPhone, daemo
   await expect(phone.testId('notifications-note')).not.toContainText('browser');
   await expect(phone.testId('works-notifications')).toHaveAttribute('data-ok', 'false');
   await closeComputer(phone);
+});
+
+test('plain http: said once, and explained on This computer', async ({ newPhone, daemon }) => {
+  const phone = await newPhone();
+  await phone.page.goto((await daemon.newPairCode()).pairUrl);
+  await expect(phone.testId('pair-insecure')).toContainText('https');
+  await phone.testId('pair-continue').click();
+  await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open');
+  await expect(phone.testId('conn-state')).toHaveAttribute('data-secure', 'false');
+  await expect(phone.testId('conn-state')).toContainText('Plain http');
+  // The coach already said it: the first chat does not repeat it.
+  await expect(phone.testId('new-chat-empty')).toBeVisible();
+  await expect(phone.testId('http-note')).toHaveCount(0);
+
+  await openComputer(phone);
+  await expect(phone.testId('connection-mode')).toHaveAttribute('data-mode', 'lan');
+  await expect(phone.testId('works-chat')).toHaveAttribute('data-ok', 'true');
+  for (const id of ['works-notifications', 'works-offline', 'works-scanner'])
+    await expect(phone.testId(id)).toHaveAttribute('data-ok', 'false');
+  await expect(phone.testId('connection-fix')).toContainText('npx phone-code setup');
+  await expect(phone.testId('notifications-note')).toContainText('https');
+  await shot(phone, 'computer-http');
+});
+
+test('a browser that skipped the coach hears it once in the first chat', async ({ phone }) => {
+  await phone.page.evaluate(() => localStorage.removeItem('pc.seen.http'));
+  await phone.page.reload();
+  await expect(phone.testId('http-note')).toBeVisible();
+  await phone.testId('http-note-dismiss').click();
+  await expect(phone.testId('http-note')).toHaveCount(0);
+  await phone.page.reload();
+  await expect(phone.testId('new-chat-empty')).toBeVisible();
+  await expect(phone.testId('http-note')).toHaveCount(0);
 });
 
 test('lazily loaded sheets always fill in; every harness starts a chat', async ({ phone, daemon }) => {

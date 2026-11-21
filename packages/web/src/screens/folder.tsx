@@ -68,7 +68,13 @@ export default function FolderSheet({
             <h3 class="section-head">Recent</h3>
             <div class="list">
               {recents.map((r) => (
-                <button key={r} type="button" class="cell" onClick={() => pick(r)} data-testid="folder-recent">
+                <button
+                  key={r}
+                  type="button"
+                  class="cell"
+                  onClick={() => pick(r)}
+                  data-testid="folder-recent"
+                >
                   <span class="cell-icon folder-ic">
                     <Icon name="history" size={16} stroke={2.1} />
                   </span>

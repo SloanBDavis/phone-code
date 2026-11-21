@@ -3,7 +3,17 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../lib/fixtures.ts';
 import { REPO } from '../lib/daemon.ts';
-import { currentId, newChat, lastText, openSidebar, row, searchAll, send, shot, waitTurn } from '../lib/ui.ts';
+import {
+  currentId,
+  newChat,
+  lastText,
+  openSidebar,
+  row,
+  searchAll,
+  send,
+  shot,
+  waitTurn,
+} from '../lib/ui.ts';
 
 const FAKE = join(REPO, 'e2e/fakes/fake-acp.mjs');
 // The Antigravity preset runs the same fake, for its preset-specific rules.

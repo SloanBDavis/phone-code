@@ -1,5 +1,15 @@
 import { expect, test, type Phone } from '../lib/fixtures.ts';
-import { lastText, newChat, openChat, openSidebar, row, searchAll, send, startChat, waitTurn } from '../lib/ui.ts';
+import {
+  lastText,
+  newChat,
+  openChat,
+  openSidebar,
+  row,
+  searchAll,
+  send,
+  startChat,
+  waitTurn,
+} from '../lib/ui.ts';
 
 const LONG = `Here is a long answer: ${Array.from({ length: 100 }, (_, i) => `word${i + 1}`).join(' ')}.`;
 

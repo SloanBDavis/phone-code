@@ -235,23 +235,32 @@ export function Shell({
       data-testid="shell"
       data-drawer={open ? 'open' : 'closed'}
     >
-      <aside class={`sidebar ${isWide ? "" : "glass glass-regular"}`} inert={!isWide && !open} aria-label="Chats" data-testid="sidebar">
+      <aside
+        class={`sidebar ${isWide ? '' : 'glass glass-regular'}`}
+        inert={!isWide && !open}
+        aria-label="Chats"
+        data-testid="sidebar"
+      >
         {sidebar}
       </aside>
       <main class="main" inert={open}>
         {children}
       </main>
       {!isWide && <div class="drawer-scrim" aria-hidden="true" data-testid="drawer-scrim" {...handlers(1)} />}
-      {!isWide && !open && <div class="edge-swipe" aria-hidden="true" data-testid="edge-swipe" {...handlers(0)} />}
+      {!isWide && !open && (
+        <div class="edge-swipe" aria-hidden="true" data-testid="edge-swipe" {...handlers(0)} />
+      )}
     </div>
   );
 }
 
 /** The two buttons every main pane has on a phone: the chats drawer and a new chat. */
-export function PaneButtons(): { left: JSX.Element | null; right: JSX.Element | null } {
+export function paneButtons(): { left: JSX.Element | null; right: JSX.Element | null } {
   if (wide.value) return { left: null, right: null };
   return {
-    left: <GlassButton icon="sidebar" label="Chats" iconSize={22} onClick={openDrawer} testid="open-sidebar" />,
+    left: (
+      <GlassButton icon="sidebar" label="Chats" iconSize={22} onClick={openDrawer} testid="open-sidebar" />
+    ),
     right: <GlassButton icon="compose" label="New chat" iconSize={21} onClick={openNew} testid="new-chat" />,
   };
 }

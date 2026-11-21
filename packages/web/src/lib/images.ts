@@ -91,6 +91,7 @@ export function usePicUrl(p: Pic, width?: number): [{ current: HTMLElement | nul
       alive = false;
       io.disconnect();
     };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- a pic is identified by its key
   }, [p.key, p.src, width]);
   return [ref, url];
 }

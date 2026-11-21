@@ -25,7 +25,8 @@ export function connectionOf(h: HostInfo | null | undefined): Connection {
 function infer(): ConnectionInfo {
   const hostname = location.hostname;
   const secure = window.isSecureContext;
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') return { mode: 'local', secure };
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]')
+    return { mode: 'local', secure };
   if (hostname.endsWith('.ts.net')) return { mode: 'tailscale', secure };
   if (hostname.endsWith('.trycloudflare.com')) return { mode: 'tunnel', secure };
   return secure ? { mode: 'url', secure } : { mode: 'lan', secure };

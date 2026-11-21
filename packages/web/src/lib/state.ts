@@ -30,6 +30,8 @@ export interface PendingSend {
   awaitId?: string;
   /** 0..1 while photos upload. */
   progress?: number;
+  /** Why the host refused it (e.g. a photo it cannot take). */
+  error?: string;
 }
 
 export interface ChatState {
@@ -159,6 +161,29 @@ export function appendDelta(sessionId: string, itemId: string, text: string): vo
   if (!s) return;
   const item = s.value;
   if (item.kind === 'text' || item.kind === 'thinking') s.value = { ...item, text: item.text + text };
+}
+
+/**
+ * Sessions this phone just created, by id and time. A `sessions` push sent
+ * before the create (e.g. right after a reconnect) can be applied after it;
+ * it must not drop the new chat out from under the user for a moment.
+ */
+const justCreated = new Map<string, SessionInfo>();
+
+export function rememberCreated(s: SessionInfo): void {
+  justCreated.set(s.id, s);
+  if (!sessions.peek().some((x) => x.id === s.id)) sessions.value = [s, ...sessions.peek()];
+}
+
+/** The daemon's list, plus any just-created session it does not list yet (for 15 s). */
+export function applySessions(list: SessionInfo[]): void {
+  const now = Date.now();
+  const extra: SessionInfo[] = [];
+  for (const [id, s] of justCreated) {
+    if (list.some((x) => x.id === id) || now - s.createdAt > 15_000) justCreated.delete(id);
+    else extra.push(s);
+  }
+  sessions.value = extra.length ? [...extra, ...list] : list;
 }
 
 export function sessionById(id: string): SessionInfo | undefined {

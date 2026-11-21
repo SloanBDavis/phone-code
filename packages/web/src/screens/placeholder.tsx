@@ -1,10 +1,10 @@
 import type { JSX } from 'preact';
 import { TopBar } from '../ui/chrome';
 import { Spinner } from '../ui/icons';
-import { PaneButtons } from '../ui/drawer';
+import { paneButtons } from '../ui/drawer';
 
 export function LoadingScreen(): JSX.Element {
-  const { left, right } = PaneButtons();
+  const { left, right } = paneButtons();
   return (
     <div class="screen" data-testid="screen-loading">
       <TopBar left={left} right={right} fade={false} />

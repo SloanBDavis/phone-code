@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, JSX } from 'preact';
-import { useComputed, useSignal } from '@preact/signals';
-import { useEffect, useRef } from 'preact/hooks';
+import { useComputed } from '@preact/signals';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SessionInfo } from '@phone-code/protocol';
 import { archiveSession, deleteSession, openSession, renameSession } from '../lib/actions';
 import { agentLabel } from '../lib/agents';
@@ -73,22 +73,22 @@ function Status({ s }: { s: SessionInfo }): JSX.Element | null {
 
 /** Long press (touch) or right click (mouse) opens the row's menu. */
 function useLongPress(onLong: (el: Element) => void): {
-  handlers: ButtonHTMLAttributes<HTMLButtonElement>;
+  handlers: ButtonHTMLAttributes;
   fired: () => boolean;
 } {
-  const timer = useRef(0);
-  const start = useRef<{ x: number; y: number } | null>(null);
+  const timerRef = useRef(0);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
   const firedRef = useRef(false);
   const cancel = (): void => {
-    clearTimeout(timer.current);
-    start.current = null;
+    clearTimeout(timerRef.current);
+    startRef.current = null;
   };
   useEffect(() => {
     const opts = { capture: true, passive: true };
     const types = ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'blur'] as const;
     for (const t of types) addEventListener(t, cancel, opts);
     return () => {
-      clearTimeout(timer.current);
+      clearTimeout(timerRef.current);
       for (const t of types) removeEventListener(t, cancel, opts);
     };
   }, []);
@@ -102,17 +102,17 @@ function useLongPress(onLong: (el: Element) => void): {
       onPointerDown: (e) => {
         if (e.pointerType === 'mouse') return;
         firedRef.current = false;
-        start.current = { x: e.clientX, y: e.clientY };
+        startRef.current = { x: e.clientX, y: e.clientY };
         const el = e.currentTarget;
-        clearTimeout(timer.current);
-        timer.current = window.setTimeout(() => {
-          start.current = null;
+        clearTimeout(timerRef.current);
+        timerRef.current = window.setTimeout(() => {
+          startRef.current = null;
           firedRef.current = true;
           onLong(el);
         }, 480);
       },
       onPointerMove: (e) => {
-        const s = start.current;
+        const s = startRef.current;
         if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > 8) cancel();
       },
       onContextMenu: (e) => {
@@ -131,7 +131,12 @@ function rowMenu(anchor: Element, s: SessionInfo): void {
       {
         items: [
           { label: 'Rename', icon: 'pencil', onSelect: () => void renameSession(s), testid: 'menu-rename' },
-          { label: 'Archive', icon: 'archive', onSelect: () => void archiveSession(s), testid: 'menu-archive' },
+          {
+            label: 'Archive',
+            icon: 'archive',
+            onSelect: () => void archiveSession(s),
+            testid: 'menu-archive',
+          },
         ],
       },
       {
@@ -153,7 +158,9 @@ function rowMenu(anchor: Element, s: SessionInfo): void {
 function SessionRow({ s, active }: { s: SessionInfo; active: boolean }): JSX.Element {
   const press = useLongPress((el) => rowMenu(el, s));
   const sub =
-    s.status === 'waiting' ? '' : (s.preview ?? (s.kind === 'terminal' ? 'Terminal' : agentLabel(s, host.value)));
+    s.status === 'waiting'
+      ? ''
+      : (s.preview ?? (s.kind === 'terminal' ? 'Terminal' : agentLabel(s, host.value)));
   return (
     <SwipeRow
       id={s.id}
@@ -247,19 +254,19 @@ function ChatList(): JSX.Element {
 }
 
 export function Sidebar(): JSX.Element {
-  const query = useSignal('');
-  const searching = useSignal(false);
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const c = conn.value.status;
 
   const stopSearch = (): void => {
-    query.value = '';
-    searching.value = false;
+    setQuery('');
+    setSearching(false);
     inputRef.current?.blur();
   };
 
   return (
-    <div class="sb" data-searching={searching.value}>
+    <div class="sb" data-searching={searching}>
       <div class="sb-top-bar">
         <button
           type="button"
@@ -297,7 +304,7 @@ export function Sidebar(): JSX.Element {
           <input
             ref={inputRef}
             type="search"
-            value={query.value}
+            value={query}
             placeholder="Search all chats"
             aria-label="Search all chats"
             enterkeyhint="search"
@@ -305,24 +312,24 @@ export function Sidebar(): JSX.Element {
             data-testid="search-input"
             onFocus={() => {
               void AllChats.preload();
-              searching.value = true;
+              setSearching(true);
             }}
             onInput={(e) => {
-              query.value = e.currentTarget.value;
-              searching.value = true;
+              setQuery(e.currentTarget.value);
+              setSearching(true);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') stopSearch();
             }}
           />
         </label>
-        {searching.value && (
+        {searching && (
           <button type="button" class="link-btn" onClick={stopSearch} data-testid="search-cancel">
             Cancel
           </button>
         )}
       </div>
-      {isDemo.value && !searching.value && (
+      {isDemo.value && !searching && (
         <div class="demo-banner" data-testid="demo-banner">
           <Icon name="sparkle" size={16} />
           <span>A simulated computer.</span>
@@ -332,9 +339,9 @@ export function Sidebar(): JSX.Element {
         </div>
       )}
       <div class="sb-scroll" data-testid="sidebar-list">
-        {searching.value ? (
+        {searching ? (
           <AllChats
-            text={query.value}
+            text={query}
             onOpen={() => {
               stopSearch();
               if (!wide.peek()) closeDrawer();
