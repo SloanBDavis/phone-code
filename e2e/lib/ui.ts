@@ -94,3 +94,6 @@ export async function back(phone: Phone): Promise<void> {
   await phone.testId('nav-back').click();
   await expect(phone.testId('screen-sessions')).toBeVisible();
 }
+
+/** Where screenshots taken for visual review go (E2E_SHOTS, default the OS temp dir). */
+export const SHOTS = `${process.env['E2E_SHOTS'] ?? `${process.env['TMPDIR'] ?? '/tmp'}/phonecode-shots`}/`;

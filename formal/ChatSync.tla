@@ -49,6 +49,7 @@ CONSTANTS
     MaxBP,        \* backpressure failures of sendFrame
     MaxToggle,    \* client unsub/resub toggles
     FixPersistOnLoad, \* TRUE = SessionManager.load persists the jumped seq before serving (the fix)
+    FixAttachCheck,   \* TRUE = Connection.attach drops a subscription the client gave up meanwhile (the fix)
     None          \* model value: "undefined"
 
 ASSUME Margin > MaxTok   \* "the margin exceeds what one epoch can emit" (see README)
@@ -275,12 +276,15 @@ RecvUnsub ==
 (*   missed = afterSeq === undefined ? undefined : log.since(afterSeq, seq); *)
 (*   send snapshot or each missed frame via fanout.sendTo, stop on failure;  *)
 (*   fanout.add(sub).                                                        *)
+(* then, in ws-client.ts Connection.attach (a microtask later, so no socket  *)
+(* event in between): if the client unsubscribed or the socket closed        *)
+(* meanwhile, s.unsubscribe(this).                                           *)
 SendAll(fs) ==
     \E k \in 0..Len(fs) :
         /\ (k < Len(fs)) => bp < MaxBP
         /\ d2c' = d2c \o SubSeq(fs, 1, k)
         /\ IF k = Len(fs)
-           THEN /\ inFan' = TRUE /\ UNCHANGED <<stale, bp>>
+           THEN /\ inFan' = (~FixAttachCheck \/ subsHas) /\ UNCHANGED <<stale, bp>>
            ELSE /\ bp' = bp + 1 /\ inFan' = FALSE /\ stale' = (stale \/ subsHas)
 
 SubFinish ==
