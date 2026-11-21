@@ -1,0 +1,227 @@
+/* Design tokens. Dark is the primary theme; light is equally finished. */
+
+:root {
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', Inter, system-ui, 'Segoe UI', Roboto,
+    sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter Display', Inter, system-ui,
+    sans-serif;
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --gutter: 16px;
+
+  /* Concentric radii: device corner -> sheet -> card -> control -> inner chip. */
+  --r-device: 48px;
+  --r-sheet: 34px;
+  --r-card: 22px;
+  --r-row: 14px;
+  --r-control: 999px;
+  --r-chip: 10px;
+
+  --bar-h: 44px;
+
+  /* Motion. A critically damped-ish spring for presses and menus, and the
+     iOS navigation curve for pushes and sheets. */
+  --spring: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%,
+      0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001 85.2%, 1);
+  --spring-bouncy: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.077,
+      1.121 24%, 1.149 26.3%, 1.159 28.8%, 1.15 31.5%, 1.114 35.8%, 1.035 45%, 1.004 50.9%, 0.984 57.2%,
+      0.981 63.1%, 0.998 81%, 1);
+  --ease-nav: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-press: 380ms;
+  --t-nav: 460ms;
+}
+
+/* ------------------------------------------------------------ dark */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-elevated: #111113;
+  --bg-grouped: #000000;
+  --cell: #1c1c1e;
+  --cell-pressed: #2c2c2e;
+  --fill: rgba(120, 120, 128, 0.24);
+  --fill-2: rgba(120, 120, 128, 0.16);
+  --fill-3: rgba(118, 118, 128, 0.12);
+  --label: #ffffff;
+  --label-2: rgba(235, 235, 245, 0.62);
+  --label-3: rgba(235, 235, 245, 0.34);
+  --label-4: rgba(235, 235, 245, 0.18);
+  --sep: rgba(84, 84, 88, 0.6);
+  --sep-opaque: #38383a;
+
+  --accent: #3be0a8;
+  --accent-strong: #2ad39a;
+  --accent-text: #4ee7b3;
+  --on-accent: #00281b;
+  --accent-soft: rgba(59, 224, 168, 0.16);
+  --attention: #ffa733;
+  --attention-soft: rgba(255, 167, 51, 0.16);
+  --on-attention: #2b1700;
+  --danger: #ff5a4f;
+  --danger-soft: rgba(255, 90, 79, 0.16);
+  --info: #64a8ff;
+
+  --bubble: #2a2b2f;
+  --bubble-text: #ffffff;
+  --code-bg: #0f1012;
+  --code-border: rgba(255, 255, 255, 0.07);
+  --inline-code: rgba(255, 255, 255, 0.09);
+  --card: #141416;
+  --card-border: rgba(255, 255, 255, 0.07);
+  --diff-add: rgba(46, 204, 113, 0.16);
+  --diff-add-text: #7ee2a8;
+  --diff-del: rgba(255, 90, 79, 0.16);
+  --diff-del-text: #ff9c94;
+  --diff-hunk: rgba(100, 168, 255, 0.12);
+
+  --claude-a: #f0956b;
+  --claude-b: #d3613f;
+  --codex-a: #8b93ff;
+  --codex-b: #4f55e6;
+  --term-a: #3b3f47;
+  --term-b: #1b1d21;
+  --term-mark: #59f0bb;
+
+  /* Liquid Glass material */
+  --glass-tint: rgba(34, 34, 38, 0.46);
+  --glass-tint-clear: rgba(30, 30, 34, 0.18);
+  --glass-tint-strong: rgba(30, 30, 34, 0.72);
+  --glass-tinted: rgba(59, 224, 168, 0.82);
+  --glass-rim: rgba(255, 255, 255, 0.13);
+  --glass-rim-strong: rgba(255, 255, 255, 0.32);
+  --glass-spec: rgba(255, 255, 255, 0.36);
+  --glass-spec-low: rgba(255, 255, 255, 0.07);
+  --glass-glow: rgba(255, 255, 255, 0.05);
+  --glass-shadow: rgba(0, 0, 0, 0.5);
+  --glass-shadow-near: rgba(0, 0, 0, 0.32);
+  --glass-sheen: rgba(255, 255, 255, 0.14);
+  --glass-filter: blur(16px) saturate(185%) brightness(1.06);
+  --glass-filter-refract: blur(5px) saturate(190%) brightness(1.08);
+  --glass-solid: #1d1d20;
+  --scrim: rgba(0, 0, 0, 0.48);
+
+  --term-bg: #0a0b0d;
+  --term-fg: #e7e9ee;
+  --ansi-0: #2a2d33;
+  --ansi-1: #ff6b6b;
+  --ansi-2: #5fe3a1;
+  --ansi-3: #ffd166;
+  --ansi-4: #6aa9ff;
+  --ansi-5: #d58cff;
+  --ansi-6: #4fd6e0;
+  --ansi-7: #d5d8de;
+  --ansi-8: #5c616b;
+  --ansi-9: #ff8787;
+  --ansi-10: #84f0b8;
+  --ansi-11: #ffe08a;
+  --ansi-12: #93c2ff;
+  --ansi-13: #e5adff;
+  --ansi-14: #7de8ef;
+  --ansi-15: #ffffff;
+
+  --hl-keyword: #ff7ab6;
+  --hl-string: #9ee493;
+  --hl-number: #ffc26b;
+  --hl-comment: #7c818c;
+  --hl-title: #7fb8ff;
+  --hl-attr: #ffd28a;
+  --hl-type: #6fe3d8;
+  --hl-meta: #c49bff;
+}
+
+/* ------------------------------------------------------------ light */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-grouped: #f2f2f7;
+  --cell: #ffffff;
+  --cell-pressed: #e5e5ea;
+  --fill: rgba(120, 120, 128, 0.2);
+  --fill-2: rgba(120, 120, 128, 0.14);
+  --fill-3: rgba(118, 118, 128, 0.1);
+  --label: #000000;
+  --label-2: rgba(60, 60, 67, 0.68);
+  --label-3: rgba(60, 60, 67, 0.38);
+  --label-4: rgba(60, 60, 67, 0.2);
+  --sep: rgba(60, 60, 67, 0.22);
+  --sep-opaque: #d8d8dc;
+
+  --accent: #00b37e;
+  --accent-strong: #009e6f;
+  --accent-text: #007f59;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(0, 179, 126, 0.12);
+  --attention: #e07800;
+  --attention-soft: rgba(255, 149, 0, 0.14);
+  --on-attention: #ffffff;
+  --danger: #e5352b;
+  --danger-soft: rgba(229, 53, 43, 0.1);
+  --info: #0a6cff;
+
+  --bubble: #eceef2;
+  --bubble-text: #000000;
+  --code-bg: #f6f7f9;
+  --code-border: rgba(0, 0, 0, 0.07);
+  --inline-code: rgba(0, 0, 0, 0.06);
+  --card: #f7f7f9;
+  --card-border: rgba(0, 0, 0, 0.07);
+  --diff-add: rgba(34, 170, 90, 0.12);
+  --diff-add-text: #0c7a3e;
+  --diff-del: rgba(229, 53, 43, 0.1);
+  --diff-del-text: #b4231b;
+  --diff-hunk: rgba(10, 108, 255, 0.08);
+
+  --term-mark: #59f0bb;
+
+  --glass-tint: rgba(255, 255, 255, 0.58);
+  --glass-tint-clear: rgba(255, 255, 255, 0.22);
+  --glass-tint-strong: rgba(250, 250, 252, 0.86);
+  --glass-tinted: rgba(0, 179, 126, 0.86);
+  --glass-rim: rgba(0, 0, 0, 0.07);
+  --glass-rim-strong: rgba(255, 255, 255, 0.95);
+  --glass-spec: rgba(255, 255, 255, 1);
+  --glass-spec-low: rgba(255, 255, 255, 0.5);
+  --glass-glow: rgba(255, 255, 255, 0.35);
+  --glass-shadow: rgba(30, 34, 48, 0.16);
+  --glass-shadow-near: rgba(30, 34, 48, 0.08);
+  --glass-sheen: rgba(255, 255, 255, 0.55);
+  --glass-filter: blur(16px) saturate(180%) brightness(1.04);
+  --glass-filter-refract: blur(4px) saturate(170%) brightness(1.04);
+  --glass-solid: #f9f9fb;
+  --scrim: rgba(0, 0, 0, 0.22);
+
+  --term-bg: #fbfbfc;
+  --term-fg: #1d1f24;
+  --ansi-0: #1d1f24;
+  --ansi-1: #c8302b;
+  --ansi-2: #13854e;
+  --ansi-3: #946200;
+  --ansi-4: #1f5fd1;
+  --ansi-5: #9a3fc7;
+  --ansi-6: #0b7f8a;
+  --ansi-7: #6b7079;
+  --ansi-8: #8a8f98;
+  --ansi-9: #e0443e;
+  --ansi-10: #1a9c5d;
+  --ansi-11: #a87200;
+  --ansi-12: #2f74ea;
+  --ansi-13: #b356df;
+  --ansi-14: #12929e;
+  --ansi-15: #1d1f24;
+
+  --hl-keyword: #c4206b;
+  --hl-string: #1f7a2e;
+  --hl-number: #a65a00;
+  --hl-comment: #868b95;
+  --hl-title: #1f5fd1;
+  --hl-attr: #8a5a00;
+  --hl-type: #0b7f8a;
+  --hl-meta: #7b3fc7;
+}

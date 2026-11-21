@@ -314,3 +314,15 @@ export interface RpcResults {
   'push.subscribe': undefined;
   'push.unsubscribe': undefined;
 }
+
+/**
+ * JSON body of a Web Push message sent by the daemon. The client's service
+ * worker shows it as a notification; tapping it opens `sessionId`.
+ */
+export interface PushPayload {
+  title: string;
+  body?: string;
+  sessionId?: string;
+  /** Notifications with the same tag replace each other (e.g. the session id). */
+  tag?: string;
+}

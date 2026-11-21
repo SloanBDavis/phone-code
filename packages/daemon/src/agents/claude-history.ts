@@ -1,0 +1,282 @@
+/**
+ * Claude Code session files: `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`
+ * (one JSON entry per line; sub-agent transcripts live in subdirectories or
+ * are marked `isSidechain`). Used for the resume picker and for replaying a
+ * past conversation into the chat when resuming.
+ */
+import { open, readdir, readFile, stat } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import type { ChatItem, ResumableSession } from '@phone-code/protocol';
+import { ClaudeMapper, tsOf } from './claude-map.ts';
+import { arr, isRec, mapPool, oneLine, rec, str, type Rec } from './shared/common.ts';
+
+export function claudeConfigDir(env: NodeJS.ProcessEnv = process.env): string {
+  return env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+}
+
+const HEAD_BYTES = 96 * 1024;
+const TAIL_BYTES = 32 * 1024;
+
+async function readSlice(file: string, start: number, length: number): Promise<string> {
+  const fh = await open(file, 'r');
+  try {
+    const buf = Buffer.alloc(length);
+    const { bytesRead } = await fh.read(buf, 0, length, start);
+    return buf.subarray(0, bytesRead).toString('utf8');
+  } finally {
+    await fh.close();
+  }
+}
+
+function parseLines(text: string, dropFirst: boolean, dropLast: boolean): Rec[] {
+  const lines = text.split('\n');
+  if (dropFirst) lines.shift();
+  if (dropLast) lines.pop();
+  const out: Rec[] = [];
+  for (const line of lines) {
+    if (!line) continue;
+    try {
+      const v: unknown = JSON.parse(line);
+      if (isRec(v)) out.push(v);
+    } catch {
+      // partial line at a slice boundary
+    }
+  }
+  return out;
+}
+
+/** Text of a user prompt, or undefined when the entry is not a real typed prompt. */
+export function userPromptText(entry: Rec): string | undefined {
+  if (entry.type !== 'user' || entry.isMeta === true || entry.isSidechain === true) return undefined;
+  if (entry.isCompactSummary === true || entry.isVisibleInTranscriptOnly === true) return undefined;
+  const content = rec(entry.message).content;
+  let text: string | undefined;
+  if (typeof content === 'string') text = content;
+  else {
+    const parts = arr(content)
+      .map(rec)
+      .filter((b) => b.type === 'text')
+      .map((b) => str(b.text) ?? '');
+    if (arr(content).some((b) => rec(b).type === 'tool_result')) return undefined;
+    text = parts.join('\n');
+  }
+  if (!text) return undefined;
+  const t = text.trim();
+  if (!t || t.startsWith('<') || t.startsWith('[Request interrupted') || t.startsWith('Caveat:')) {
+    // <command-name>, <local-command-stdout>, <system-reminder>, interruption markers
+    const cmd = /<command-name>([^<]+)<\/command-name>/.exec(t);
+    return cmd ? cmd[1]?.trim() : undefined;
+  }
+  return t;
+}
+
+async function summarize(file: string, size: number, mtime: number): Promise<ResumableSession | undefined> {
+  const head = parseLines(await readSlice(file, 0, Math.min(size, HEAD_BYTES)), false, size > HEAD_BYTES);
+  let cwd: string | undefined;
+  let firstPrompt: string | undefined;
+  let sessionId: string | undefined;
+  let sidechain = false;
+  let count = 0;
+  for (const e of head) {
+    if (!cwd) cwd = str(e.cwd);
+    if (!sessionId) sessionId = str(e.sessionId);
+    if ((e.type === 'user' || e.type === 'assistant') && e.isSidechain === true) sidechain = true;
+    if (!firstPrompt) firstPrompt = userPromptText(e);
+    if ((e.type === 'user' && userPromptText(e)) || e.type === 'assistant') count++;
+  }
+  if (sidechain) return undefined;
+  let title: string | undefined;
+  if (size > HEAD_BYTES) {
+    const tailStart = Math.max(HEAD_BYTES, size - TAIL_BYTES);
+    const tail = parseLines(await readSlice(file, tailStart, size - tailStart), true, false);
+    for (const e of tail) {
+      if (e.type === 'custom-title' && str(e.customTitle)) title = str(e.customTitle);
+      else if (e.type === 'ai-title' && str(e.aiTitle) && !title) title = str(e.aiTitle);
+      else if (e.type === 'summary' && str(e.summary) && !title) title = str(e.summary);
+      if (!cwd) cwd = str(e.cwd);
+    }
+  } else {
+    for (const e of head) {
+      if (e.type === 'custom-title' && str(e.customTitle)) title = str(e.customTitle);
+      else if ((e.type === 'ai-title' || e.type === 'summary') && !title)
+        title = str(e.aiTitle) ?? str(e.summary);
+    }
+  }
+  title = title ?? firstPrompt;
+  if (!title || !cwd) return undefined; // nothing the user said: not worth resuming
+  return {
+    agent: 'claude',
+    resumeId: sessionId ?? path.basename(file, '.jsonl'),
+    cwd,
+    title: oneLine(title, 100),
+    updatedAt: mtime,
+    // Exact only when the whole file fit in the head read.
+    ...(size <= HEAD_BYTES ? { messageCount: count } : {}),
+  };
+}
+
+export async function listClaudeResumable(
+  limit = 50,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<ResumableSession[]> {
+  const root = path.join(claudeConfigDir(env), 'projects');
+  let dirs: string[];
+  try {
+    dirs = (await readdir(root, { withFileTypes: true }))
+      .filter((d) => d.isDirectory())
+      .map((d) => path.join(root, d.name));
+  } catch {
+    return [];
+  }
+  // Stat every top-level session file (cheap), then read heads only for the newest.
+  const perDir = await mapPool(dirs, 16, async (dir) => {
+    try {
+      const names = (await readdir(dir, { withFileTypes: true }))
+        .filter((d) => d.isFile() && d.name.endsWith('.jsonl'))
+        .map((d) => path.join(dir, d.name));
+      return await mapPool(names, 32, async (file) => {
+        try {
+          const st = await stat(file);
+          return { file, size: st.size, mtime: st.mtimeMs };
+        } catch {
+          return undefined;
+        }
+      });
+    } catch {
+      return [];
+    }
+  });
+  const files = perDir
+    .flat()
+    .filter((f): f is { file: string; size: number; mtime: number } => f !== undefined && f.size > 0)
+    .toSorted((a, b) => b.mtime - a.mtime);
+  const out: ResumableSession[] = [];
+  // Summarize in newest-first batches until we have `limit` usable sessions.
+  const batch = async (start: number): Promise<void> => {
+    if (start >= files.length || out.length >= limit) return;
+    const sums = await mapPool(files.slice(start, start + 32), 16, async (f) => {
+      try {
+        return await summarize(f.file, f.size, Math.round(f.mtime));
+      } catch {
+        return undefined;
+      }
+    });
+    for (const s of sums) if (s && out.length < limit) out.push(s);
+    return batch(start + 32);
+  };
+  await batch(0);
+  return out;
+}
+
+/** Locate `<id>.jsonl`, trying the cwd's project dir first. */
+export async function findSessionFile(
+  id: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
+  if (!/^[\w-]+$/.test(id)) return undefined;
+  const root = path.join(claudeConfigDir(env), 'projects');
+  const slug = cwd.replace(/[^a-zA-Z0-9]/g, '-');
+  const direct = path.join(root, slug, `${id}.jsonl`);
+  try {
+    await stat(direct);
+    return direct;
+  } catch {
+    // scan
+  }
+  let dirs: string[];
+  try {
+    dirs = await readdir(root);
+  } catch {
+    return undefined; // no projects dir
+  }
+  const hits = await mapPool(dirs, 32, async (d) => {
+    const f = path.join(root, d, `${id}.jsonl`);
+    try {
+      await stat(f);
+      return f;
+    } catch {
+      return undefined;
+    }
+  });
+  return hits.find((f) => f !== undefined);
+}
+
+/**
+ * Replay a session file into ChatItems. Follows the parentUuid chain from the
+ * newest leaf so rewound branches are left out, and keeps at most `maxItems`.
+ */
+export async function loadClaudeTranscript(file: string, cwd: string, maxItems = 2000): Promise<ChatItem[]> {
+  const text = await readFile(file, 'utf8');
+  const entries = parseLines(text, false, false);
+  const byUuid = new Map<string, Rec>();
+  let leaf: Rec | undefined;
+  for (const e of entries) {
+    const uuid = str(e.uuid);
+    if (!uuid) continue;
+    byUuid.set(uuid, e);
+    if ((e.type === 'user' || e.type === 'assistant') && e.isSidechain !== true) leaf = e;
+  }
+  const chain: Rec[] = [];
+  const seen = new Set<string>();
+  let cur = leaf;
+  while (cur) {
+    const uuid = str(cur.uuid) ?? '';
+    if (seen.has(uuid)) break;
+    seen.add(uuid);
+    chain.push(cur);
+    const parent = str(cur.parentUuid) ?? str(cur.logicalParentUuid);
+    cur = parent ? byUuid.get(parent) : undefined;
+  }
+  chain.reverse();
+
+  const items = new Map<string, ChatItem>();
+  const order: string[] = [];
+  const sink = {
+    upsert(item: ChatItem) {
+      if (!items.has(item.id)) order.push(item.id);
+      items.set(item.id, item);
+    },
+    delta() {},
+  };
+  const mapper = new ClaudeMapper(sink, cwd, false);
+  for (const e of chain) {
+    if (e.isSidechain === true) continue;
+    if (e.type === 'assistant') mapper.onAssistant(e);
+    else if (e.type === 'user') {
+      const prompt = userPromptText(e);
+      const content = rec(e.message).content;
+      if (prompt) {
+        sink.upsert({ kind: 'user', id: `u:${str(e.uuid) ?? order.length}`, ts: tsOf(e), text: prompt });
+      } else if (arr(content).some((b) => rec(b).type === 'tool_result')) {
+        mapper.onToolResults(e);
+      } else if (
+        typeof content === 'string'
+          ? content.startsWith('[Request interrupted')
+          : arr(content).some((b) => (str(rec(b).text) ?? '').startsWith('[Request interrupted'))
+      ) {
+        sink.upsert({
+          kind: 'notice',
+          id: `n:${str(e.uuid) ?? order.length}`,
+          ts: tsOf(e),
+          level: 'info',
+          text: 'Interrupted',
+        });
+      }
+    } else if (e.type === 'system' && e.subtype === 'compact_boundary') {
+      sink.upsert({
+        kind: 'notice',
+        id: `n:${str(e.uuid) ?? order.length}`,
+        ts: tsOf(e),
+        level: 'info',
+        text: 'Conversation compacted',
+      });
+    }
+  }
+  mapper.endTurn('completed');
+  const all = order.map((id) => items.get(id)).filter((i): i is ChatItem => i !== undefined);
+  // Tools from the old run that never finished will not finish now.
+  for (const item of all) if (item.kind === 'tool' && item.status === 'running') item.status = 'error';
+  return all.length > maxItems ? all.slice(all.length - maxItems) : all;
+}

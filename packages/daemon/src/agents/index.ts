@@ -1,24 +1,10 @@
-import type { AdapterRegistry, AgentAdapter } from './types.js';
-import type { AgentKind } from '@phone-code/protocol';
+import type { AdapterRegistry } from './types.ts';
+import { createClaudeAdapter } from './claude.ts';
+import { createCodexAdapter } from './codex.ts';
 
-export type { AdapterRegistry, AgentAdapter, AgentSession, AgentEvents, AgentStartOptions } from './types.js';
+export type { AdapterRegistry, AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
 
-function stub(kind: AgentKind): AgentAdapter {
-  return {
-    kind,
-    async detect() {
-      return { available: false };
-    },
-    async start() {
-      throw new Error(`${kind} adapter not implemented yet`);
-    },
-    async listResumable() {
-      return [];
-    },
-  };
-}
-
-/** Build the adapter registry. */
+/** Build the adapter registry (one adapter per agent CLI). */
 export function createAdapters(): AdapterRegistry {
-  return { claude: stub('claude'), codex: stub('codex') };
+  return { claude: createClaudeAdapter(), codex: createCodexAdapter() };
 }

@@ -1,0 +1,870 @@
+/**
+ * OpenAI Codex adapter.
+ *
+ * Route: `codex app-server` (JSON-RPC 2.0 over stdio, one JSON object per line,
+ * without the "jsonrpc" field). Chosen over `codex exec --json` because only
+ * app-server has approvals, interrupt and resume. Message shapes come from
+ * `codex app-server generate-ts` of codex-cli 0.171.0 (stable API only, no
+ * `experimentalApi`), and the framing was checked against the real binary
+ * (initialize, thread/start, turn/start, error/turn/completed notifications,
+ * thread/resume, thread/turns/list); model turns themselves could not be run
+ * here (no OpenAI credentials).
+ *
+ * Flow: initialize -> initialized -> thread/start | thread/resume (+ thread/turns/list
+ * for history) -> turn/start per message, turn/interrupt to stop. The server
+ * sends approvals as requests (item/commandExecution/requestApproval,
+ * item/fileChange/requestApproval, item/tool/requestUserInput, ...).
+ *
+ * PermissionMode -> Codex approval policy + sandbox:
+ *   default            approvalPolicy "untrusted"  + sandbox workspace-write
+ *                      (ask before anything that is not a known-safe read, like Claude's default)
+ *   acceptEdits        approvalPolicy "on-request" + sandbox workspace-write
+ *                      (edits and commands inside the workspace sandbox run; the model asks to escalate)
+ *   plan               approvalPolicy "untrusted"  + sandbox read-only
+ *                      (Codex's own plan collaboration mode is experimental API; read-only is the stable equivalent)
+ *   bypassPermissions  approvalPolicy "never"      + sandbox danger-full-access
+ */
+import { randomUUID } from 'node:crypto';
+import type {
+  Attachment,
+  ChatItem,
+  NoticeItem,
+  PermissionDecision,
+  PermissionItem,
+  PermissionMode,
+  QuestionItem,
+  ResumableSession,
+  ToolItem,
+  TurnItem,
+} from '@phone-code/protocol';
+import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
+import { fileChangeDetail, mapThreadItem, unwrapShell } from './codex-map.ts';
+import { listCodexResumable } from './codex-history.ts';
+import {
+  StatusTracker,
+  arr,
+  errorMessage,
+  isRec,
+  num,
+  oneLine,
+  rec,
+  safeEvents,
+  str,
+  toQuestion,
+  truncateOutput,
+  type Rec,
+} from './shared/common.ts';
+import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
+
+const CLIENT_VERSION = '0.1.0';
+const DEFAULT_MODELS = ['gpt-5-codex', 'gpt-5'];
+
+export function codexBin(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PHONECODE_CODEX_BIN || 'codex';
+}
+
+let discoveredModels: string[] | undefined;
+
+type ApprovalPolicy = 'untrusted' | 'on-request' | 'never';
+type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+
+const POLICY: Record<PermissionMode, { approvalPolicy: ApprovalPolicy; sandbox: SandboxMode }> = {
+  default: { approvalPolicy: 'untrusted', sandbox: 'workspace-write' },
+  acceptEdits: { approvalPolicy: 'on-request', sandbox: 'workspace-write' },
+  plan: { approvalPolicy: 'untrusted', sandbox: 'read-only' },
+  bypassPermissions: { approvalPolicy: 'never', sandbox: 'danger-full-access' },
+};
+
+function policyFor(mode: PermissionMode): { approvalPolicy: ApprovalPolicy; sandbox: SandboxMode } {
+  return POLICY[mode];
+}
+
+/** turn/start takes a SandboxPolicy object rather than the SandboxMode string. */
+const SANDBOX_POLICY: Record<SandboxMode, Rec> = {
+  'read-only': { type: 'readOnly', networkAccess: false },
+  'danger-full-access': { type: 'dangerFullAccess' },
+  'workspace-write': {
+    type: 'workspaceWrite',
+    writableRoots: [],
+    networkAccess: false,
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false,
+  },
+};
+
+interface PendingRequest {
+  rpcId: string | number;
+  method: string;
+  item: PermissionItem | QuestionItem;
+  /** question text -> question id (requestUserInput) */
+  questionIds?: Map<string, string>;
+}
+
+type Waiter = { resolve: (v: unknown) => void; reject: (e: Error) => void };
+
+class CodexSession implements AgentSession {
+  private proc: SpawnedAgent | undefined;
+  private readonly events: AgentEvents;
+  private readonly status: StatusTracker;
+  private readonly waiters = new Map<number, Waiter>();
+  private nextId = 1;
+  private threadId: string | undefined;
+  private turnId: string | undefined;
+  private model: string | undefined;
+  private mode: PermissionMode;
+  private readonly items = new Map<string, ChatItem>();
+  private readonly pending = new Map<string, PendingRequest>();
+  private readonly byRpc = new Map<string, string>();
+  /** Cumulative thread token totals at the start of the current turn. */
+  private tokensAtTurnStart = { input: 0, output: 0 };
+  private tokensNow = { input: 0, output: 0 };
+  private turnStartedAt = 0;
+  private interruptRequested = false;
+  private disposed = false;
+  private ready: Promise<void> | undefined;
+  private noticeSeq = 0;
+  private overridesDirty = false;
+  private readonly fileChanges = new Map<string, unknown>();
+
+  constructor(
+    private readonly opts: AgentStartOptions,
+    events: AgentEvents,
+  ) {
+    this.events = safeEvents(events);
+    this.status = new StatusTracker(this.events);
+    this.model = opts.model;
+    this.mode = opts.permissionMode ?? 'default';
+  }
+
+  // ------------------------------------------------------------ lifecycle
+
+  async init(): Promise<void> {
+    this.ready = this.boot(this.opts.resumeId, true);
+    try {
+      await this.ready;
+    } catch {
+      // reported through notice + status already
+    }
+    this.status.emit();
+  }
+
+  private async boot(resumeId: string | undefined, loadHistory: boolean): Promise<void> {
+    const bin = codexBin(this.opts.env ?? process.env);
+    const proc = spawnAgent(bin, ['app-server'], {
+      cwd: this.opts.cwd,
+      env: childEnv(this.opts.env, ['CODEX_SANDBOX', 'CODEX_SANDBOX_NETWORK_DISABLED']),
+      onLine: (v) => this.onLine(v),
+    });
+    this.proc = proc;
+    this.status.crashed = false;
+    void proc.exited.then((info) => this.onExit(proc, info));
+    try {
+      await this.call('initialize', {
+        clientInfo: { name: 'phone_code', title: 'phone-code', version: CLIENT_VERSION },
+        capabilities: { experimentalApi: false, requestAttestation: false },
+      });
+      this.notify('initialized');
+      const { approvalPolicy, sandbox } = policyFor(this.mode);
+      const common = {
+        cwd: this.opts.cwd,
+        approvalPolicy,
+        sandbox,
+        ...(this.model ? { model: this.model } : {}),
+      };
+      const res = rec(
+        resumeId
+          ? await this.call('thread/resume', { threadId: resumeId, ...common, excludeTurns: true })
+          : await this.call('thread/start', common),
+      );
+      const thread = rec(res.thread);
+      this.threadId = str(thread.id);
+      if (this.threadId) this.events.nativeSessionId(this.threadId);
+      const model = str(res.model);
+      if (model) this.model = model;
+      const name = str(thread.name);
+      this.events.meta({
+        ...(model ? { model } : {}),
+        permissionMode: this.mode,
+        ...(name ? { title: name } : {}),
+      });
+      if (resumeId && loadHistory && this.threadId) await this.loadHistory(this.threadId);
+      this.overridesDirty = false;
+      void this.discoverModels();
+    } catch (e) {
+      if (this.proc === proc && !this.disposed) {
+        this.notice('error', `Could not start Codex: ${errorMessage(e)}`);
+        this.status.crashed = true;
+        this.status.emit();
+      }
+      throw e;
+    }
+  }
+
+  private async discoverModels(): Promise<void> {
+    try {
+      const r = await this.call('model/list', {});
+      const ids = arr(rec(r).data)
+        .map(rec)
+        .filter((m) => m.hidden !== true)
+        .map((m) => str(m.id))
+        .filter((m): m is string => !!m);
+      if (ids.length) discoveredModels = ids;
+    } catch {
+      // optional
+    }
+  }
+
+  private async loadHistory(threadId: string): Promise<void> {
+    try {
+      const res = rec(
+        await this.call('thread/turns/list', {
+          threadId,
+          itemsView: 'full',
+          sortDirection: 'desc',
+          limit: 50,
+        }),
+      );
+      const turns = arr(res.data).map(rec).toReversed();
+      for (const turn of turns) {
+        const started = (num(turn.startedAt) ?? 0) * 1000;
+        for (const it of arr(turn.items)) {
+          const ts = num(rec(it).startedAtMs) ?? (started || Date.now());
+          const mapped = mapThreadItem(it, this.opts.cwd, { ts, history: true });
+          if (mapped) {
+            if (mapped.kind === 'tool' && mapped.status === 'running') mapped.status = 'error';
+            this.items.set(mapped.id, mapped);
+            this.events.upsert(mapped);
+          }
+        }
+        const status = str(turn.status);
+        if (status && status !== 'inProgress') {
+          const err = str(rec(turn.error).message);
+          this.events.upsert({
+            kind: 'turn',
+            id: `turn:${str(turn.id) ?? randomUUID()}`,
+            ts: (num(turn.completedAt) ?? 0) * 1000 || Date.now(),
+            outcome:
+              status === 'completed' ? 'completed' : status === 'interrupted' ? 'interrupted' : 'error',
+            ...(num(turn.durationMs) !== undefined ? { durationMs: num(turn.durationMs) } : {}),
+            ...(err ? { error: err } : {}),
+          });
+        }
+      }
+    } catch (e) {
+      this.notice('warn', `Could not load the past conversation: ${errorMessage(e)}`);
+    }
+  }
+
+  private onExit(
+    proc: SpawnedAgent,
+    info: { code: number | null; signal: NodeJS.Signals | null; error?: Error },
+  ): void {
+    if (this.proc !== proc) return;
+    this.proc = undefined;
+    for (const w of this.waiters.values()) w.reject(new Error('Codex exited'));
+    this.waiters.clear();
+    this.cancelAllPending();
+    if (this.disposed) return;
+    const wasActive = this.status.turnActive;
+    this.finishOpenItems('error');
+    this.status.turnActive = false;
+    this.turnId = undefined;
+    let text: string;
+    if (info.error && /ENOENT/.test(info.error.message)) {
+      text = `Codex CLI not found (${codexBin(this.opts.env ?? process.env)}). Install it with \`npm i -g @openai/codex\` or set PHONECODE_CODEX_BIN.`;
+    } else {
+      const tail = oneLine(proc.stderrTail().trim().split('\n').slice(-3).join(' '), 300);
+      text = `Codex exited unexpectedly (${info.signal ?? `code ${info.code ?? '?'}`})${tail ? `: ${tail}` : ''}`;
+    }
+    this.notice('error', text);
+    if (wasActive) {
+      this.events.upsert({
+        kind: 'turn',
+        id: `turn:${randomUUID()}`,
+        ts: Date.now(),
+        outcome: 'error',
+        error: text,
+      });
+    }
+    this.status.crashed = true;
+    this.status.emit();
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.cancelAllPending();
+    this.finishOpenItems('interrupted');
+    const proc = this.proc;
+    this.proc = undefined;
+    if (proc) await proc.kill();
+    this.status.turnActive = false;
+    this.status.crashed = false;
+    this.status.exited = true;
+    this.status.emit();
+  }
+
+  // --------------------------------------------------------------- rpc
+
+  private call(method: string, params: unknown, timeoutMs = 60_000): Promise<unknown> {
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      if (!this.proc?.writeJson({ id, method, params })) {
+        reject(new Error('Codex is not running'));
+        return;
+      }
+      const timer = setTimeout(() => {
+        this.waiters.delete(id);
+        reject(new Error(`${method} timed out`));
+      }, timeoutMs);
+      this.waiters.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
+    });
+  }
+
+  private notify(method: string, params?: unknown): void {
+    this.proc?.writeJson(params === undefined ? { method } : { method, params });
+  }
+
+  private reply(id: string | number, result: unknown): void {
+    this.proc?.writeJson({ id, result });
+  }
+
+  private replyError(id: string | number, message: string, code = -32601): void {
+    this.proc?.writeJson({ id, error: { code, message } });
+  }
+
+  private onLine(value: unknown): void {
+    if (!isRec(value)) return;
+    try {
+      const method = str(value.method);
+      const id = value.id;
+      const hasId = typeof id === 'string' || typeof id === 'number';
+      if (method && hasId) this.onServerRequest(id, method, rec(value.params));
+      else if (method) this.onNotification(method, rec(value.params));
+      else if (typeof id === 'number') {
+        const w = this.waiters.get(id);
+        if (!w) return;
+        this.waiters.delete(id);
+        if (isRec(value.error)) w.reject(new Error(str(value.error.message) ?? 'request failed'));
+        else w.resolve(value.result);
+      }
+    } catch (e) {
+      console.error('[codex] failed to handle message:', e);
+    }
+  }
+
+  // ------------------------------------------------------- notifications
+
+  private upsertItem(item: ChatItem): void {
+    this.items.set(item.id, item);
+    this.events.upsert(item);
+  }
+
+  private onNotification(method: string, p: Rec): void {
+    if (p.threadId !== undefined && this.threadId && p.threadId !== this.threadId) return; // other threads (sub-agents)
+    switch (method) {
+      case 'turn/started': {
+        const turn = rec(p.turn);
+        this.turnId = str(turn.id) ?? this.turnId;
+        if (!this.status.turnActive) this.beginTurn();
+        return;
+      }
+      case 'turn/completed':
+        this.onTurnCompleted(rec(p.turn));
+        return;
+      case 'item/started':
+      case 'item/completed': {
+        const it = rec(p.item);
+        const id = str(it.id);
+        if (!id) return;
+        if (it.type === 'fileChange') this.fileChanges.set(id, it.changes);
+        const prev = this.items.get(id);
+        const mapped = mapThreadItem(it, this.opts.cwd, { prev, ts: Date.now(), history: false });
+        if (!mapped) return;
+        if (method === 'item/completed' && (mapped.kind === 'text' || mapped.kind === 'thinking'))
+          mapped.streaming = false;
+        // Keep a denied status we set when the user declined.
+        if (
+          prev?.kind === 'tool' &&
+          prev.status === 'denied' &&
+          mapped.kind === 'tool' &&
+          mapped.status !== 'running'
+        )
+          mapped.status = 'denied';
+        this.upsertItem(mapped);
+        return;
+      }
+      case 'item/agentMessage/delta':
+        this.appendText(str(p.itemId), str(p.delta), 'text');
+        return;
+      case 'item/reasoning/summaryTextDelta':
+      case 'item/reasoning/textDelta':
+        this.appendText(str(p.itemId), str(p.delta), 'thinking');
+        return;
+      case 'item/reasoning/summaryPartAdded': {
+        const id = str(p.itemId);
+        const cur = id ? this.items.get(id) : undefined;
+        if (cur?.kind === 'thinking' && cur.text) this.appendText(id, '\n\n', 'thinking');
+        return;
+      }
+      case 'item/plan/delta':
+        return; // the completed plan item carries the full text
+      case 'item/commandExecution/outputDelta': {
+        const id = str(p.itemId);
+        const cur = id ? this.items.get(id) : undefined;
+        if (cur?.kind !== 'tool') return;
+        const raw = (cur.output ?? '') + (str(p.delta) ?? '');
+        const { output, truncated } = truncateOutput(raw);
+        this.upsertItem({ ...cur, output, ...(truncated ? { outputTruncated: true } : {}) });
+        return;
+      }
+      case 'turn/plan/updated': {
+        const todos = arr(p.plan)
+          .map(rec)
+          .map((s) => {
+            const st = str(s.status);
+            const status: 'pending' | 'in_progress' | 'completed' =
+              st === 'completed' ? 'completed' : st === 'inProgress' ? 'in_progress' : 'pending';
+            return { text: str(s.step) ?? '', status };
+          });
+        const active = todos.find((t) => t.status === 'in_progress');
+        const done = todos.filter((t) => t.status === 'completed').length;
+        const id = `plan:${str(p.turnId) ?? this.turnId ?? 'turn'}`;
+        const prev = this.items.get(id);
+        const item: ToolItem = {
+          kind: 'tool',
+          id,
+          ts: prev?.ts ?? Date.now(),
+          name: 'Todo',
+          title: active ? oneLine(active.text, 60) : `${done}/${todos.length} done`,
+          status: 'done',
+          input: { explanation: p.explanation, plan: p.plan },
+          detail: { type: 'todos', todos },
+        };
+        this.upsertItem(item);
+        return;
+      }
+      case 'thread/tokenUsage/updated': {
+        const total = rec(rec(p.tokenUsage).total);
+        this.tokensNow = { input: num(total.inputTokens) ?? 0, output: num(total.outputTokens) ?? 0 };
+        return;
+      }
+      case 'error': {
+        const err = rec(p.error);
+        const msg = str(err.message) ?? 'Unknown error';
+        const details = str(err.additionalDetails);
+        if (p.willRetry === true)
+          this.notice('warn', `${msg}${details ? ` (${oneLine(details, 160)})` : ''}`, 'retry');
+        else this.notice('error', details ? `${msg}\n${details}` : msg);
+        return;
+      }
+      case 'warning':
+      case 'configWarning':
+      case 'deprecationNotice':
+      case 'guardianWarning': {
+        const text = str(p.message) ?? str(p.summary);
+        if (text) this.notice('warn', text, `w:${text.slice(0, 40)}`);
+        return;
+      }
+      case 'thread/compacted':
+        this.notice('info', 'Conversation compacted');
+        return;
+      case 'model/rerouted': {
+        const to = str(p.toModel) ?? str(p.model);
+        if (to) {
+          this.model = to;
+          this.events.meta({ model: to });
+          this.notice('info', `Switched to ${to}`);
+        }
+        return;
+      }
+      case 'thread/name/updated': {
+        const name = str(p.threadName) ?? str(p.name);
+        if (name) this.events.meta({ title: name });
+        return;
+      }
+      case 'serverRequest/resolved': {
+        const key = String(p.requestId);
+        const itemId = this.byRpc.get(key);
+        if (itemId) this.settle(itemId, 'cancelled');
+        return;
+      }
+      case 'thread/status/changed': {
+        if (rec(p.status).type === 'systemError')
+          this.notice('error', 'Codex reported a system error for this thread.');
+        return;
+      }
+      default:
+        return; // many informational notifications; ignored on purpose
+    }
+  }
+
+  private appendText(itemId: string | undefined, delta: string | undefined, kind: 'text' | 'thinking'): void {
+    if (!itemId || !delta) return;
+    const cur = this.items.get(itemId);
+    if (cur && (cur.kind === 'text' || cur.kind === 'thinking')) {
+      cur.text += delta;
+      this.events.delta(itemId, delta);
+      return;
+    }
+    const item: ChatItem = { kind, id: itemId, ts: Date.now(), text: delta, streaming: true };
+    this.upsertItem(item);
+  }
+
+  private beginTurn(): void {
+    this.status.turnActive = true;
+    this.turnStartedAt = Date.now();
+    this.tokensAtTurnStart = { ...this.tokensNow };
+    this.status.emit();
+  }
+
+  private finishOpenItems(outcome: 'completed' | 'interrupted' | 'error'): void {
+    for (const item of this.items.values()) {
+      if ((item.kind === 'text' || item.kind === 'thinking') && item.streaming) {
+        this.upsertItem({ ...item, streaming: false });
+      } else if (item.kind === 'tool' && item.status === 'running' && outcome !== 'completed') {
+        this.upsertItem({
+          ...item,
+          status: 'error',
+          output: item.output || (outcome === 'interrupted' ? 'Interrupted' : 'Failed'),
+        });
+      }
+    }
+  }
+
+  private onTurnCompleted(turn: Rec): void {
+    const s = str(turn.status);
+    const outcome: TurnItem['outcome'] =
+      s === 'interrupted' || this.interruptRequested ? 'interrupted' : s === 'failed' ? 'error' : 'completed';
+    this.cancelAllPending();
+    this.finishOpenItems(outcome);
+    const err = str(rec(turn.error).message);
+    const input = this.tokensNow.input - this.tokensAtTurnStart.input;
+    const output = this.tokensNow.output - this.tokensAtTurnStart.output;
+    this.events.upsert({
+      kind: 'turn',
+      id: `turn:${str(turn.id) ?? randomUUID()}`,
+      ts: Date.now(),
+      outcome,
+      durationMs: num(turn.durationMs) ?? Date.now() - this.turnStartedAt,
+      ...(input > 0 ? { inputTokens: input } : {}),
+      ...(output > 0 ? { outputTokens: output } : {}),
+      ...(outcome === 'error' ? { error: err ?? 'Turn failed' } : {}),
+    });
+    this.tokensAtTurnStart = { ...this.tokensNow };
+    this.turnId = undefined;
+    this.interruptRequested = false;
+    this.status.turnActive = false;
+    this.status.emit();
+  }
+
+  // ---------------------------------------------------- server requests
+
+  private onServerRequest(rpcId: string | number, method: string, p: Rec): void {
+    const ts = Date.now();
+    switch (method) {
+      case 'item/commandExecution/requestApproval':
+      case 'execCommandApproval': {
+        const rawCmd = str(p.command) ?? arr(p.command).map(String).join(' ');
+        const command = unwrapShell(rawCmd);
+        const cwd = str(p.cwd) ?? this.opts.cwd;
+        const reason = str(p.reason);
+        const itemId = str(p.itemId) ?? str(p.callId) ?? String(rpcId);
+        const item: PermissionItem = {
+          kind: 'permission',
+          id: `perm:${itemId}:${String(rpcId)}`,
+          ts,
+          toolName: 'Bash',
+          title: reason
+            ? `Run ${oneLine(command, 60)}? ${oneLine(reason, 80)}`
+            : `Run ${oneLine(command, 80)}`,
+          input: p,
+          detail: { type: 'command', command, cwd },
+          status: 'pending',
+          canAllowAlways: true,
+        };
+        this.addPending({ rpcId, method, item });
+        return;
+      }
+      case 'item/fileChange/requestApproval':
+      case 'applyPatchApproval': {
+        const itemId = str(p.itemId) ?? str(p.callId) ?? String(rpcId);
+        let changes = this.fileChanges.get(itemId);
+        if (!changes && isRec(p.fileChanges)) {
+          // legacy shape: { path: {type, content|unified_diff, move_path} }
+          changes = Object.entries(p.fileChanges).map(([path, fc]) => {
+            const c = rec(fc);
+            return {
+              path,
+              kind: { type: str(c.type) ?? 'update', move_path: str(c.move_path) ?? null },
+              diff: str(c.unified_diff) ?? str(c.content) ?? '',
+            };
+          });
+        }
+        const { detail, title } = fileChangeDetail(changes ?? [], this.opts.cwd);
+        const reason = str(p.reason);
+        const item: PermissionItem = {
+          kind: 'permission',
+          id: `perm:${itemId}:${String(rpcId)}`,
+          ts,
+          toolName: 'Edit',
+          title: `Edit ${title || 'files'}${reason ? ` (${oneLine(reason, 60)})` : ''}`,
+          input: p,
+          detail,
+          status: 'pending',
+          canAllowAlways: true,
+        };
+        this.addPending({ rpcId, method, item });
+        return;
+      }
+      case 'item/permissions/requestApproval': {
+        const perms = rec(p.permissions);
+        const parts: string[] = [];
+        if (rec(perms.network).enabled) parts.push('network access');
+        const fsPerm = rec(perms.fileSystem);
+        const writes = arr(fsPerm.write).map(String);
+        const reads = arr(fsPerm.read).map(String);
+        if (writes.length) parts.push(`write ${writes.join(', ')}`);
+        if (reads.length) parts.push(`read ${reads.join(', ')}`);
+        const item: PermissionItem = {
+          kind: 'permission',
+          id: `perm:${str(p.itemId) ?? ''}:${String(rpcId)}`,
+          ts,
+          toolName: 'Permissions',
+          title: `Grant ${parts.join(' and ') || 'additional permissions'}${str(p.reason) ? `: ${oneLine(str(p.reason) ?? '', 80)}` : ''}`,
+          input: p,
+          status: 'pending',
+          canAllowAlways: true,
+        };
+        this.addPending({ rpcId, method, item });
+        return;
+      }
+      case 'item/tool/requestUserInput': {
+        const questionIds = new Map<string, string>();
+        const item: QuestionItem = {
+          kind: 'question',
+          id: `q:${str(p.itemId) ?? ''}:${String(rpcId)}`,
+          ts,
+          status: 'pending',
+          questions: arr(p.questions)
+            .map(rec)
+            .map((q) => {
+              const question = toQuestion(q, false);
+              questionIds.set(question.question, str(q.id) ?? question.question);
+              return question;
+            }),
+        };
+        this.addPending({ rpcId, method, item, questionIds });
+        return;
+      }
+      case 'mcpServer/elicitation/request':
+        this.reply(rpcId, { action: 'decline', content: null });
+        this.notice('info', 'An MCP server asked for input; phone-code declined it (not supported yet).');
+        return;
+      default:
+        // item/tool/call, account/chatgptAuthTokens/refresh, attestation/generate, future requests
+        this.replyError(rpcId, `phone-code does not handle ${method}`);
+        return;
+    }
+  }
+
+  private addPending(p: PendingRequest): void {
+    this.pending.set(p.item.id, p);
+    this.byRpc.set(String(p.rpcId), p.item.id);
+    this.status.pending.add(p.item.id);
+    this.events.upsert(p.item);
+    this.status.emit();
+  }
+
+  private settle(
+    itemId: string,
+    status: 'allowed' | 'denied' | 'cancelled' | 'answered',
+    answers?: Record<string, string>,
+  ): PendingRequest | undefined {
+    const p = this.pending.get(itemId);
+    if (!p) return undefined;
+    this.pending.delete(itemId);
+    this.byRpc.delete(String(p.rpcId));
+    this.status.pending.delete(itemId);
+    if (p.item.kind === 'question') {
+      p.item = {
+        ...p.item,
+        status: status === 'answered' ? 'answered' : 'cancelled',
+        ...(answers ? { answers } : {}),
+      };
+    } else {
+      p.item = { ...p.item, status: status === 'answered' ? 'allowed' : status };
+    }
+    this.events.upsert(p.item);
+    this.status.emit();
+    return p;
+  }
+
+  private cancelAllPending(): void {
+    for (const id of this.pending.keys()) this.settle(id, 'cancelled');
+  }
+
+  resolvePermission(itemId: string, decision: PermissionDecision, message?: string): void {
+    const p = this.pending.get(itemId);
+    if (!p || p.item.kind !== 'permission') return;
+    this.settle(itemId, decision === 'deny' ? 'denied' : 'allowed');
+    const always = decision === 'allowAlways';
+    switch (p.method) {
+      case 'item/commandExecution/requestApproval':
+      case 'item/fileChange/requestApproval':
+        this.reply(p.rpcId, {
+          decision: decision === 'deny' ? 'decline' : always ? 'acceptForSession' : 'accept',
+        });
+        break;
+      case 'execCommandApproval':
+      case 'applyPatchApproval':
+        this.reply(p.rpcId, {
+          decision:
+            decision === 'deny'
+              ? { denied: { rejection: message || 'Denied by the user' } }
+              : always
+                ? 'approved_for_session'
+                : 'approved',
+        });
+        break;
+      case 'item/permissions/requestApproval': {
+        const requested = rec(rec(p.item.input).permissions);
+        this.reply(p.rpcId, {
+          permissions:
+            decision === 'deny'
+              ? {}
+              : {
+                  ...(isRec(requested.network) ? { network: requested.network } : {}),
+                  ...(isRec(requested.fileSystem) ? { fileSystem: requested.fileSystem } : {}),
+                },
+          scope: always ? 'session' : 'turn',
+        });
+        break;
+      }
+      default:
+        this.replyError(p.rpcId, 'unexpected');
+    }
+    if (decision === 'deny') {
+      const toolId = str(rec(p.item.input).itemId);
+      const tool = toolId ? this.items.get(toolId) : undefined;
+      if (tool?.kind === 'tool') this.upsertItem({ ...tool, status: 'denied' });
+    }
+  }
+
+  answerQuestion(itemId: string, answers: Record<string, string>): void {
+    const p = this.pending.get(itemId);
+    if (!p || p.item.kind !== 'question') return;
+    this.settle(itemId, 'answered', answers);
+    const out: Record<string, { answers: string[] }> = {};
+    for (const [question, answer] of Object.entries(answers)) {
+      const id = p.questionIds?.get(question) ?? question;
+      out[id] = { answers: [answer] };
+    }
+    this.reply(p.rpcId, { answers: out });
+  }
+
+  // ------------------------------------------------------------- actions
+
+  async send(text: string, attachments?: Attachment[]): Promise<void> {
+    if (this.disposed) throw new Error('Session is closed');
+    if (!this.proc) {
+      // Crashed earlier: start a fresh app-server on the same thread.
+      this.ready = this.boot(this.threadId, false);
+    }
+    try {
+      await this.ready;
+    } catch {
+      this.notice('error', 'Could not send: Codex is not running.');
+      return;
+    }
+    if (!this.threadId) return;
+    const input: Rec[] = [];
+    for (const a of attachments ?? []) {
+      if (a.mediaType.startsWith('image/'))
+        input.push({ type: 'image', url: `data:${a.mediaType};base64,${a.data}` });
+      else {
+        const body = Buffer.from(a.data, 'base64').toString('utf8');
+        input.push({
+          type: 'text',
+          text: `<attachment name="${a.name ?? 'file'}">\n${body}\n</attachment>`,
+          text_elements: [],
+        });
+      }
+    }
+    input.push({ type: 'text', text, text_elements: [] });
+    const { approvalPolicy, sandbox } = policyFor(this.mode);
+    const params: Rec = { threadId: this.threadId, input };
+    if (this.overridesDirty) {
+      params.approvalPolicy = approvalPolicy;
+      params.sandboxPolicy = SANDBOX_POLICY[sandbox];
+      if (this.model) params.model = this.model;
+    }
+    if (!this.status.turnActive) this.beginTurn();
+    try {
+      const res = rec(await this.call('turn/start', params));
+      this.turnId = str(rec(res.turn).id) ?? this.turnId;
+      this.overridesDirty = false;
+    } catch (e) {
+      this.notice('error', `Codex rejected the message: ${errorMessage(e)}`);
+      this.status.turnActive = false;
+      this.status.emit();
+    }
+  }
+
+  async interrupt(): Promise<void> {
+    if (!this.threadId || !this.turnId || !this.proc) return;
+    this.interruptRequested = true;
+    this.cancelAllPending();
+    try {
+      await this.call('turn/interrupt', { threadId: this.threadId, turnId: this.turnId }, 10_000);
+    } catch (e) {
+      this.notice('warn', `Interrupt failed: ${errorMessage(e)}`);
+    }
+  }
+
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
+    this.mode = mode;
+    this.overridesDirty = true; // applied on the next turn/start
+    this.events.meta({ permissionMode: mode });
+  }
+
+  async setModel(model: string): Promise<void> {
+    this.model = model;
+    this.overridesDirty = true;
+    this.events.meta({ model });
+  }
+
+  private notice(level: NoticeItem['level'], text: string, key?: string): void {
+    const id = key ? `notice:${key}:${this.turnId ?? 'idle'}` : `notice:${++this.noticeSeq}:${Date.now()}`;
+    this.events.upsert({ kind: 'notice', id, ts: Date.now(), level, text });
+  }
+}
+
+export function createCodexAdapter(): AgentAdapter {
+  return {
+    kind: 'codex',
+    async detect() {
+      const out = await runQuick(codexBin(), ['--version']);
+      if (out === undefined) return { available: false };
+      const version = /\d+\.\d+\.\d+[\w.-]*/.exec(out)?.[0];
+      return { available: true, ...(version ? { version } : {}), models: discoveredModels ?? DEFAULT_MODELS };
+    },
+    async start(opts, events) {
+      const session = new CodexSession(opts, events);
+      await session.init();
+      return session;
+    },
+    async listResumable(limit?: number): Promise<ResumableSession[]> {
+      return listCodexResumable(limit ?? 50);
+    },
+  };
+}

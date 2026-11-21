@@ -1,0 +1,118 @@
+.cell.static {
+  cursor: default;
+}
+
+.cell.static:active {
+  background: var(--cell);
+}
+
+.sheet .cell.static:active {
+  background: transparent;
+}
+
+.cell-value.mono {
+  font: 400 14px/1.3 var(--mono);
+}
+
+.cell-value.warn {
+  color: var(--attention);
+}
+
+.host-cell {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.host-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  background: linear-gradient(150deg, var(--term-a), var(--term-b));
+  color: var(--term-mark);
+}
+
+.host-name {
+  font: 600 19px/1.25 var(--font);
+  letter-spacing: -0.02em;
+}
+
+.host-cell .cell-sub {
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.theme-seg {
+  width: 168px;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--fill-3);
+}
+
+.stepper button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--label);
+  cursor: pointer;
+}
+
+.stepper button:active:not(:disabled) {
+  background: var(--fill);
+}
+
+.stepper button:disabled {
+  color: var(--label-3);
+}
+
+.stepper-value {
+  min-width: 26px;
+  text-align: center;
+  font: 600 15px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+.about {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 34px 0 10px;
+  text-align: center;
+}
+
+.about img {
+  border-radius: 11px;
+  margin-bottom: 6px;
+}
+
+.about-name {
+  font: 600 15px/1.3 var(--font);
+}
+
+.about-sub {
+  font: 400 13px/1.3 var(--font);
+  color: var(--label-2);
+}
+
+.about a {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  color: var(--accent-text);
+  font: 600 14px/1 var(--font);
+  text-decoration: none;
+}
