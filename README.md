@@ -2,7 +2,7 @@
 
 Your dev machine in your pocket. Free and open source (MIT).
 
-Run one command on your computer, scan the QR code with your phone, and you get a real terminal plus Claude Code and Codex as a chat app built for a phone screen: tool calls, diffs and permission prompts rendered as native-feeling UI instead of a TUI squeezed into a tiny terminal.
+Run one command on your computer, scan the QR code with your phone, and you get a real terminal plus Claude Code, Codex and any ACP agent (Antigravity, Gemini CLI, OpenCode, ...) as a chat app built for a phone screen: tool calls, diffs and permission prompts rendered as native-feeling UI instead of a TUI squeezed into a tiny terminal.
 
 <p align="center">
   <picture>
@@ -118,11 +118,14 @@ Notifications (Settings, Notifications) tell you when an agent finishes a turn o
 
 ## Agent support
 
-| Agent                                            | Status         | Notes                                                                                                                                                                                                    |
-| ------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code (`claude`)                           | Works          | Verified against the real CLI. phone-code speaks the CLI's stream-json control protocol directly (the same one the Agent SDK uses), so permissions, modes, models, interrupts and resume map one to one. |
-| Codex (`codex`)                                  | Experimental   | Implemented against the `codex app-server` JSON-RPC schema. Exercised against the real binary only up to login; full model turns have not been run yet, so expect rough edges and please report them.    |
-| Other agents via ACP (Gemini CLI, OpenCode, ...) | In development | A generic [Agent Client Protocol](https://agentclientprotocol.com) adapter is being built; not usable yet.                                                                                               |
+| Agent                                                          | Status       | Notes                                                                                                                                                                                                                        |
+| -------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code (`claude`)                                         | Works        | Verified against the real CLI. phone-code speaks the CLI's stream-json control protocol directly (the same one the Agent SDK uses), so permissions, modes, models, interrupts and resume map one to one.                     |
+| Codex (`codex`)                                                | Experimental | Implemented against the `codex app-server` JSON-RPC schema. Exercised against the real binary only up to login; full model turns have not been run yet, so expect rough edges and please report them.                        |
+| Antigravity (`agy`)                                            | Experimental | Runs through Antigravity's own ACP server (`agy acp`). Exercised against the real CLI 1.5.13 with a scripted model endpoint; no real Google model turn or login has been run.                                                |
+| Gemini CLI, OpenCode, Qwen Code (ACP)                          | Experimental | Generic [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol) adapter. Handshake, login path, modes and models checked against the real CLIs; full model turns only against a scripted fake. |
+| Goose, Kimi, Copilot, Cursor, Auggie, Cline, Qoder, Vibe (ACP) | Untested     | Presets taken from the ACP registry; never run.                                                                                                                                                                              |
+| Any other ACP agent                                            | Experimental | Add it to `agents.json` in the state directory: `{"agents":[{"id":"my-agent","name":"My Agent","command":"my-agent","args":["acp"]}]}`. Read at daemon start.                                                                |
 
 The terminal works with anything, so you can always run an agent's own TUI there.
 
