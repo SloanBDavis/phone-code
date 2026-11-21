@@ -92,6 +92,43 @@ function persist(entry) {
   }
 }
 
+// Sub-agents, as 2.1.330 stores them: `<project>/<session>/subagents/agent-<id>.jsonl`
+// (isSidechain, agentId, a parentUuid chain of their own) plus `agent-<id>.meta.json`
+// naming the Agent/Task tool_use that started them.
+const subagentDir = path.join(projectDir, sessionId, 'subagents');
+const subLast = new Map();
+function persistSub(agentId, entry) {
+  const full = {
+    parentUuid: subLast.get(agentId) ?? null,
+    isSidechain: true,
+    agentId,
+    ...entry,
+    cwd,
+    sessionId,
+    version: '2.1.330',
+    timestamp: new Date().toISOString(),
+  };
+  subLast.set(agentId, full.uuid);
+  try {
+    fs.mkdirSync(subagentDir, { recursive: true });
+    fs.appendFileSync(path.join(subagentDir, `agent-${agentId}.jsonl`), `${JSON.stringify(full)}\n`);
+  } catch {
+    // read-only home: keep going
+  }
+}
+function startSubagent(agentId, toolUseId, description, prompt) {
+  try {
+    fs.mkdirSync(subagentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(subagentDir, `agent-${agentId}.meta.json`),
+      JSON.stringify({ agentType: 'general-purpose', isBuiltIn: true, description, toolUseId, spawnDepth: 1 }),
+    );
+  } catch {
+    // ignore
+  }
+  persistSub(agentId, { type: 'user', message: { role: 'user', content: prompt }, uuid: randomUUID() });
+}
+
 // ---------------------------------------------------------------- output
 function out(msg) {
   process.stdout.write(`${JSON.stringify(msg)}\n`);
@@ -105,6 +142,10 @@ const usage = (input, output) => ({
 });
 let totalCost = 0;
 const allowRules = []; // from allowAlways (addRules suggestions)
+// Like the real CLI in print mode: thinking text is omitted unless the host asks for summaries.
+let thinkingDisplay = 'omitted';
+/** What the host answered to the last permission request raised outside a turn (`late ask`). */
+let lateDecision = 'none';
 
 // ----------------------------------------------------------------- input
 let buf = '';
@@ -226,6 +267,9 @@ function onControl(msg) {
         isReplay: true,
       });
       return respond(msg.request_id, { model });
+    case 'set_max_thinking_tokens':
+      if (req.thinking_display !== undefined) thinkingDisplay = req.thinking_display ?? 'omitted';
+      return respond(msg.request_id, {});
     case 'interrupt':
       respond(msg.request_id, { still_queued: [] });
       if (current && !current.aborted) {
@@ -328,6 +372,8 @@ function makeTurn() {
   const t = {
     msgId,
     parent: /** @type {string | null} */ (null),
+    /** Set for a sub-agent: its messages go to its own transcript. */
+    agentId: /** @type {string | null} */ (null),
     check() {
       if (current.aborted) throw new Interrupted();
     },
@@ -359,12 +405,8 @@ function makeTurn() {
         timestamp: new Date().toISOString(),
       };
       out(entry);
-      persist({
-        type: 'assistant',
-        message: entry.message,
-        uuid: entry.uuid,
-        ...(t.parent ? { isSidechain: false, parentToolUseID: t.parent } : {}),
-      });
+      if (t.agentId) persistSub(t.agentId, { type: 'assistant', message: entry.message, uuid: entry.uuid });
+      else persist({ type: 'assistant', message: entry.message, uuid: entry.uuid });
     },
     newMessage() {
       t.msgId = `msg_fake_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
@@ -407,7 +449,8 @@ function makeTurn() {
         content_block:
           kind === 'text' ? { type: 'text', text: '' } : { type: 'thinking', thinking: '', signature: '' },
       });
-      const words = text.match(/\S+\s*|\s+/g) ?? [];
+      // display "omitted": the block arrives with a signature but no text.
+      const words = kind === 'thinking' && thinkingDisplay !== 'summarized' ? [] : (text.match(/\S+\s*|\s+/g) ?? []);
       let sent = '';
       try {
         for (const w of words) {
@@ -423,7 +466,7 @@ function makeTurn() {
           });
         }
       } finally {
-        if (sent)
+        if (sent || kind === 'thinking')
           t.assistant(
             kind === 'text'
               ? { type: 'text', text: sent }
@@ -468,13 +511,15 @@ function makeTurn() {
         ...(decision ? { tool_result_meta: [{ id: toolUseId, permission_decision: { decision } }] } : {}),
       };
       out(entry);
-      persist({
+      const stored = {
         type: 'user',
         message: entry.message,
         uuid: entry.uuid,
         toolUseResult: entry.tool_use_result,
         ...(decision ? { permissionDecision: { decision } } : {}),
-      });
+      };
+      if (t.agentId) persistSub(t.agentId, stored);
+      else persist(stored);
     },
   };
   return t;
@@ -495,6 +540,54 @@ async function gate(t, name, input, toolUseId, suggestions) {
 
 const scenarios = [];
 const scenario = (re, fn) => scenarios.push({ re, fn });
+
+// The process stops reading stdin after this turn but keeps running (a wedged CLI).
+let closeInputAfterTurn = false;
+scenario(/close (?:your )?input/i, async (t) => {
+  t.newMessage();
+  await t.text('Closing my input now.');
+  t.endMessage('end_turn');
+  closeInputAfterTurn = true;
+  return 'closed';
+});
+
+// A permission request that arrives after the turn ended (as from a background task).
+let lateAskAfterTurn = false;
+scenario(/late ask/i, async (t) => {
+  t.newMessage();
+  await t.text("I'll fetch in the background.");
+  t.endMessage('end_turn');
+  lateAskAfterTurn = true;
+  return 'background';
+});
+scenario(/background decision/i, async (t) => {
+  t.newMessage();
+  await t.text(`Background request: ${lateDecision}`);
+  t.endMessage('end_turn');
+  return lateDecision;
+});
+
+function lateAsk() {
+  const requestId = randomUUID();
+  const toolUseId = `toolu_fake_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
+  out({
+    type: 'control_request',
+    request_id: requestId,
+    request: {
+      subtype: 'can_use_tool',
+      tool_name: 'Bash',
+      display_name: 'Bash',
+      input: { command: 'git fetch', description: 'Fetch in the background' },
+      description: 'Fetch in the background',
+      permission_suggestions: [],
+      tool_use_id: toolUseId,
+    },
+  });
+  controlWaiters.set(requestId, (resp) => {
+    const r = resp.response ?? {};
+    lateDecision = `${r.behavior}${r.interrupt ? ' (interrupt)' : ''}`;
+  });
+}
 
 scenario(/crash/i, async (t) => {
   t.newMessage();
@@ -697,15 +790,18 @@ scenario(/todo/i, async (t) => {
 
 scenario(/agent|task/i, async (t) => {
   t.newMessage();
-  const id = await t.toolUse('Task', {
+  const taskInput = {
     description: 'Inspect the repo',
     prompt: 'List the files and report back.',
     subagent_type: 'general-purpose',
-  });
+  };
+  const id = await t.toolUse('Task', taskInput);
   t.endMessage('tool_use');
   // Sub-agent: full messages with parent_tool_use_id, no stream events.
   const sub = makeTurn();
   sub.parent = id;
+  sub.agentId = randomUUID().replace(/-/g, '').slice(0, 17);
+  startSubagent(sub.agentId, id, taskInput.description, taskInput.prompt);
   const bashInput = { command: 'ls', description: 'List files' };
   const bid = `toolu_fake_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
   sub.assistant({ type: 'tool_use', id: bid, name: 'Bash', input: bashInput });
@@ -715,7 +811,7 @@ scenario(/agent|task/i, async (t) => {
   });
   sub.assistant({ type: 'text', text: 'The repo has README.md, package.json and src.' });
   t.toolResult(id, [{ type: 'text', text: 'The repo has README.md, package.json and src.' }], {
-    structured: { status: 'completed' },
+    structured: { status: 'completed', agentId: sub.agentId, totalToolUseCount: 1 },
   });
   t.newMessage();
   await t.text('The sub-agent found **3 entries**.');
@@ -912,6 +1008,22 @@ async function runTurn(msg) {
     session_id: sessionId,
   });
   current = null;
+  if (lateAskAfterTurn) {
+    lateAskAfterTurn = false;
+    await sleep(300);
+    lateAsk();
+  }
+  if (closeInputAfterTurn) {
+    closeInputAfterTurn = false;
+    process.stdin.destroy();
+    try {
+      fs.closeSync(0); // the host's next write fails with EPIPE
+    } catch {
+      // already closed
+    }
+    // Keep running without input, like a wedged process.
+    setInterval(() => {}, 60_000);
+  }
 }
 
 // Main loop: one turn at a time, in order.

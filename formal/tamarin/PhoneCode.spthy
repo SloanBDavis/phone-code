@@ -1,0 +1,426 @@
+theory PhoneCode
+begin
+
+/*
+ * Dolev-Yao model of phone-code's pairing, handoff, hello, unpair/revoke and
+ * local control endpoint, as implemented. The TLA+ model formal/PairingAuth.tla
+ * checks the daemon's state machine with honest clients; this theory adds a
+ * network attacker, attacker web pages in the user's own browser, leaked QR
+ * codes / handoff URLs and stolen device tokens.
+ *
+ * Every rule names the code it stands for (packages/...). Run it through
+ * formal/tamarin/check.sh, which selects the deployment mode and the
+ * "old code" switches with -D flags and compares every lemma with its
+ * expected result.
+ *
+ * Deployment-mode flags (set by check.sh):
+ *   NET_CLIENT   the attacker can open its own HTTPS connection to the daemon
+ *                and read the answers: Cloudflare quick tunnel (public URL),
+ *                a --url reverse proxy, a tailnet member, a second local user
+ *                on loopback. Without it: Tailscale with the attacker outside
+ *                the tailnet.
+ *   PLAIN        the phone's channel is readable and writable by the attacker:
+ *                --insecure plain HTTP, or a tunnel operator that is itself
+ *                the attacker (it terminates TLS). The two are the same rules.
+ *   QR_LEAK      the QR / pairing URL / code is seen by the attacker
+ *                (shoulder surfing, a photo, a screen share). Without it the
+ *                QR is a confidential out-of-band channel. It is authentic
+ *                in both cases: the attacker cannot replace what the owner's
+ *                terminal shows.
+ *   HANDOFF_LEAK the Home Screen handoff code (`?h=` in the page URL and the
+ *                manifest start_url) leaks: browser history, a proxy or
+ *                tunnel log, a shared screenshot.
+ *   COMPROMISE   the attacker steals the token of one paired device (stolen
+ *                unlocked phone, malware in the phone's browser).
+ *
+ * "Old code" flags, each re-enabling behaviour that was fixed:
+ *   NO_CASCADE        revoking a device leaves the devices paired through its
+ *                     handoff codes (auth/devices.ts DeviceStore.revoke before
+ *                     the lineage fix)
+ *   NO_HANDOFF_FORGET revoking a device keeps its handoff codes (PairingCodes
+ *                     .forgetDevice missing; TLA+ bug 3)
+ *   NO_HOST_CHECK     /api and /ws accept any Host header (DNS rebinding)
+ *   NO_ORIGIN_CHECK   /api/pair accepts a POST from a foreign web page (CSRF)
+ *
+ * Abstractions and assumptions
+ *  - TLS (tailscale serve, cloudflared, the user's proxy) is an ideal channel
+ *    between the phone and the daemon: Req/Res facts that the attacker can
+ *    neither read nor inject into, delivered at most once. The proxy hop on
+ *    loopback is part of it. The phone's browser checks the certificate.
+ *  - Codes (10 + 26 characters), tokens (256 bits) and the control secret are
+ *    fresh names: unguessable. Guessing, the rate limit and constant-time
+ *    comparison are outside a symbolic model (see formal/README.md).
+ *  - The browser is honest: localStorage belongs to the app's origin, a
+ *    foreign page cannot read it, cannot set custom headers cross-origin
+ *    without CORS (the daemon sends none), and cannot read no-cors answers.
+ *    No XSS in the app.
+ *  - The owner's terminal and control.json (0600 in a 0700 directory) are
+ *    private to the owner. A paired device gets a shell, which can read
+ *    control.json; that is "a paired device is your computer" (SECURITY.md)
+ *    and is not modelled as a protocol step.
+ *  - One daemon epoch; crashes, persistence and in-flight rpcs are the TLA+
+ *    model's job.
+ *  - The device store is a set of persistent facts !Dev(id, token); a device
+ *    removed by a revocation is modelled by the live_* restrictions: a lookup
+ *    (DeviceStore.authenticate, or redeeming a handoff code whose issuer was
+ *    forgotten) at time i succeeds only if the device, and with the cascade
+ *    every ancestor of it, was not revoked before i. A device paired through
+ *    a handoff code of P gets the id <~n, P>, so "A is an ancestor of L" is
+ *    the subterm relation A << L.
+ */
+
+builtins: hashing
+
+// ------------------------------------------------------------ daemon start
+
+// daemon.ts startDaemon: control secret (control.json), first pairing code
+// (shown in the banner / QR on the owner's terminal).
+rule Daemon_Start:
+  [ Fr(~ct) ]
+  --[ OnlyOnce('start'), ControlSecret(~ct) ]->
+  [ !CtlSecret(~ct), !CtlFile(~ct) ]
+
+// daemon.ts newPairCode -> auth/pairing.ts PairingCodes.create('pair'):
+// startup banner, or Enter in the terminal.
+rule Daemon_PairCode:
+  [ !CtlSecret(ct), Fr(~c) ]
+  --[ Issued(~c) ]->
+  [ PairCode(~c), !Banner(~c) ]
+
+// PAIR_CODE_TTL_MS passes, or MAX_ACTIVE_CODES evicts it (PairingCodes.prune / create).
+rule Code_Expire:
+  [ PairCode(c) ] --[ Expired(c) ]-> [ ]
+
+rule Handoff_Expire:
+  [ HandoffCode(h, P) ] --[ Expired(h) ]-> [ ]
+
+// ------------------------------------------------------------ channels
+// Req(ch, s, m): request m on connection s from a client of kind ch.
+// Res(ch, s, m): the daemon's answer on that connection.
+//   'ph'      the owner's phone over TLS
+//   'net'     the owner's phone over an attacker-controlled channel (PLAIN)
+//   'att'     the attacker's own connection (NET_CLIENT)
+//   'loc'     the owner's CLI on loopback (control-client.ts)
+//   'csrf'    a foreign web page in the owner's browser posting to
+//             http://127.0.0.1:<port>: it can send, not read the answer
+//   'rebind'  a foreign page that DNS-rebound its own name to 127.0.0.1:
+//             same-origin to itself, so it reads answers, but Host is its name
+
+#ifdef PLAIN
+rule Net_PhoneOut:  [ PhoneSend(s, m) ] --> [ Out(<s, m>) ]
+rule Net_DaemonIn:  [ In(<s, m>) ] --> [ Req('net', s, m) ]
+rule Net_DaemonOut: [ Res('net', s, m) ] --> [ Out(<s, m>) ]
+rule Net_PhoneIn:   [ In(<s, m>) ] --> [ PhoneRecv(s, m) ]
+#else
+rule Tls_PhoneOut:  [ PhoneSend(s, m) ] --> [ Req('ph', s, m) ]
+rule Tls_PhoneIn:   [ Res('ph', s, m) ] --> [ PhoneRecv(s, m) ]
+#endif
+
+#ifdef NET_CLIENT
+rule Att_Connect:  [ In(m), Fr(~s) ] --> [ Req('att', ~s, m) ]
+rule Att_Answer:   [ Res('att', s, m) ] --> [ Out(m) ]
+#endif
+
+// Always possible: the daemon listens on 127.0.0.1 and the owner's browser
+// visits arbitrary sites.
+rule Page_Csrf:     [ In(m), Fr(~s) ] --> [ Req('csrf', ~s, m) ]
+rule Page_Rebind:   [ In(m), Fr(~s) ] --> [ Req('rebind', ~s, m) ]
+rule Page_RebindAnswer: [ Res('rebind', s, m) ] --> [ Out(m) ]
+
+// ------------------------------------------------------------ owner and QR
+
+#ifdef QR_LEAK
+// Someone sees or photographs the QR / URL / code while it is valid.
+rule Leak_QR: [ !Banner(c) ] --[ QRLeaked(c) ]-> [ Out(c) ]
+#endif
+
+// The owner's phone scans the QR (or the owner types the code).
+// web/src/lib/boot.ts readLaunchParams (#/pair?c=) / pair.tsx handleInput.
+rule Phone_Scan:
+  [ !Banner(c) ] --> [ PhoneCode(c) ]
+
+// ------------------------------------------------------------ the phone
+// web/src/lib/api.ts pair() -> POST /api/pair {code}
+rule Phone_PairReq:
+  [ PhoneCode(c), Fr(~s) ]
+  --[ PhonePairReq(~s, c) ]->
+  [ PhoneSend(~s, <'pair', c>), PhonePairing(~s, c) ]
+
+// boot.ts redeem: creds -> localStorage (storage.ts creds), origin-scoped.
+rule Phone_Paired:
+  [ PhonePairing(s, c), PhoneRecv(s, <'paired', L, t>) ]
+  --[ PhonePaired(L, t, c) ]->
+  [ !PhoneStore(L, t) ]
+
+// web/src/lib/ws.ts WsTransport.connect: open /ws, send hello with the token.
+rule Phone_Hello:
+  [ !PhoneStore(L, t), Fr(~s) ]
+  --[ PhoneHello(~s, L) ]->
+  [ PhoneSend(~s, <'hello', t>) ]
+
+// boot.ts refreshHandoff -> api.ts handoff(): POST /api/handoff, Bearer token.
+rule Phone_HandoffReq:
+  [ !PhoneStore(L, t), Fr(~s) ]
+  --[ PhoneHandoffReq(~s, L) ]->
+  [ PhoneSend(~s, <'handoff', t>), PhoneHandoffWait(~s, L) ]
+
+// The code goes into the URL (?h=) and the manifest start_url; the installed
+// Home Screen app (fresh storage) redeems it like a pairing code.
+rule Phone_HandoffGot:
+  [ PhoneHandoffWait(s, L), PhoneRecv(s, <'handoff_code', h>) ]
+  --[ HandoffGot(h, L) ]->
+  [ PhoneCode(h), HandoffInUrl(h) ]
+
+#ifdef HANDOFF_LEAK
+rule Leak_HandoffUrl: [ HandoffInUrl(h) ] --[ HandoffLeaked(h) ]-> [ Out(h) ]
+#endif
+
+// boot.ts unpairDevice -> api.ts forgetDevice(): POST /api/unpair, Bearer token.
+rule Phone_Unpair:
+  [ !PhoneStore(L, t), Fr(~s) ]
+  --[ PhoneUnpair(L) ]->
+  [ PhoneSend(~s, <'unpair', t>) ]
+
+#ifdef COMPROMISE
+rule Compromise_Token:
+  [ !PhoneStore(L, t) ] --[ Compromised(L) ]-> [ Out(t) ]
+#endif
+
+// ------------------------------------------------------------ daemon HTTP / ws
+// http/server.ts route(): transportRefusal (TLS) is the channel model; the
+// Host check (hostAllowed) and Origin check (originAllowed) are restrictions
+// on ApiReq / WsReq below.
+
+// pair() -> PairingCodes.redeem (match, single-use delete) -> DeviceStore.add.
+rule D_Pair:
+  [ Req(ch, s, <'pair', c>), PairCode(c), Fr(~L), Fr(~t) ]
+  --[ ApiReq(ch), PairedVia(ch, ~L, c), Paired(~L, c), DeviceToken(~L, ~t) ]->
+  [ Res(ch, s, <'paired', ~L, ~t>), !Dev(~L, ~t) ]
+
+// Same endpoint with a handoff code: the new device records its parent
+// (DeviceRecord.parent), so its id is <~n, P>. PairingCodes.forgetDevice
+// dropped the code if P (or, with the cascade, an ancestor) was revoked:
+// IssuerLive(P) is checked by the live_* restrictions.
+#ifdef NO_HANDOFF_FORGET
+rule D_PairHandoff:
+  [ Req(ch, s, <'pair', h>), HandoffCode(h, P), Fr(~n), Fr(~t) ]
+  --[ ApiReq(ch), PairedVia(ch, <~n, P>, h), Paired(<~n, P>, h), Child(<~n, P>, P, h),
+      DeviceToken(<~n, P>, ~t) ]->
+  [ Res(ch, s, <'paired', <~n, P>, ~t>), !Dev(<~n, P>, ~t) ]
+#else
+rule D_PairHandoff:
+  [ Req(ch, s, <'pair', h>), HandoffCode(h, P), Fr(~n), Fr(~t) ]
+  --[ ApiReq(ch), PairedVia(ch, <~n, P>, h), Paired(<~n, P>, h), Child(<~n, P>, P, h),
+      DeviceToken(<~n, P>, ~t), Live(P) ]->
+  [ Res(ch, s, <'paired', <~n, P>, ~t>), !Dev(<~n, P>, ~t) ]
+#endif
+
+// ws-client.ts Connection.hello -> DeviceStore.authenticate.
+rule D_Hello:
+  [ Req(ch, s, <'hello', t>), !Dev(L, t) ]
+  --[ WsReq(ch), Accept(ch, s, L), Live(L) ]->
+  [ Res(ch, s, 'ready') ]
+
+// handoff(): authenticate the Bearer token, PairingCodes.create('handoff', issuer).
+rule D_Handoff:
+  [ Req(ch, s, <'handoff', t>), !Dev(L, t), Fr(~h) ]
+  --[ ApiReq(ch), Live(L), HandoffMinted(~h, L) ]->
+  [ HandoffCode(~h, L), Res(ch, s, <'handoff_code', ~h>) ]
+
+// unpair(): authenticate the Bearer token -> control.revoke(device.id).
+rule D_Unpair:
+  [ Req(ch, s, <'unpair', t>), !Dev(L, t) ]
+  --[ ApiReq(ch), Live(L), Revoked(L) ]->
+  [ Res(ch, s, 'ok') ]
+
+// /_control/pair: controlAllowed (loopback, no proxy headers, secret) -> newPairCode.
+rule D_CtlPair:
+  [ Req(ch, s, <'ctl_pair', ct>), !CtlSecret(ct), Fr(~c) ]
+  --[ CtlReq(ch), Issued(~c) ]->
+  [ PairCode(~c), !Banner(~c), Res(ch, s, 'ok') ]
+
+// /_control/revoke -> control.revoke.
+rule D_CtlRevoke:
+  [ Req(ch, s, <'ctl_revoke', ct, L>), !CtlSecret(ct), !Dev(L, t) ]
+  --[ CtlReq(ch), Revoked(L) ]->
+  [ Res(ch, s, 'ok') ]
+
+// The owner runs `phonecode pair` / `phonecode revoke <id>` (cli.ts,
+// control-client.ts): reads control.json, calls 127.0.0.1 directly.
+rule Owner_CliPair:
+  [ !CtlFile(ct), Fr(~s) ] --[ OwnerPair() ]-> [ Req('loc', ~s, <'ctl_pair', ct>) ]
+
+rule Owner_CliRevoke:
+  [ !CtlFile(ct), !Dev(L, t), Fr(~s) ]
+  --[ OwnerRevoke(L) ]->
+  [ Req('loc', ~s, <'ctl_revoke', ct, L>) ]
+
+// ------------------------------------------------------------ restrictions
+
+restriction only_once:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+// The device store: a revoked device is gone (devices.ts revoke deletes it;
+// ws-client.ts registry.closeDevice closes its sockets).
+restriction live_self:
+  "All L #i #j. Live(L)@i & Revoked(L)@j ==> not (#j < #i)"
+
+#ifdef NO_CASCADE
+#else
+// DeviceStore.revoke also removes every device paired through the revoked
+// one (DeviceRecord.parent, transitively), and forgetDevice drops their codes.
+restriction live_cascade:
+  "All L A #i #j. Live(L)@i & Revoked(A)@j & A << L ==> not (#j < #i)"
+#endif
+
+#ifdef NO_HOST_CHECK
+#else
+// http/server.ts hostAllowed: /api, /ws and /_control need a loopback, IP
+// literal or advertised Host; a DNS-rebound name is refused.
+restriction host_check_api: "All #i. ApiReq('rebind')@i ==> F"
+restriction host_check_ws:  "All #i. WsReq('rebind')@i ==> F"
+restriction host_check_ctl: "All #i. CtlReq('rebind')@i ==> F"
+#endif
+
+#ifdef NO_ORIGIN_CHECK
+#else
+// http/server.ts: POST /api/* with a foreign Origin is refused.
+restriction origin_check_api: "All #i. ApiReq('csrf')@i ==> F"
+#endif
+
+// originAllowed on the websocket upgrade (unchanged code): a foreign page's
+// Origin is refused. (A no-cors page could not read the answer anyway.)
+restriction origin_check_ws: "All #i. WsReq('csrf')@i ==> F"
+
+#ifdef COMPROMISE
+restriction one_compromise:
+  "All A B #i #j. Compromised(A)@i & Compromised(B)@j ==> #i = #j"
+#endif
+
+// ============================================================ lemmas
+// check.sh runs each lemma by name and compares the result with the
+// expectation for the variant; see the table there.
+
+// ---- sanity: the honest protocol runs (the model is not vacuous)
+
+lemma exec_pair_hello:
+  exists-trace
+  "Ex ch s L t c #i #j #k. PhonePaired(L, t, c)@i & PhoneHello(s, L)@j & Accept(ch, s, L)@k"
+
+lemma exec_handoff_child:
+  exists-trace
+  "Ex ch s P n h t #i #j #k #l. Child(<n, P>, P, h)@i & PhonePaired(<n, P>, t, h)@j
+     & PhoneHello(s, <n, P>)@k & Accept(ch, s, <n, P>)@l"
+
+lemma exec_owner_revoke:
+  exists-trace
+  "Ex L t c #i #j #k. PhonePaired(L, t, c)@i & OwnerRevoke(L)@j & Revoked(L)@k"
+
+// ---- secrecy
+
+// The token of a device the owner's phone paired stays secret (unless that
+// device's token was stolen).
+lemma token_secret:
+  "All L t c #i. PhonePaired(L, t, c)@i ==>
+     not (Ex #j. K(t)@j) | (Ex #k. Compromised(L)@k)"
+
+// A pairing code the attacker did not see on the QR stays secret.
+lemma pair_code_secret:
+  "All c #i. Issued(c)@i ==> not (Ex #j. K(c)@j) | (Ex #k. QRLeaked(c)@k)"
+
+// A handoff code minted for the owner's phone stays secret.
+lemma handoff_code_secret:
+  "All h P s #i #j. HandoffMinted(h, P)@i & PhoneHandoffReq(s, P)@j ==>
+     not (Ex #k. K(h)@k) | (Ex #k. Compromised(P)@k)"
+
+// The control secret never reaches the attacker.
+lemma control_secret:
+  "All ct #i. ControlSecret(ct)@i ==> not (Ex #j. K(ct)@j)"
+
+// ---- authentication of hello
+
+// A socket is authorized only for a device that the owner's phone paired.
+lemma sessions_only_owner_devices:
+  "All ch s L #i. Accept(ch, s, L)@i ==> Ex t c #j. PhonePaired(L, t, c)@j & #j < #i"
+
+// Injective agreement: every authorized socket is one the owner's phone
+// opened for that device, and no captured hello authorizes a second one.
+lemma hello_injective_agreement:
+  "All ch s L #i. Accept(ch, s, L)@i ==>
+       (Ex #j. PhoneHello(s, L)@j & #j < #i)
+     & not (Ex ch2 #k. Accept(ch2, s, L)@k & not (#k = #i))"
+
+// ---- pairing codes
+
+// Every device created from a pairing or handoff code was created by a request
+// of the owner's phone (no attacker, no web page redeemed it).
+lemma codes_redeemed_only_by_owner:
+  "All ch L c #i. PairedVia(ch, L, c)@i ==> ch = 'ph'"
+
+// Single use: a code yields at most one device (holds even when leaked).
+lemma code_single_use:
+  "All c L1 L2 #i #j. Paired(L1, c)@i & Paired(L2, c)@j ==> #i = #j"
+
+// After the owner's phone redeemed a code, nobody else gets a device from it.
+lemma owner_first_excludes_others:
+  "All c L t L2 #i #j. PhonePaired(L, t, c)@i & Paired(L2, c)@j ==> L2 = L"
+
+// If someone else redeemed a code first, the owner's phone got no device from
+// it: the race is visible to the owner (the phone shows "invalid or expired").
+lemma race_loss_is_visible:
+  "All c L #i. Paired(L, c)@i & not (Ex t #j. PhonePaired(L, t, c)@j) ==>
+     not (Ex L2 t2 #k. PhonePaired(L2, t2, c)@k)"
+
+lemma no_pair_after_expiry:
+  "All c L #i #j. Expired(c)@i & Paired(L, c)@j ==> #j < #i"
+
+// ---- handoff
+
+// A device paired through a handoff code is bound to the device that minted
+// the code, and only a holder of that device's token could mint it.
+lemma handoff_bound_to_minter:
+  "All C P h #i. Child(C, P, h)@i ==>
+     Ex #j. HandoffMinted(h, P)@j & #j < #i
+       & ((Ex s #k. PhoneHandoffReq(s, P)@k & #k < #j) | (Ex A #k. Compromised(A)@k & (A = P | A << P)))"
+
+// A handoff code minted before its device was revoked no longer pairs.
+lemma no_handoff_after_revoke:
+  "All C P h #i #j. Child(C, P, h)@i & Revoked(P)@j ==> #i < #j"
+
+// ---- revocation
+
+lemma revoked_no_session:
+  "All ch s L #i #j. Accept(ch, s, L)@i & Revoked(L)@j ==> #i < #j"
+
+// Revoking a device also ends every device paired through it (transitively).
+lemma revoke_cascades:
+  "All ch s L A #i #j. Accept(ch, s, L)@i & Revoked(A)@j & A << L ==> #i < #j"
+
+// Only the owner (CLI) or a holder of the device's own token revokes it.
+lemma revoke_only_owner_or_holder:
+  "All L #i. Revoked(L)@i ==>
+       (Ex #j. OwnerRevoke(L)@j) | (Ex #j. PhoneUnpair(L)@j)
+     | (Ex A #j. Compromised(A)@j & (A = L | A << L))"
+
+#ifdef COMPROMISE
+// Helper for the next lemma: the attacker knows a device token only if it
+// stole that device's token or the token of an ancestor.
+lemma att_tokens_from_compromise [use_induction, reuse]:
+  "All L t #i #j. DeviceToken(L, t)@i & K(t)@j ==>
+     Ex A #k. Compromised(A)@k & (A = L | A << L)"
+
+// Stolen token: once the owner revokes the stolen device, the attacker has no
+// authorized socket left, through it or through anything it paired.
+lemma revoke_evicts_thief:
+  "All L #c #r. Compromised(L)@c & Revoked(L)@r ==>
+     not (Ex s C #i. Accept('att', s, C)@i & #r < #i)"
+#endif
+
+// ---- local control endpoint
+
+// Every accepted /_control request came from the owner's CLI: no network
+// attacker and no web page (CSRF, DNS rebinding) mints codes or revokes.
+lemma control_only_owner_cli:
+  "All ch #i. CtlReq(ch)@i ==> ch = 'loc'"
+
+end

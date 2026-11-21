@@ -167,6 +167,7 @@ class ClaudeSession implements AgentSession {
       // Like the Agent SDK: mark ourselves as an SDK host.
       env: { ...childEnv(this.opts.env, DROP_ENV), CLAUDE_CODE_ENTRYPOINT: 'sdk-ts' },
       onLine: (v) => this.onLine(v),
+      onInputLost: () => this.onInputLost(proc),
     });
     this.proc = proc;
     this.status.crashed = false;
@@ -177,8 +178,13 @@ class ClaudeSession implements AgentSession {
   }
 
   private async initialize(): Promise<void> {
+    const init = this.request({ subtype: 'initialize' });
+    // In print mode the CLI leaves the thinking display to the API, whose default for current
+    // models is "omitted": thinking blocks arrive empty. Ask for summaries, as the TUI shows them.
+    // Older CLIs answer with an error; thinking then stays empty, as before.
+    this.request({ subtype: 'set_max_thinking_tokens', thinking_display: 'summarized' }).catch(() => {});
     try {
-      const res = await this.request({ subtype: 'initialize' });
+      const res = await init;
       const models = arr(res.models)
         .map((m) => str(rec(m).value))
         .filter((m): m is string => !!m);
@@ -192,6 +198,25 @@ class ClaudeSession implements AgentSession {
     proc: SpawnedAgent,
     info: { code: number | null; signal: NodeJS.Signals | null; error?: Error },
   ): void {
+    const tail = oneLine(proc.stderrTail().trim().split('\n').slice(-3).join(' '), 300);
+    let text: string;
+    if (info.error && /ENOENT/.test(info.error.message)) {
+      text = `Claude Code CLI not found (${claudeBin(this.opts.env ?? process.env)}). Install it with \`npm i -g @anthropic-ai/claude-code\` or set PHONECODE_CLAUDE_BIN.`;
+    } else {
+      text = `Claude Code exited unexpectedly (${info.signal ?? `code ${info.code ?? '?'}`})${tail ? `: ${tail}` : ''}`;
+    }
+    this.lost(proc, text);
+  }
+
+  /** The process runs but takes no more input: drop it like a crash, so the next message starts a new one. */
+  private onInputLost(proc: SpawnedAgent): void {
+    if (this.proc !== proc || this.disposed) return;
+    this.lost(proc, 'Claude Code stopped reading its input, so phone-code stopped it. Send your message again to restart it.');
+    void proc.kill();
+  }
+
+  /** The process is gone (or unusable): end the turn as an error and wait for the next message. */
+  private lost(proc: SpawnedAgent, text: string): void {
     if (this.proc !== proc) return;
     this.proc = undefined;
     for (const w of this.control.values()) w.reject(new Error('Claude Code exited'));
@@ -202,13 +227,6 @@ class ClaudeSession implements AgentSession {
     this.mapper.endTurn('error');
     this.turnsQueued = 0;
     this.status.turnActive = false;
-    const tail = oneLine(proc.stderrTail().trim().split('\n').slice(-3).join(' '), 300);
-    let text: string;
-    if (info.error && /ENOENT/.test(info.error.message)) {
-      text = `Claude Code CLI not found (${claudeBin(this.opts.env ?? process.env)}). Install it with \`npm i -g @anthropic-ai/claude-code\` or set PHONECODE_CLAUDE_BIN.`;
-    } else {
-      text = `Claude Code exited unexpectedly (${info.signal ?? `code ${info.code ?? '?'}`})${tail ? `: ${tail}` : ''}`;
-    }
     this.notice('error', text);
     if (wasActive) {
       this.events.upsert({
@@ -247,10 +265,12 @@ class ClaudeSession implements AgentSession {
   private request(request: Rec, timeoutMs = 30_000): Promise<Rec> {
     const requestId = randomUUID();
     return new Promise<Rec>((resolve, reject) => {
-      if (!this.write({ type: 'control_request', request_id: requestId, request })) {
+      if (!this.proc) {
         reject(new Error('Claude Code is not running'));
         return;
       }
+      // A failed write is reported through onInputLost / onExit, which reject every waiter.
+      this.write({ type: 'control_request', request_id: requestId, request });
       const timer = setTimeout(() => {
         this.control.delete(requestId);
         reject(new Error(`${str(request.subtype) ?? 'control'} request timed out`));
@@ -623,6 +643,20 @@ class ClaudeSession implements AgentSession {
     for (const id of this.pending.keys()) this.settle(id, 'cancelled');
   }
 
+  /** Cancel pending prompts and tell the CLI, which (outside a turn we interrupt) still waits for an answer. */
+  private denyAllPending(): void {
+    for (const p of [...this.pending.values()]) {
+      this.settle(p.item.id, 'cancelled');
+      if (p.toolUseId) this.mapper.denied.add(p.toolUseId);
+      this.respond(p.requestId, {
+        behavior: 'deny',
+        message: 'The user cancelled this request.',
+        interrupt: true,
+        ...(p.toolUseId ? { toolUseID: p.toolUseId } : {}),
+      });
+    }
+  }
+
   resolvePermission(itemId: string, decision: PermissionDecision, message?: string): void {
     const p = this.pending.get(itemId);
     if (!p || p.kind === 'question') return;
@@ -690,30 +724,31 @@ class ClaudeSession implements AgentSession {
       this.launch(this.sessionId);
     }
     const content = buildContent(text, attachments);
-    const uuid = randomUUID();
-    if (
-      !this.write({
-        type: 'user',
-        message: { role: 'user', content },
-        parent_tool_use_id: null,
-        session_id: '',
-        uuid,
-      })
-    ) {
-      this.notice('error', 'Could not send: Claude Code is not running.');
-      return;
-    }
     if (this.turnsQueued === 0) {
       this.turnStartedAt = Date.now();
       this.mapper.beginTurn();
     }
     this.turnsQueued++;
     this.status.turnActive = true;
-    this.status.emit();
+    // The core marked the session running already; re-report in case the status did not change.
+    this.status.emit(true);
+    // If the message cannot be written, onInputLost (or onExit) ends this turn as an error.
+    this.write({
+      type: 'user',
+      message: { role: 'user', content },
+      parent_tool_use_id: null,
+      session_id: '',
+      uuid: randomUUID(),
+    });
   }
 
   async interrupt(): Promise<void> {
-    if (!this.proc || this.turnsQueued === 0) return;
+    if (!this.proc || this.turnsQueued === 0) {
+      // No turn of ours is running, but the CLI may still ask (e.g. after a turn ended):
+      // the stop button must clear those prompts too. Deny them so the CLI does not wait.
+      this.denyAllPending();
+      return;
+    }
     this.interruptRequested = true;
     this.cancelAllPending();
     try {

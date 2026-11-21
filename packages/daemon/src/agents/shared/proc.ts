@@ -11,18 +11,29 @@ export interface SpawnedAgent {
   exited: Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>;
   /** Last ~8 KB of stderr, for crash notices. */
   stderrTail(): string;
-  /** Write one JSON message as a line. Returns false if stdin is gone. */
+  /** Write one JSON message as a line. Returns false if stdin is gone (and reports it through onInputLost). */
   writeJson(msg: unknown): boolean;
   /** Close stdin, then SIGTERM the process group, then SIGKILL. Resolves when exited. */
   kill(graceMs?: number): Promise<void>;
 }
 
 const STDERR_KEEP = 8192;
+const INPUT_LOST_GRACE_MS = 300;
 
 export function spawnAgent(
   bin: string,
   args: string[],
-  opts: { cwd: string; env: NodeJS.ProcessEnv; onLine: (value: unknown, raw: string) => void },
+  opts: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    onLine: (value: unknown, raw: string) => void;
+    /**
+     * The process is still running but no longer takes input (its stdin closed
+     * or broke): nothing sent to it arrives. Not called for a process that
+     * exits within a moment of losing its input; `exited` reports that one.
+     */
+    onInputLost?: () => void;
+  },
 ): SpawnedAgent {
   // detached => own process group, so dispose() can take the agent's tool
   // subprocesses (shells, test runners) down with it.
@@ -75,8 +86,18 @@ export function spawnAgent(
     stderr += chunk.toString('utf8');
     if (stderr.length > STDERR_KEEP * 2) stderr = stderr.slice(-STDERR_KEEP);
   });
+  let inputLost = false;
+  const loseInput = (): void => {
+    if (inputLost || exitInfo) return;
+    inputLost = true;
+    // A process that is exiting breaks the pipe too: give 'close' a moment to arrive first.
+    const grace = new Promise<void>((resolve) => setTimeout(resolve, INPUT_LOST_GRACE_MS));
+    void Promise.race([exited, grace]).then(() => {
+      if (!exitInfo) opts.onInputLost?.();
+    });
+  };
   // A dead pipe must not crash the daemon.
-  child.stdin.on('error', () => {});
+  child.stdin.on('error', loseInput);
 
   const signalGroup = (sig: NodeJS.Signals): void => {
     if (child.pid === undefined || exitInfo) return;
@@ -97,7 +118,11 @@ export function spawnAgent(
     exited,
     stderrTail: () => stderr.slice(-STDERR_KEEP),
     writeJson(msg) {
-      if (exitInfo || child.stdin.destroyed || !child.stdin.writable) return false;
+      if (exitInfo) return false;
+      if (inputLost || child.stdin.destroyed || !child.stdin.writable) {
+        loseInput();
+        return false;
+      }
       child.stdin.write(`${JSON.stringify(msg)}\n`);
       return true;
     },

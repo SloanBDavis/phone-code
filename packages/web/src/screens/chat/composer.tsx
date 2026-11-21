@@ -64,6 +64,8 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
   const fileRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<number | undefined>(undefined);
   const running = session.status === 'running';
+  // Stop also clears a pending approval or question (the agent may ask outside a running turn).
+  const stoppable = running || session.status === 'waiting';
   const canSend = text.trim().length > 0 || atts.length > 0;
 
   // Auto-grow: measure once per change, one style write.
@@ -236,7 +238,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
           </button>
         )}
         <span class="composer-spacer" />
-        {running && !canSend ? (
+        {stoppable && !canSend ? (
           <button
             type="button"
             class="send-btn stop"

@@ -88,9 +88,14 @@ export class StatusTracker {
     return 'idle';
   }
 
-  emit(): void {
+  /**
+   * `force` re-reports an unchanged status: the core marks a session `running`
+   * on its own when it hands over a message, so a send that fails at once must
+   * say where the session really is.
+   */
+  emit(force = false): void {
     const s = this.compute();
-    if (s !== this.last) {
+    if (force || s !== this.last) {
       this.last = s;
       this.events.status(s);
     }

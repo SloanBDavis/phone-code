@@ -174,6 +174,12 @@ class AcpSession implements AgentSession {
     { rpcId: string | number; fields: ElicitField[]; item: QuestionItem }
   >();
   private text: { id: string; kind: 'text' | 'thinking'; messageId: string | undefined } | undefined;
+  /** The start of an agent message, held back while it may still be the preset's error marker. */
+  private held: { text: string; messageId: string | undefined } | undefined;
+  /** This turn's error reply (see AcpAgentConfig.errorReplyPrefix); `last` while nothing followed it. */
+  private errorReply: { id: string; text: string; messageId: string | undefined; last: boolean } | undefined;
+  /** toolCallId -> id of the question card that stands for it (elicitation/create carries the toolCallId). */
+  private readonly askTools = new Map<string, string>();
   private itemSeq = 0;
   /** Per-instance prefix: item ids must not collide with a transcript the core restored from disk. */
   private readonly inst = randomUUID().slice(0, 8);
@@ -228,6 +234,7 @@ class AcpSession implements AgentSession {
       cwd: this.opts.cwd,
       env,
       onLine: (v) => this.onLine(proc, v),
+      onInputLost: () => this.onInputLost(proc),
     });
     this.proc = proc;
     this.status.crashed = false;
@@ -382,6 +389,28 @@ class AcpSession implements AgentSession {
     proc: SpawnedAgent,
     info: { code: number | null; signal: NodeJS.Signals | null; error?: Error },
   ): void {
+    let text: string;
+    if (info.error && /ENOENT/.test(info.error.message)) {
+      text = `${this.cfg.name} is not installed here (\`${this.cfg.command}\` was not found). Install it, or fix its command in agents.json.`;
+    } else {
+      const tail = oneLine(proc.stderrTail().trim().split('\n').slice(-3).join(' '), 300);
+      text = `${this.cfg.name} exited unexpectedly (${info.signal ?? `code ${info.code ?? '?'}`})${tail ? `: ${tail}` : ''}`;
+    }
+    this.lost(proc, text);
+  }
+
+  /** The agent runs but takes no more input: drop it like a crash, so the next message starts a new one. */
+  private onInputLost(proc: SpawnedAgent): void {
+    if (this.proc !== proc || this.disposed) return;
+    this.lost(
+      proc,
+      `${this.cfg.name} stopped reading its input, so phone-code stopped it. Send your message again to restart it.`,
+    );
+    void proc.kill();
+  }
+
+  /** The process is gone (or unusable): end the turn as an error and wait for the next message. */
+  private lost(proc: SpawnedAgent, text: string): void {
     if (this.proc !== proc) return;
     this.proc = undefined;
     for (const w of this.waiters.values()) w.reject(new Error(`${this.cfg.name} exited`));
@@ -393,13 +422,6 @@ class AcpSession implements AgentSession {
     this.finishOpenItems('error');
     this.queue.length = 0;
     this.clearCancelTimer();
-    let text: string;
-    if (info.error && /ENOENT/.test(info.error.message)) {
-      text = `${this.cfg.name} is not installed here (\`${this.cfg.command}\` was not found). Install it, or fix its command in agents.json.`;
-    } else {
-      const tail = oneLine(proc.stderrTail().trim().split('\n').slice(-3).join(' '), 300);
-      text = `${this.cfg.name} exited unexpectedly (${info.signal ?? `code ${info.code ?? '?'}`})${tail ? `: ${tail}` : ''}`;
-    }
     this.notice('error', text);
     if (wasActive) this.emitTurn('error', text);
     this.status.turnActive = false;
@@ -440,10 +462,12 @@ class AcpSession implements AgentSession {
     const id = this.nextId++;
     onId?.(id);
     return new Promise((resolve, reject) => {
-      if (!this.proc?.writeJson({ jsonrpc: '2.0', id, method, params })) {
+      if (!this.proc) {
         reject(new Error(`${this.cfg.name} is not running`));
         return;
       }
+      // A failed write is reported through onInputLost / onExit, which reject every waiter.
+      this.proc.writeJson({ jsonrpc: '2.0', id, method, params });
       const timer =
         timeoutMs > 0
           ? setTimeout(() => {
@@ -606,6 +630,57 @@ class AcpSession implements AgentSession {
 
   private appendText(kind: 'text' | 'thinking', delta: string, messageId: string | undefined): void {
     if (!delta) return;
+    const same = (a: string | undefined): boolean => a === undefined || messageId === undefined || a === messageId;
+    if (this.held) {
+      if (kind === 'text' && same(this.held.messageId)) {
+        this.held.text += delta;
+        this.settleHeld(false);
+        return;
+      }
+      this.settleHeld(true);
+    }
+    const err = this.errorReply;
+    if (err?.last && this.text === undefined) {
+      if (kind === 'text' && same(err.messageId)) {
+        err.text += delta;
+        this.upsertItem({ kind: 'notice', id: err.id, ts: Date.now(), level: 'error', text: err.text.trim() });
+        return;
+      }
+      err.last = false;
+    }
+    const marker = this.cfg.errorReplyPrefix;
+    if (kind === 'text' && marker !== undefined && this.replay === 'none' && this.text?.kind !== 'text') {
+      // A new agent message: it may be the agent's way of reporting a failure.
+      this.closeText();
+      this.held = { text: delta, messageId };
+      this.settleHeld(false);
+      return;
+    }
+    this.streamText(kind, delta, messageId);
+  }
+
+  /**
+   * Decide about held-back text: an error notice once it starts with the
+   * marker, ordinary text once it cannot (or when `flush`: something else came).
+   */
+  private settleHeld(flush: boolean): void {
+    const held = this.held;
+    const marker = this.cfg.errorReplyPrefix;
+    if (!held || marker === undefined) return;
+    const start = held.text.trimStart();
+    if (start.startsWith(marker)) {
+      this.held = undefined;
+      const id = this.nextItemId('notice');
+      this.errorReply = { id, text: held.text, messageId: held.messageId, last: true };
+      this.upsertItem({ kind: 'notice', id, ts: Date.now(), level: 'error', text: held.text.trim() });
+      return;
+    }
+    if (!flush && marker.startsWith(start)) return; // still undecided
+    this.held = undefined;
+    this.streamText('text', held.text, held.messageId);
+  }
+
+  private streamText(kind: 'text' | 'thinking', delta: string, messageId: string | undefined): void {
     const cur = this.text;
     if (
       cur &&
@@ -628,6 +703,8 @@ class AcpSession implements AgentSession {
   }
 
   private closeText(): void {
+    this.settleHeld(true);
+    if (this.errorReply) this.errorReply.last = false;
     const cur = this.text;
     this.text = undefined;
     if (!cur) return;
@@ -661,11 +738,12 @@ class AcpSession implements AgentSession {
       ts = Date.now();
       this.toolTs.set(toolCallId, ts);
     }
-    this.upsertItem(
-      toolItem(state, this.toolItemId(toolCallId), this.opts.cwd, ts, {
-        denied: this.denied.has(toolCallId),
-      }),
-    );
+    const item = toolItem(state, this.toolItemId(toolCallId), this.opts.cwd, ts, {
+      denied: this.denied.has(toolCallId),
+    });
+    // The question card is this tool call's UI: nest the generic row under it, where it is not shown.
+    const ask = this.askTools.get(toolCallId);
+    this.upsertItem(ask === undefined ? item : { ...item, parentId: ask });
   }
 
   private onTerminal(terminalId: string, output: string, exitCode: number | null | undefined): void {
@@ -821,6 +899,12 @@ class AcpSession implements AgentSession {
     this.questions.set(item.id, { rpcId, fields, item });
     this.status.pending.add(item.id);
     this.events.upsert(item);
+    // Antigravity also shows the asking tool call ("Run ask_question"); the card replaces it.
+    const toolCallId = str(p.toolCallId);
+    if (toolCallId !== undefined) {
+      this.askTools.set(toolCallId, item.id);
+      this.renderTool(toolCallId);
+    }
     this.status.emit();
   }
 
@@ -871,6 +955,8 @@ class AcpSession implements AgentSession {
 
   private beginTurn(): void {
     this.turnSeq += 1;
+    this.held = undefined;
+    this.errorReply = undefined;
     if (this.proc) this.status.crashed = false;
     this.turnStartedAt = Date.now();
     this.costAtTurnStart = this.costNow;
@@ -958,7 +1044,8 @@ class AcpSession implements AgentSession {
     } finally {
       this.prompting = false;
       this.status.turnActive = false;
-      this.status.emit();
+      // Forced: after a failed restart the status is `error` again, but the core shows `running`.
+      this.status.emit(true);
     }
   }
 
@@ -1027,6 +1114,12 @@ class AcpSession implements AgentSession {
       this.clearCancelTimer();
     }
     this.cancelAllPending();
+    this.settleHeld(true);
+    if (outcome === 'completed' && this.errorReply?.last) {
+      // The agent reported a failure as its reply (errorReplyPrefix) and ended the turn.
+      outcome = 'error';
+      error = oneLine(this.errorReply.text.trim().slice(this.cfg.errorReplyPrefix?.length ?? 0).trim(), 300);
+    }
     this.finishOpenItems(outcome);
     this.emitTurn(outcome, outcome === 'error' ? (error ?? 'Turn failed') : undefined, usage);
     this.cancelRequested = false;
@@ -1046,7 +1139,11 @@ class AcpSession implements AgentSession {
   }
 
   async interrupt(): Promise<void> {
-    if (!this.prompting || !this.sessionId || !this.proc) return;
+    if (!this.prompting || !this.sessionId || !this.proc) {
+      // No prompt is running, but the agent may still ask (e.g. after its turn ended).
+      this.cancelAllPending();
+      return;
+    }
     this.cancelRequested = true;
     this.notify('session/cancel', { sessionId: this.sessionId });
     this.cancelAllPending();

@@ -41,6 +41,13 @@ export interface AcpAgentConfig {
   source: 'builtin' | 'config';
   /** Arguments of the agent's terminal sign-in, for the "log in first" notice when it advertises none. */
   loginArgs?: string[];
+  /**
+   * How this agent words a failure it reports as an ordinary reply instead of
+   * an error: an agent message starting with this text that ends the turn is
+   * shown as an error notice and the turn as failed. Preset-specific on
+   * purpose: the same words from another agent are just text.
+   */
+  errorReplyPrefix?: string;
 }
 
 type Preset = Omit<AcpAgentConfig, 'source' | 'env' | 'versionArgs'> & {
@@ -75,6 +82,8 @@ export const ACP_PRESETS: readonly Preset[] = [
   // prompt, request_permission, elicitation/create, cancel). It advertises no terminal auth
   // method; its sign-in for headless hosts is `agy acp --login`. The installer puts `agy` in
   // ~/.local/bin, which a daemon started by a service manager may not have on PATH.
+  // When its model call fails, agy does not fail the prompt (seen in testing): it sends the
+  // failure as an agent message "⚠ agent executor error: …" and ends the turn with end_turn.
   {
     id: 'antigravity',
     name: 'Antigravity',
@@ -82,6 +91,7 @@ export const ACP_PRESETS: readonly Preset[] = [
     args: ['acp'],
     loginArgs: ['acp', '--login'],
     fallbackPaths: ['~/.local/bin/agy'],
+    errorReplyPrefix: '⚠ agent executor error:',
   },
 ];
 
@@ -171,6 +181,7 @@ export function loadAcpAgents(env: NodeJS.ProcessEnv = process.env): AcpAgentCon
       versionArgs: p.versionArgs === undefined ? ['--version'] : p.versionArgs,
       source: 'builtin',
       ...(p.loginArgs ? { loginArgs: [...p.loginArgs] } : {}),
+      ...(p.errorReplyPrefix === undefined ? {} : { errorReplyPrefix: p.errorReplyPrefix }),
     });
   }
   for (const u of user) {
@@ -192,6 +203,7 @@ export function loadAcpAgents(env: NodeJS.ProcessEnv = process.env): AcpAgentCon
       versionArgs: u.versionArgs === undefined ? (base?.versionArgs ?? ['--version']) : u.versionArgs,
       source: 'config',
       ...(base?.loginArgs ? { loginArgs: base.loginArgs } : {}),
+      ...(base?.errorReplyPrefix === undefined ? {} : { errorReplyPrefix: base.errorReplyPrefix }),
     });
   }
   for (const c of byId.values()) {

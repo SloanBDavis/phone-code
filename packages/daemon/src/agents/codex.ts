@@ -155,6 +155,7 @@ class CodexSession implements AgentSession {
       cwd: this.opts.cwd,
       env: childEnv(this.opts.env, ['CODEX_SANDBOX', 'CODEX_SANDBOX_NETWORK_DISABLED']),
       onLine: (v) => this.onLine(v),
+      onInputLost: () => this.onInputLost(proc),
     });
     this.proc = proc;
     this.status.crashed = false;
@@ -263,6 +264,25 @@ class CodexSession implements AgentSession {
     proc: SpawnedAgent,
     info: { code: number | null; signal: NodeJS.Signals | null; error?: Error },
   ): void {
+    let text: string;
+    if (info.error && /ENOENT/.test(info.error.message)) {
+      text = `Codex CLI not found (${codexBin(this.opts.env ?? process.env)}). Install it with \`npm i -g @openai/codex\` or set PHONECODE_CODEX_BIN.`;
+    } else {
+      const tail = oneLine(proc.stderrTail().trim().split('\n').slice(-3).join(' '), 300);
+      text = `Codex exited unexpectedly (${info.signal ?? `code ${info.code ?? '?'}`})${tail ? `: ${tail}` : ''}`;
+    }
+    this.lost(proc, text);
+  }
+
+  /** The app-server runs but takes no more input: drop it like a crash, so the next message starts a new one. */
+  private onInputLost(proc: SpawnedAgent): void {
+    if (this.proc !== proc || this.disposed) return;
+    this.lost(proc, 'Codex stopped reading its input, so phone-code stopped it. Send your message again to restart it.');
+    void proc.kill();
+  }
+
+  /** The process is gone (or unusable): end the turn as an error and wait for the next message. */
+  private lost(proc: SpawnedAgent, text: string): void {
     if (this.proc !== proc) return;
     this.proc = undefined;
     for (const w of this.waiters.values()) w.reject(new Error('Codex exited'));
@@ -273,13 +293,6 @@ class CodexSession implements AgentSession {
     this.finishOpenItems('error');
     this.status.turnActive = false;
     this.turnId = undefined;
-    let text: string;
-    if (info.error && /ENOENT/.test(info.error.message)) {
-      text = `Codex CLI not found (${codexBin(this.opts.env ?? process.env)}). Install it with \`npm i -g @openai/codex\` or set PHONECODE_CODEX_BIN.`;
-    } else {
-      const tail = oneLine(proc.stderrTail().trim().split('\n').slice(-3).join(' '), 300);
-      text = `Codex exited unexpectedly (${info.signal ?? `code ${info.code ?? '?'}`})${tail ? `: ${tail}` : ''}`;
-    }
     this.notice('error', text);
     if (wasActive) {
       this.events.upsert({
@@ -313,10 +326,12 @@ class CodexSession implements AgentSession {
   private call(method: string, params: unknown, timeoutMs = 60_000): Promise<unknown> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      if (!this.proc?.writeJson({ id, method, params })) {
+      if (!this.proc) {
         reject(new Error('Codex is not running'));
         return;
       }
+      // A failed write is reported through onInputLost / onExit, which reject every waiter.
+      this.proc.writeJson({ id, method, params });
       const timer = setTimeout(() => {
         this.waiters.delete(id);
         reject(new Error(`${method} timed out`));
@@ -725,6 +740,19 @@ class CodexSession implements AgentSession {
     for (const id of this.pending.keys()) this.settle(id, 'cancelled');
   }
 
+  /** Answer every pending request with a refusal (outside a turn, nobody else resolves them). */
+  private declineAllPending(): void {
+    for (const p of [...this.pending.values()]) {
+      if (p.item.kind === 'permission') {
+        this.resolvePermission(p.item.id, 'deny');
+        this.events.upsert({ ...p.item, status: 'cancelled' });
+      } else {
+        this.settle(p.item.id, 'cancelled');
+        this.reply(p.rpcId, { answers: {} });
+      }
+    }
+  }
+
   resolvePermission(itemId: string, decision: PermissionDecision, message?: string): void {
     const p = this.pending.get(itemId);
     if (!p || p.item.kind !== 'permission') return;
@@ -795,10 +823,13 @@ class CodexSession implements AgentSession {
     try {
       await this.ready;
     } catch {
-      this.notice('error', 'Could not send: Codex is not running.');
+      this.failTurn('Could not send: Codex is not running.');
       return;
     }
-    if (!this.threadId) return;
+    if (!this.threadId) {
+      this.failTurn('Could not send: Codex has no conversation open.');
+      return;
+    }
     const input: Rec[] = [];
     for (const a of attachments ?? []) {
       if (a.mediaType.startsWith('image/'))
@@ -821,19 +852,31 @@ class CodexSession implements AgentSession {
       if (this.model) params.model = this.model;
     }
     if (!this.status.turnActive) this.beginTurn();
+    const proc = this.proc;
     try {
       const res = rec(await this.call('turn/start', params));
       this.turnId = str(rec(res.turn).id) ?? this.turnId;
       this.overridesDirty = false;
     } catch (e) {
-      this.notice('error', `Codex rejected the message: ${errorMessage(e)}`);
-      this.status.turnActive = false;
-      this.status.emit();
+      if (this.proc !== proc) return; // lost the process: lost() ended the turn
+      this.failTurn(`Codex rejected the message: ${errorMessage(e)}`);
     }
   }
 
+  /** A message that never started a turn: say why and end it as an error (the core shows it running). */
+  private failTurn(text: string): void {
+    this.notice('error', text);
+    this.events.upsert({ kind: 'turn', id: `turn:${randomUUID()}`, ts: Date.now(), outcome: 'error', error: text });
+    this.status.turnActive = false;
+    this.status.emit(true);
+  }
+
   async interrupt(): Promise<void> {
-    if (!this.threadId || !this.turnId || !this.proc) return;
+    if (!this.threadId || !this.turnId || !this.proc) {
+      // No turn to interrupt, but the app-server may still be asking: decline what is pending.
+      this.declineAllPending();
+      return;
+    }
     this.interruptRequested = true;
     this.cancelAllPending();
     try {
