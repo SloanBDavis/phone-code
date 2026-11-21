@@ -25,35 +25,50 @@ interface TailscaleInfo {
   address: string | undefined;
 }
 
+/**
+ * Ask the Tailscale CLI for its status. The whole call is raced against a
+ * hard deadline and the child is SIGKILLed: the macOS app binary can ignore
+ * SIGTERM or keep its stdout open, and startup must never wait on it.
+ */
 async function status(timeoutMs = 1500): Promise<TailscaleInfo | undefined> {
   const bin = tailscaleBin();
   if (bin === undefined) return undefined;
-  try {
-    const proc = Bun.spawn([bin, 'status', '--json'], {
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'ignore',
-      timeout: timeoutMs,
-    });
+  let proc: Bun.Subprocess<'ignore', 'pipe', 'ignore'> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => {
+      proc?.kill('SIGKILL');
+      resolve(undefined);
+    }, timeoutMs);
+  });
+  const query = async (): Promise<TailscaleInfo | undefined> => {
+    proc = Bun.spawn([bin, 'status', '--json'], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' });
     const text = await new Response(proc.stdout).text();
     if ((await proc.exited) !== 0) return undefined;
-    const st = parseJson(text);
-    if (!isRecord(st) || st['BackendState'] !== 'Running') return undefined;
-    const self = isRecord(st['Self']) ? st['Self'] : {};
-    const tailnet = isRecord(st['CurrentTailnet']) ? st['CurrentTailnet'] : {};
-    const certs: unknown = st['CertDomains'];
-    const certDomain = Array.isArray(certs)
-      ? certs.find((d): d is string => typeof d === 'string')
-      : undefined;
-    const dns = typeof self['DNSName'] === 'string' ? self['DNSName'].replace(/\.$/, '') : '';
-    const ips: unknown = self['TailscaleIPs'];
-    const ip = Array.isArray(ips)
-      ? ips.find((v): v is string => typeof v === 'string' && v.startsWith('100.'))
-      : undefined;
-    return { bin, certDomain, address: tailnet['MagicDNSEnabled'] === true && dns !== '' ? dns : ip };
+    return parseStatus(bin, text);
+  };
+  try {
+    return await Promise.race([query(), deadline]);
   } catch {
     return undefined;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+function parseStatus(bin: string, text: string): TailscaleInfo | undefined {
+  const st = parseJson(text);
+  if (!isRecord(st) || st['BackendState'] !== 'Running') return undefined;
+  const self = isRecord(st['Self']) ? st['Self'] : {};
+  const tailnet = isRecord(st['CurrentTailnet']) ? st['CurrentTailnet'] : {};
+  const certs: unknown = st['CertDomains'];
+  const certDomain = Array.isArray(certs) ? certs.find((d): d is string => typeof d === 'string') : undefined;
+  const dns = typeof self['DNSName'] === 'string' ? self['DNSName'].replace(/\.$/, '') : '';
+  const ips: unknown = self['TailscaleIPs'];
+  const ip = Array.isArray(ips)
+    ? ips.find((v): v is string => typeof v === 'string' && v.startsWith('100.'))
+    : undefined;
+  return { bin, certDomain, address: tailnet['MagicDNSEnabled'] === true && dns !== '' ? dns : ip };
 }
 
 /** MagicDNS name (or 100.x address) of this machine, if Tailscale is up. */
