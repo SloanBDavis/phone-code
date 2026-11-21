@@ -52,9 +52,42 @@ jobs:
           path: release/npm/*.tgz
           if-no-files-found: error
 
+  # Bun cross-compiles the macOS binaries on Linux, where they cannot be signed, and
+  # the signature Bun embeds does not survive on the Intel target. Re-sign both ad hoc
+  # on a Mac (Apple Silicon refuses to run a binary without a valid signature).
+  sign-macos:
+    name: Sign macOS binaries
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Re-sign and repack
+        working-directory: release
+        run: |
+          for target in darwin-arm64 darwin-x64; do
+            tar -xzf "phonecode-$target.tar.gz"
+            codesign --force --sign - "phonecode-$target/phonecode"
+            codesign --verify --verbose=2 "phonecode-$target/phonecode"
+            tar -czf "phonecode-$target.tar.gz" "phonecode-$target"
+            rm -rf "phonecode-$target"
+          done
+          shasum -a 256 phonecode-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-signed
+          path: |
+            release/*.tar.gz
+            release/SHA256SUMS
+          if-no-files-found: error
+
   smoke:
     name: Smoke test ${{ matrix.target }}
-    needs: build
+    needs: sign-macos
     strategy:
       fail-fast: false
       matrix:
@@ -72,7 +105,7 @@ jobs:
           bun-version-file: package.json
       - uses: actions/download-artifact@v4
         with:
-          name: release
+          name: release-signed
           path: release
       # Exercises install.sh end to end: platform detection, checksum, install, --version.
       - name: Install with install.sh
@@ -93,7 +126,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: release
+          name: release-signed
           path: release
       - name: Create release
         env:
