@@ -163,9 +163,13 @@ class Client {
       });
       if (c.items.has(res.itemId)) c.pending.value = c.pending.value.filter((p) => p.localId !== localId);
       else
-        c.pending.value = c.pending.value.map((p) => (p.localId === localId ? withPatch(p, { awaitId: res.itemId }) : p));
+        c.pending.value = c.pending.value.map((p) =>
+          p.localId === localId ? withPatch(p, { awaitId: res.itemId }) : p,
+        );
     } catch {
-      c.pending.value = c.pending.value.map((p) => (p.localId === localId ? withPatch(p, { status: 'failed' }) : p));
+      c.pending.value = c.pending.value.map((p) =>
+        p.localId === localId ? withPatch(p, { status: 'failed' }) : p,
+      );
     }
   }
 
@@ -206,6 +210,8 @@ class Client {
         if (!p) return;
         this.rpcs.delete(m.id);
         clearTimeout(p.timer);
+        // `data` is the result the protocol's RpcResults assigns to this call; the daemon is the source of truth.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- rpc result typed by the protocol contract
         if (m.ok) p.resolve(m.data as never);
         else p.reject(new Error(m.error));
         return;

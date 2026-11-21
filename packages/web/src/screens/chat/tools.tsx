@@ -443,10 +443,7 @@ export function TaskCard({ chat, item }: { chat: ChatState; item: Signal<ChatIte
   const kids = childrenOf(chat, t.id).value;
   const [open, setOpen] = useState(false);
   if (t.kind !== 'tool') return null;
-  const prompt =
-    t.input && typeof t.input === 'object' && 'prompt' in t.input
-      ? String(t.input.prompt)
-      : '';
+  const prompt = t.input && typeof t.input === 'object' && 'prompt' in t.input ? String(t.input.prompt) : '';
   return (
     <div class={`task-card st-${t.status}`} data-testid="chat-item-task" data-status={t.status}>
       <button type="button" class="task-head" aria-expanded={open} onClick={() => setOpen(!open)}>

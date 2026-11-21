@@ -1,3 +1,4 @@
+import type { HLJSApi } from 'highlight.js';
 import { Marked, type Tokens } from 'marked';
 import { escapeHtml } from '../../lib/ansi';
 
@@ -39,7 +40,7 @@ export function renderMarkdown(src: string): string {
 
 // ------------------------------------------------------------ highlighting
 
-type Hljs = typeof import('highlight.js/lib/core').default;
+type Hljs = HLJSApi;
 let hljs: Promise<Hljs> | null = null;
 
 function loadHljs(): Promise<Hljs> {

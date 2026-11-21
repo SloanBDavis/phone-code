@@ -7,8 +7,8 @@
 
 .chat-scroll {
   padding-top: calc(var(--safe-top) + 62px);
-  padding-bottom: calc(var(--dock-h) + 12px);
-  scroll-padding-bottom: calc(var(--dock-h) + 12px);
+  padding-bottom: calc(var(--dock-h) + var(--safe-bottom) + 22px);
+  scroll-padding-bottom: calc(var(--dock-h) + var(--safe-bottom) + 22px);
   -webkit-user-select: text;
   user-select: text;
 }
@@ -1361,6 +1361,10 @@
 
 .kb-open .dock {
   bottom: 8px;
+}
+
+.kb-open .chat-scroll {
+  padding-bottom: calc(var(--dock-h) + 22px);
 }
 
 .dock > * {

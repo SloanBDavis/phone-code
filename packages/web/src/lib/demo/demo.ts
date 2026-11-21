@@ -9,7 +9,7 @@ import {
   type ToolItem,
 } from '@phone-code/protocol';
 import type { Transport, TransportEvents } from '../transport';
-import { buildDemo, demoHost, fsList, history, HOME } from './data';
+import { buildDemo, demoHost, fsList, history, HOME, longSession } from './data';
 import { DemoShell } from './shell';
 
 interface Sim {
@@ -60,7 +60,9 @@ export class DemoTransport implements Transport {
   start(events: TransportEvents): void {
     this.events = events;
     this.live = true;
-    for (const d of buildDemo()) {
+    const long = Number(new URLSearchParams(location.search).get('demoItems') ?? 0);
+    const all = long > 0 ? [...buildDemo(), longSession(Math.min(long, 20_000))] : buildDemo();
+    for (const d of all) {
       this.sims.set(d.info.id, { info: d.info, items: d.items, seq: d.items.length, subscribed: false });
       this.order.push(d.info.id);
     }
@@ -145,7 +147,7 @@ export class DemoTransport implements Transport {
   ): Promise<void> {
     this.put(sim, { ...item, text: '', streaming: true });
     const chunks: string[] = [];
-    for (let i = 0; i < text.length; ) {
+    for (let i = 0; i < text.length;) {
       const n = 2 + Math.floor(Math.random() * 6);
       chunks.push(text.slice(i, i + n));
       i += n;
@@ -187,13 +189,13 @@ export class DemoTransport implements Transport {
         if (sim.abort) sim.abort = undefined;
       }
       this.put(sim, {
-          id: this.nid('turn'),
-          ts: Date.now(),
-          kind: 'turn',
-          outcome: 'completed',
-          durationMs: Date.now() - started,
-          costUsd: Math.round(Math.random() * 8 + 2) / 100,
-        });
+        id: this.nid('turn'),
+        ts: Date.now(),
+        kind: 'turn',
+        outcome: 'completed',
+        durationMs: Date.now() - started,
+        costUsd: Math.round(Math.random() * 8 + 2) / 100,
+      });
       this.touch(sim, { status: 'idle' });
     };
     void run();
@@ -201,7 +203,8 @@ export class DemoTransport implements Transport {
 
   private interrupted(sim: Sim, started: number): void {
     for (const it of sim.items)
-      if ((it.kind === 'text' || it.kind === 'thinking') && it.streaming) this.put(sim, { ...it, streaming: false });
+      if ((it.kind === 'text' || it.kind === 'thinking') && it.streaming)
+        this.put(sim, { ...it, streaming: false });
       else if (it.kind === 'tool' && it.status === 'running') this.put(sim, { ...it, status: 'error' });
     this.put(sim, {
       id: this.nid('turn'),
@@ -391,7 +394,9 @@ export class DemoTransport implements Transport {
           detail: {
             type: 'todos',
             todos: todo.detail.todos.map((t, i) =>
-              Object.assign({}, t, { status: i < 3 ? 'completed' : i === 3 ? 'in_progress' : 'pending' } as const),
+              Object.assign({}, t, {
+                status: i < 3 ? 'completed' : i === 3 ? 'in_progress' : 'pending',
+              } as const),
             ),
           },
         });
@@ -587,7 +592,7 @@ export class DemoTransport implements Transport {
       }
       case 'chat.interrupt': {
         const sim = this.sims.get(msg.sessionId);
-            sim?.abort?.();
+        sim?.abort?.();
         return;
       }
       case 'chat.permission': {

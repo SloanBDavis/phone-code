@@ -12,7 +12,9 @@ type Hosts = (key: number | undefined) => HTMLElement | undefined;
 
 function hostsIn(root: HTMLElement | null): Hosts {
   return (key) =>
-    key === undefined ? undefined : (root?.querySelector<HTMLElement>(`:scope > [data-key="${key}"]`) ?? undefined);
+    key === undefined
+      ? undefined
+      : (root?.querySelector<HTMLElement>(`:scope > [data-key="${key}"]`) ?? undefined);
 }
 
 function dimOf(el: HTMLElement): HTMLElement {
@@ -25,7 +27,11 @@ function dimOf(el: HTMLElement): HTMLElement {
  * survive) but are hidden from paint until a transition reveals them. A
  * popped screen stays mounted (nav.leaving) until its exit animation ends.
  */
-export function Stack({ render }: { render: (route: Route, top: boolean) => ComponentChildren }): JSX.Element {
+export function Stack({
+  render,
+}: {
+  render: (route: Route, top: boolean) => ComponentChildren;
+}): JSX.Element {
   const entries = stack.value;
   const exiting = leaving.value;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -145,8 +151,15 @@ function EdgeSwipe({
     const { top, under } = parts();
     if (!top || !under) return;
     const p = Math.max(0, Math.min(1, s.dx / s.w));
-    const ms = Math.max(160, Math.min(380, ((commit ? 1 - p : p) * DUR) / Math.max(1, Math.abs(velocity) * 1.4)));
-    const opts: KeyframeAnimationOptions = { duration: ms, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' };
+    const ms = Math.max(
+      160,
+      Math.min(380, ((commit ? 1 - p : p) * DUR) / Math.max(1, Math.abs(velocity) * 1.4)),
+    );
+    const opts: KeyframeAnimationOptions = {
+      duration: ms,
+      easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+      fill: 'forwards',
+    };
     const a = top.animate(
       [{ transform: `translate3d(${p * 100}%,0,0)` }, { transform: `translate3d(${commit ? 100 : 0}%,0,0)` }],
       opts,

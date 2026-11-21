@@ -26,7 +26,10 @@ export interface DemoSession {
   items: ChatItem[];
 }
 
-function s(info: Omit<SessionInfo, 'createdAt'> & { createdAt?: number }, items: ChatItem[] = []): DemoSession {
+function s(
+  info: Omit<SessionInfo, 'createdAt'> & { createdAt?: number },
+  items: ChatItem[] = [],
+): DemoSession {
   return { info: { createdAt: info.updatedAt - 20 * MIN, ...info }, items };
 }
 
@@ -621,4 +624,55 @@ export function history(now = Date.now()): ResumableSession[] {
       messageCount: 7,
     },
   ];
+}
+
+/**
+ * A synthetic long transcript (`?demo=1&demoItems=2000`) for checking scroll
+ * and streaming performance on real phones.
+ */
+export function longSession(count: number, now = Date.now()): DemoSession {
+  const items: ChatItem[] = [];
+  for (let i = 0; i < count; i++) {
+    const ts = now - (count - i) * 30_000;
+    const k = i % 5;
+    if (k === 0) items.push({ id: `L${i}`, ts, kind: 'user', text: `Step ${i / 5 + 1}: keep going with the refactor.` });
+    else if (k === 1)
+      items.push({
+        id: `L${i}`,
+        ts,
+        kind: 'text',
+        streaming: false,
+        text: `Working on **part ${i}**. Updated \`src/mod${i}.ts\` and checked the callers:\n\n- renamed the export\n- fixed two imports\n\n\`\`\`ts\nexport const value${i} = compute(${i});\n\`\`\``,
+      });
+    else if (k === 4) items.push({ id: `L${i}`, ts, kind: 'turn', outcome: 'completed', durationMs: 12_000, costUsd: 0.02 });
+    else
+      items.push({
+        id: `L${i}`,
+        ts,
+        kind: 'tool',
+        name: k === 2 ? 'Bash' : 'Edit',
+        title: k === 2 ? `npm test -- mod${i}` : `src/mod${i}.ts`,
+        status: 'done',
+        detail:
+          k === 2
+            ? { type: 'command', command: `npm test -- mod${i}`, exitCode: 0 }
+            : { type: 'diff', path: `src/mod${i}.ts`, added: 1, removed: 1, patch: `@@ -1,1 +1,1 @@\n-old${i}\n+new${i}` },
+        output: k === 2 ? '\x1b[32m✓\x1b[0m 12 passed' : undefined,
+      });
+  }
+  return s(
+    {
+      id: 'demo-long',
+      kind: 'agent',
+      agent: 'claude',
+      title: `Long session (${count} items)`,
+      cwd: `${HOME}/code/app`,
+      updatedAt: now - 5 * MIN,
+      status: 'idle',
+      preview: 'A very long transcript',
+      model: 'opus',
+      permissionMode: 'default',
+    },
+    items,
+  );
 }

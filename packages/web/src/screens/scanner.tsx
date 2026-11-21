@@ -25,7 +25,9 @@ export default function Scanner({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const resultRef = useRef(onResult);
-  resultRef.current = onResult;
+  useEffect(() => {
+    resultRef.current = onResult;
+  }, [onResult]);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -35,8 +37,11 @@ export default function Scanner({
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     const start = async (): Promise<void> => {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setError('This browser cannot use the camera. Paste the link instead.');
+      if (!window.isSecureContext) {
+        // Browsers only allow the camera on https pages.
+        setError(
+          'The camera needs a secure (https) connection. Use your iPhone camera app, or paste the link.',
+        );
         return;
       }
       try {

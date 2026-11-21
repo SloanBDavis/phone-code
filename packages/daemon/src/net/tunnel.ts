@@ -8,10 +8,6 @@ export interface Tunnel {
 
 const TUNNEL_URL = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
 
-export function hasCloudflared(): boolean {
-  return Bun.which('cloudflared') !== null;
-}
-
 /**
  * Watch a helper process's output streams until `pattern` appears, then keep
  * draining them so the process never blocks on a full pipe. The returned

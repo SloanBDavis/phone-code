@@ -1,4 +1,10 @@
-import type { ButtonHTMLAttributes, ComponentChildren, HTMLAttributes, JSX, TargetedMouseEvent } from 'preact';
+import type {
+  ButtonHTMLAttributes,
+  ComponentChildren,
+  HTMLAttributes,
+  JSX,
+  TargetedMouseEvent,
+} from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { attachRefraction } from '../lib/glass';
 import { haptic } from '../lib/util';
@@ -38,11 +44,7 @@ export function GlassSurface({
   const localRef = useRef<HTMLDivElement>(null);
   useRefraction(localRef, refract);
   return (
-    <div
-      {...rest}
-      ref={localRef}
-      class={`glass glass-${variant} ${cls}`}
-    >
+    <div {...rest} ref={localRef} class={`glass glass-${variant} ${cls}`}>
       {children}
     </div>
   );

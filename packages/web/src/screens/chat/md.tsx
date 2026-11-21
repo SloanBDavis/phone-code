@@ -59,8 +59,7 @@ export function Markdown({ text, streaming }: { text: string; streaming?: boolea
   const html = useMemo(() => (md ? md.renderMarkdown(text) : null), [md, text]);
 
   useEffect(() => {
-    if (!md || streaming || !ref.current) return undefined;
-    void md.highlightIn(ref.current);
+    if (md && !streaming && ref.current) void md.highlightIn(ref.current);
   }, [md, html, streaming]);
 
   if (html === null)

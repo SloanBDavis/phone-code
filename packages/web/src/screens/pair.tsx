@@ -222,7 +222,7 @@ export function InstallCoach(): JSX.Element {
           </span>
         </li>
         <li>
-          <span class="coach-icon app">
+          <span class="coach-icon is-app">
             <img src="/icons/icon.svg" alt="" width={30} height={30} />
           </span>
           <span>Open phone-code from your Home Screen. It signs itself in.</span>

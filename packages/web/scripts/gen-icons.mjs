@@ -34,17 +34,18 @@ const targets = [
 ];
 
 const browser = await pw.chromium.launch();
-const page = await browser.newPage({ deviceScaleFactor: 1 });
-for (const t of targets) {
+async function render(t) {
   const inner = t.pad ? t.size * (1 - t.pad * 2) : t.size;
   const off = t.pad ? t.size * t.pad : 0;
-  await page.setViewportSize({ width: t.size, height: t.size });
+  const page = await browser.newPage({ deviceScaleFactor: 1, viewport: { width: t.size, height: t.size } });
   await page.setContent(
     `<html><body style="margin:0;background:${t.transparent ? 'transparent' : '#040605'}">` +
       `<div style="position:absolute;left:${off}px;top:${off}px;width:${inner}px;height:${inner}px">${t.svg.replace('<svg ', `<svg width="${inner}" height="${inner}" `)}</div>` +
       `</body></html>`,
   );
   await page.screenshot({ path: resolve(pub, t.file), omitBackground: !!t.transparent });
+  await page.close();
   console.log('wrote', t.file);
 }
+await Promise.all(targets.map(render));
 await browser.close();

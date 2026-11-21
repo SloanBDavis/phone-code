@@ -41,7 +41,13 @@ export const MODES: Array<{
   },
 ];
 
-const DEFAULT_MODE = { mode: 'default', label: 'Ask before acting', short: 'Ask', icon: 'shield', hint: 'Approve edits and commands' } as const;
+const DEFAULT_MODE = {
+  mode: 'default',
+  label: 'Ask before acting',
+  short: 'Ask',
+  icon: 'shield',
+  hint: 'Approve edits and commands',
+} as const;
 
 export function modeInfo(m: PermissionMode | undefined): (typeof MODES)[number] {
   return MODES.find((x) => x.mode === m) ?? DEFAULT_MODE;

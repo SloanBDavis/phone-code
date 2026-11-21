@@ -57,8 +57,8 @@ export function secureUrlHelp(port: number): string {
   return [
     `  ${yellow('!')} No secure address your phone can reach, so phone-code only listens on this computer.`,
     '    Get an https URL in one of three ways, then start phonecode again:',
-    `    1. Tailscale with HTTPS certificates enabled ${dim('(tailscale.com/kb/1153/enabling-https)')}`,
-    `    2. Install cloudflared ${dim('(a free quick tunnel is started automatically)')}`,
+    `    1. Tailscale with HTTPS certificates enabled, private to your devices ${dim('(tailscale.com/kb/1153/enabling-https)')}`,
+    `    2. A public Cloudflare quick tunnel, if you accept a public address: ${bold('phonecode --tunnel')}`,
     `    3. Your own HTTPS reverse proxy to localhost:${port}: ${bold('phonecode --url https://your.host')}`,
     dim('    (--insecure serves plain http to your network: anyone on it can read your session.)'),
   ].join('\n');

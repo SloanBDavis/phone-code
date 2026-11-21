@@ -2,7 +2,7 @@ import { networkInterfaces } from 'node:os';
 import { log } from '../log.ts';
 import { detectTailscale, startTailscaleServe } from './tailscale.ts';
 import { isLoopbackUrl } from './transport.ts';
-import { hasCloudflared, startQuickTunnel, type Tunnel } from './tunnel.ts';
+import { startQuickTunnel, type Tunnel } from './tunnel.ts';
 
 export type UrlSource = 'explicit' | 'tunnel' | 'tailscale' | 'lan' | 'local';
 
@@ -51,7 +51,7 @@ export interface ResolveOptions {
   tunnel: boolean;
   /** --insecure: advertise plain http on the network. */
   insecure: boolean;
-  /** Try tailscale serve, then cloudflared, when nothing else was asked for. */
+  /** Try tailscale serve when nothing else was asked for. A public tunnel is never automatic. */
   auto: boolean;
   bindHost: string;
   port: number;
@@ -70,8 +70,9 @@ async function tryHelper(
 }
 
 /**
- * explicit --url > --tunnel > --insecure LAN URL > auto (tailscale serve >
- * cloudflared) > loopback only. Never yields plain http beyond loopback
+ * explicit --url > --tunnel > --insecure LAN URL > auto (tailscale serve,
+ * private to the user's own devices) > loopback only. A public tunnel is
+ * opt-in only. Never yields plain http beyond loopback
  * unless `insecure`.
  */
 export async function resolvePublicUrl(opts: ResolveOptions): Promise<PublicUrl> {
@@ -101,11 +102,6 @@ export async function resolvePublicUrl(opts: ResolveOptions): Promise<PublicUrl>
     const ts = await tryHelper('tailscale serve', () => startTailscaleServe(opts.port));
     if (ts !== undefined)
       return { url: ts.url, source: 'tailscale', phoneReachable: true, secure: true, helper: ts };
-    if (hasCloudflared()) {
-      const cf = await tryHelper('cloudflared tunnel', () => startQuickTunnel(opts.port));
-      if (cf !== undefined)
-        return { url: cf.url, source: 'tunnel', phoneReachable: true, secure: true, helper: cf };
-    }
   }
   return local;
 }

@@ -24,6 +24,7 @@
     inset 0 -1px 1px -0.5px var(--glass-spec-low),
     inset 0 0 0 0.5px var(--glass-rim),
     inset 0 0 18px -4px var(--glass-glow),
+    0 0 0 0.5px var(--glass-outline),
     0 12px 32px -12px var(--glass-shadow),
     0 2px 8px -2px var(--glass-shadow-near);
   transform: translateZ(0);

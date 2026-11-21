@@ -6,8 +6,8 @@
  *   phonecode pair | devices | revoke <id>
  *
  * Security: the daemon refuses unencrypted transport by default. It binds
- * 127.0.0.1 and only advertises an https URL (tailscale serve, a cloudflared
- * quick tunnel, or --url) or a loopback one. Plain http to the network
+ * 127.0.0.1 and only advertises an https URL (tailscale serve, an opt-in
+ * cloudflared quick tunnel, or --url) or a loopback one. Plain http to the network
  * requires --insecure, because anyone on the network could read the token
  * and the terminal.
  */
@@ -31,16 +31,17 @@ Usage
 Options
   --port <n>     port to listen on (default ${DEFAULT_PORT}, moves up if busy)
   --url <url>    public https URL of your own reverse proxy to this port
-  --tunnel       expose through a Cloudflare quick tunnel (needs cloudflared)
-  --local        this computer only: no tailscale serve / cloudflared auto-setup
+  --tunnel       expose on a PUBLIC Cloudflare quick tunnel URL (needs cloudflared)
+  --local        this computer only: no tailscale serve auto-setup
   --insecure     serve plain http to your network (anyone on it can read your
                  token and terminal); binds 0.0.0.0 unless --host is given
   --host <addr>  bind address (default 127.0.0.1; others need --insecure)
   --no-qr        do not print the QR code
 
   With no --url/--tunnel, phonecode uses \`tailscale serve\` (Tailscale with
-  HTTPS enabled), else a cloudflared quick tunnel if installed, else it only
-  listens on this computer and explains how to get an https URL.
+  HTTPS enabled, private to your own devices), else it only listens on this
+  computer and explains how to get an https URL. A public tunnel is never
+  started unless you pass --tunnel.
   -v, --version  print the version
   -h, --help     show this help
 

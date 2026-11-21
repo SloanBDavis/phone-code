@@ -267,11 +267,11 @@ code.cmd.block {
   color: var(--info);
 }
 
-.coach-icon.app {
+.coach-icon.is-app {
   background: none;
 }
 
-.coach-icon.app img {
+.coach-icon.is-app img {
   border-radius: 8px;
 }
 

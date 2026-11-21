@@ -10,7 +10,12 @@ export class ApiError extends Error {
   }
 }
 
-async function post<T>(path: string, body: unknown, check: (v: unknown) => v is T, token?: string): Promise<T> {
+async function post<T>(
+  path: string,
+  body: unknown,
+  check: (v: unknown) => v is T,
+  token?: string,
+): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (token) headers.authorization = `Bearer ${token}`;
   let res: Response;
@@ -31,12 +36,15 @@ async function post<T>(path: string, body: unknown, check: (v: unknown) => v is 
     throw new ApiError(msg, res.status);
   }
   const data = parseJson(await res.text());
-  if (!check(data)) throw new ApiError('Unexpected answer from your computer. Update phone-code?', res.status);
+  if (!check(data))
+    throw new ApiError('Unexpected answer from your computer. Update phone-code?', res.status);
   return data;
 }
 
 function isPairResponse(v: unknown): v is PairResponse {
-  return isRecord(v) && isString(v.token) && isString(v.deviceId) && isRecord(v.host) && isString(v.host.name);
+  return (
+    isRecord(v) && isString(v.token) && isString(v.deviceId) && isRecord(v.host) && isString(v.host.name)
+  );
 }
 
 function isHandoff(v: unknown): v is HandoffResponse {

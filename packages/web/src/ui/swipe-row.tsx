@@ -17,7 +17,13 @@ const openRow = signal<string | null>(null);
 
 const ACTION_W = 76;
 
-function place(content: HTMLElement | null, wrap: HTMLElement | null, x: number, animate: boolean, width: number): void {
+function place(
+  content: HTMLElement | null,
+  wrap: HTMLElement | null,
+  x: number,
+  animate: boolean,
+  width: number,
+): void {
   if (!content) return;
   content.style.transition = animate ? 'transform 420ms var(--spring)' : 'none';
   content.style.transform = x ? `translate3d(${x}px,0,0)` : '';
@@ -53,7 +59,8 @@ export function SwipeRow({
   const pastFullRef = useRef(false);
   const suppressClickRef = useRef(false);
 
-  const set = (x: number, animate: boolean): void => place(contentRef.current, wrapRef.current, x, animate, width);
+  const set = (x: number, animate: boolean): void =>
+    place(contentRef.current, wrapRef.current, x, animate, width);
 
   useEffect(() => {
     if (!gestureRef.current) place(contentRef.current, wrapRef.current, isOpen ? -width : 0, true, width);
