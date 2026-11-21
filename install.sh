@@ -70,7 +70,8 @@ fi
 command -v tar >/dev/null 2>&1 || die "need tar"
 
 tmp="$(mktemp -d 2>/dev/null || mktemp -d -t phonecode)"
-trap 'rm -rf "$tmp"' EXIT INT TERM
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 130' INT TERM
 
 say "Downloading phonecode for $target ($VERSION)..."
 fetch "$base/$asset" "$tmp/$asset" || die "download failed: $base/$asset"

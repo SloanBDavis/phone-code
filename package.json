@@ -19,6 +19,8 @@
     "dev": "bun run --filter phone-code dev"
   },
   "devDependencies": {
+    "knip": "6.47.0",
+    "lefthook": "2.2.2",
     "oxfmt": "^0.79.0",
     "oxlint": "^1.94.0",
     "oxlint-tsgolint": "latest"

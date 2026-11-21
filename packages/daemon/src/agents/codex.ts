@@ -287,7 +287,7 @@ class CodexSession implements AgentSession {
         id: `turn:${randomUUID()}`,
         ts: Date.now(),
         outcome: 'error',
-        error: text,
+        // The notice above already carries the details.
       });
     }
     this.status.crashed = true;

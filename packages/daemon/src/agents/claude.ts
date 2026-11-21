@@ -216,7 +216,7 @@ class ClaudeSession implements AgentSession {
         id: `turn:${randomUUID()}`,
         ts: Date.now(),
         outcome: 'error',
-        error: text,
+        // The notice above already carries the details.
         durationMs: this.turnStartedAt ? Date.now() - this.turnStartedAt : undefined,
       });
     }

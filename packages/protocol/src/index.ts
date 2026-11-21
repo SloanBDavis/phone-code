@@ -24,7 +24,32 @@ export const PROTOCOL_VERSION = 1;
 // ---------------------------------------------------------------- sessions
 
 export type SessionKind = 'terminal' | 'agent';
+/** Agents with a native (harness-specific) adapter in the daemon. */
 export type AgentKind = 'claude' | 'codex';
+/**
+ * Any agent the host can run: a native `AgentKind`, or the stable id of an
+ * agent driven through the Agent Client Protocol (ACP), e.g. "gemini",
+ * "opencode" or an id from the host's `agents.json`. Ids are lowercase
+ * `[a-z0-9._-]`, at most 64 characters.
+ */
+export type AgentId = AgentKind | (string & {});
+/** How the daemon talks to an agent: its own adapter, or the generic ACP adapter. */
+export type AgentImpl = 'native' | 'acp';
+
+/** One agent the host offers (native or ACP-backed). */
+export interface AgentInfo {
+  id: AgentId;
+  /** Display name, e.g. "Claude Code", "Gemini CLI". */
+  name: string;
+  impl: AgentImpl;
+  /** Installed and runnable on this host. */
+  available: boolean;
+  version?: string;
+  /** Models known before a session starts (ACP agents report theirs per session, see SessionInfo.models). */
+  models?: string[];
+  /** Built into phone-code, or defined by the user in `agents.json`. */
+  source?: 'builtin' | 'config';
+}
 
 /**
  * idle     agent is waiting for the user's next message / shell is alive
@@ -42,7 +67,9 @@ export interface SessionInfo {
   id: string;
   kind: SessionKind;
   /** Set when kind === 'agent'. */
-  agent?: AgentKind;
+  agent?: AgentId;
+  /** Display name of `agent` (e.g. "Gemini CLI"). Absent from older daemons. */
+  agentName?: string;
   title: string;
   cwd: string;
   createdAt: number; // epoch ms
@@ -52,6 +79,13 @@ export interface SessionInfo {
   preview?: string;
   model?: string;
   permissionMode?: PermissionMode;
+  /**
+   * Permission modes this session's agent can actually switch to (ACP agents
+   * advertise their own modes). Absent means all four.
+   */
+  permissionModes?: PermissionMode[];
+  /** Models this session's agent offers, when it reports them per session (ACP). */
+  models?: string[];
   /** True while there is activity the user has not seen (no subscriber when it happened). */
   unread?: boolean;
 }
@@ -64,6 +98,12 @@ export interface HostInfo {
   daemonVersion: string;
   /** Which agent CLIs are installed and usable on this host. */
   agents: Array<{ kind: AgentKind; available: boolean; version?: string; models?: string[] }>;
+  /**
+   * Every agent the host can run, native ones first, then ACP-backed ones
+   * (built-in presets found on PATH and entries from `agents.json`). Absent
+   * from older daemons; clients then fall back to `agents`.
+   */
+  agentCatalog?: AgentInfo[];
   shell: string;
 }
 
@@ -207,7 +247,7 @@ export type ClientMessage =
   /** Directory listing for the "pick a folder" UI. Result: FsListResult */
   | { t: 'fs.list'; id: string; path?: string }
   /** Past agent sessions found on the host that can be resumed. Result: ResumableSession[] */
-  | { t: 'history.list'; id: string; agent?: AgentKind }
+  | { t: 'history.list'; id: string; agent?: AgentId }
   // --- subscriptions
   | { t: 'sub'; sessionId: string; afterSeq?: number }
   | { t: 'unsub'; sessionId: string }
@@ -233,7 +273,7 @@ export type ClientMessage =
 
 export interface CreateSessionParams {
   kind: SessionKind;
-  agent?: AgentKind;
+  agent?: AgentId;
   /** Defaults to the user's home directory. `~` is expanded by the daemon. */
   cwd?: string;
   title?: string;
@@ -255,7 +295,7 @@ export interface FsListResult {
 }
 
 export interface ResumableSession {
-  agent: AgentKind;
+  agent: AgentId;
   resumeId: string;
   cwd: string;
   title: string; // first user prompt or summary

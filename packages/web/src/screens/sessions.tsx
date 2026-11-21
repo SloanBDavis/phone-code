@@ -78,8 +78,8 @@ function StatusBadge({ s }: { s: SessionInfo }): JSX.Element | null {
 
 function SessionRow({ s }: { s: SessionInfo }): JSX.Element {
   const home = host.value?.home;
-  const waitingLabel =
-    s.status === 'waiting' ? (s.preview?.startsWith('Wants') ? 'Approval' : 'Question') : null;
+  const asksApproval = /^(?:Wants|Needs permission)\b/.test(s.preview ?? '');
+  const waitingLabel = s.status === 'waiting' ? (asksApproval ? 'Approval' : 'Question') : null;
   return (
     <SwipeRow
       id={s.id}

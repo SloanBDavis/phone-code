@@ -131,7 +131,7 @@ test('a crash shows an error and the next message recovers', async ({ phone, dae
   await waitTurn(phone, 1, 'error');
   await expect(phone.testId('chat-title')).toContainText('Error');
   await phone.page.screenshot({ path: SHOTS + 'chat-crash.png' });
-  await send(phone, 'hello after the crash');
+  await send(phone, 'hello, are you back?');
   await waitTurn(phone, 2);
   await expect(lastText(phone)).toContainText('fake Claude');
   await expect(phone.testId('chat-title')).toContainText('Ready');
