@@ -4,7 +4,7 @@ import { pop } from '../lib/nav';
 import { GlassButton } from './glass';
 
 /** Tracks whether a scroller has moved past `threshold`, at most once per frame. */
-export function useScrolled<T extends HTMLElement>(threshold = 8): [RefObject<T>, boolean] {
+export function useScrolled<T extends HTMLElement>(threshold = 8): [RefObject<T | null>, boolean] {
   const ref = useRef<T>(null);
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {

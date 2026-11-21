@@ -34,8 +34,8 @@ export function Transcript({
   chat: ChatState;
   sessionId: string;
   agent: string;
-  apiRef: RefObject<ScrollApi>;
-  scrollRef: RefObject<HTMLDivElement>;
+  apiRef: RefObject<ScrollApi | null>;
+  scrollRef: RefObject<HTMLDivElement | null>;
   /** Whether new content arrived below while the reader is scrolled up. */
   jump: Signal<boolean>;
 }): JSX.Element {

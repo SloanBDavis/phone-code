@@ -110,7 +110,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
         value={text}
         placeholder={running ? 'Add to the queue…' : `Message ${session.agent === 'codex' ? 'Codex' : 'Claude'}`}
         aria-label="Message"
-        enterKeyHint="send"
+        enterkeyhint="send"
         autocapitalize="sentences"
         data-testid="composer-input"
         onInput={(e) => onInput(e.currentTarget.value)}

@@ -6,6 +6,7 @@
 //          [--model m] [--permission-mode m] [--session-id id | --resume id]
 // Framing and field names are copied from a capture of Claude Code 2.1.330.
 // Dependency-free; runs under bun or node.
+/* oxlint-disable no-await-in-loop -- a scripted agent streams and runs turns sequentially on purpose */
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -65,7 +66,7 @@ function out(msg) {
 }
 const usage = (input, output) => ({ input_tokens: input, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: output, service_tier: 'standard' });
 let totalCost = 0;
-let allowRules = []; // from allowAlways (addRules suggestions)
+const allowRules = []; // from allowAlways (addRules suggestions)
 
 // ----------------------------------------------------------------- input
 let buf = '';
@@ -208,7 +209,7 @@ function makeTurn() {
   let index = 0;
   const t = {
     msgId,
-    parent: null,
+    parent: /** @type {string | null} */ (null),
     check() {
       if (current.aborted) throw new Interrupted();
     },
@@ -540,14 +541,14 @@ async function runTurn(msg) {
   const cost = 0.0012 + 0.0003 * turnIndex;
   totalCost += cost;
   const base = { duration_ms: Date.now() - started, duration_api_ms: Date.now() - started, num_turns: 1, stop_reason: outcome === 'success' ? 'end_turn' : null, session_id: sessionId, total_cost_usd: Number(totalCost.toFixed(6)), usage: usage(1200 + turnIndex, 85), modelUsage: { [model]: { inputTokens: 1200, outputTokens: 85, costUSD: cost } }, permission_denials: [], uuid: randomUUID(), ...(msg.uuid ? { user_message_uuids: [msg.uuid] } : {}) };
-  if (outcome === 'success') out({ type: 'result', subtype: 'success', is_error: false, result: resultText ?? '', ...base });
+  if (outcome === 'success') out({ type: 'result', subtype: 'success', is_error: false, result: resultText, ...base });
   else out({ type: 'result', subtype: 'error_during_execution', is_error: true, errors: [], ...base });
   out({ type: 'system', subtype: 'session_state_changed', state: 'idle', sdk_host_only: true, uuid: randomUUID(), session_id: sessionId });
   current = null;
 }
 
 // Main loop: one turn at a time, in order.
-(async () => {
+void (async () => {
   for (;;) {
     while (queue.length === 0) await new Promise((r) => (wake = r));
     wake = null;

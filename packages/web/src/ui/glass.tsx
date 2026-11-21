@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX, Ref } from 'preact';
+import type { ButtonHTMLAttributes, ComponentChildren, HTMLAttributes, JSX, Ref } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { attachRefraction } from '../lib/glass';
 import { haptic } from '../lib/util';
@@ -36,7 +36,7 @@ export function GlassSurface({
   variant?: Variant;
   refract?: boolean;
   elRef?: Ref<HTMLDivElement>;
-} & Omit<JSX.HTMLAttributes<HTMLDivElement>, 'class' | 'ref'>): JSX.Element {
+} & Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ref'>): JSX.Element {
   const local = useRef<HTMLDivElement>(null);
   useRefraction(local, refract);
   return (
@@ -78,7 +78,7 @@ export function GlassButton({
   disabled?: boolean;
   testid?: string;
   iconSize?: number;
-} & Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'class' | 'icon' | 'label'>): JSX.Element {
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'class' | 'icon' | 'label'>): JSX.Element {
   const ref = useRef<HTMLButtonElement>(null);
   useRefraction(ref);
   return (

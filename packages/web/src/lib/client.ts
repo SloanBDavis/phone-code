@@ -15,8 +15,8 @@ import {
 } from './state';
 import type { Transport } from './transport';
 
-type RpcName = keyof RpcResults;
-type RpcRequest<T extends RpcName> = Omit<Extract<ClientMessage, { t: T }>, 'id'>;
+type DistOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+type RpcRequest = DistOmit<Extract<ClientMessage, { id: string }>, 'id'>;
 
 export interface TermListener {
   snapshot(data: string, cols: number, rows: number): void;
@@ -92,9 +92,9 @@ class Client {
     this.outbox.push(msg);
   }
 
-  rpc<T extends RpcName>(req: RpcRequest<T>): Promise<RpcResults[T]> {
+  rpc<R extends RpcRequest>(req: R): Promise<RpcResults[R['t']]> {
     const id = uid('r');
-    return new Promise<RpcResults[T]>((resolve, reject) => {
+    return new Promise<RpcResults[R['t']]>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.rpcs.delete(id);
         this.outbox = this.outbox.filter((m) => !('id' in m) || m.id !== id);

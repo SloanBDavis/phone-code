@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
-import type { ChatItem, PermissionDecision, PermissionItem, QuestionItem } from '@phone-code/protocol';
+import type { ChatItem, PermissionDecision, PermissionItem } from '@phone-code/protocol';
 import { client } from '../../lib/client';
 import { chatOf } from '../../lib/state';
 import { haptic } from '../../lib/util';
