@@ -53,10 +53,12 @@ async function run(cmd: string[], cwd = root): Promise<void> {
   if (code !== 0) throw new Error(`${cmd.join(' ')} exited with ${code}`);
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
 async function readJson(path: string): Promise<Record<string, unknown>> {
   const v: unknown = JSON.parse(await readFile(path, 'utf8'));
-  if (typeof v !== 'object' || v === null) throw new Error(`${path}: not an object`);
-  return v as Record<string, unknown>;
+  if (!isRecord(v)) throw new Error(`${path}: not an object`);
+  return v;
 }
 
 const daemonPkg = await readJson(join(root, 'packages', 'daemon', 'package.json'));
@@ -87,17 +89,22 @@ for (const t of targets) {
   const dir = join(stage, `phonecode-${t.name}`);
   await mkdir(dir, { recursive: true });
   const binary = join(dir, 'phonecode');
-  await run(['bun', join('packages', 'daemon', 'scripts', 'build.ts'), `--target=${t.bun}`, `--outfile=${binary}`]);
+  await run([
+    'bun',
+    join('packages', 'daemon', 'scripts', 'build.ts'),
+    `--target=${t.bun}`,
+    `--outfile=${binary}`,
+  ]);
   await copyFile(join(root, 'LICENSE'), join(dir, 'LICENSE'));
   await copyFile(join(root, 'README.md'), join(dir, 'README.md'));
 
   const tarball = `phonecode-${t.name}.tar.gz`;
-  // Deterministic-ish tarball: fixed owner and ordering.
-  await run(
-    ['tar', '--owner=0', '--group=0', '--numeric-owner', '-czf', join(out, tarball), '-C', stage, `phonecode-${t.name}`],
-    root,
-  );
-  const hash = new Bun.CryptoHasher('sha256').update(await Bun.file(join(out, tarball)).bytes()).digest('hex');
+  // GNU tar (the release runs on Linux): record root as the owner, not the CI user.
+  const owner = process.platform === 'linux' ? ['--owner=0', '--group=0', '--numeric-owner'] : [];
+  await run(['tar', ...owner, '-czf', join(out, tarball), '-C', stage, `phonecode-${t.name}`], root);
+  const hash = new Bun.CryptoHasher('sha256')
+    .update(await Bun.file(join(out, tarball)).bytes())
+    .digest('hex');
   sums.push(`${hash}  ${tarball}`);
 
   // npm platform package: @phone-code/<os>-<arch>

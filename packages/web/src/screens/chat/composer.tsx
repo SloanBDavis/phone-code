@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Attachment, PermissionMode, SessionInfo } from '@phone-code/protocol';
+import { agentShortLabel, findAgent } from '../../lib/agents';
 import { client } from '../../lib/client';
 import { downscaleImage } from '../../lib/image';
 import { host } from '../../lib/state';
@@ -114,7 +115,9 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
   };
 
   const mode = modeInfo(session.permissionMode);
-  const models = host.value?.agents.find((a) => a.kind === session.agent)?.models ?? [];
+  // ACP agents report their models per session; native ones up front in the host info.
+  const models = session.models ?? findAgent(host.value, session.agent ?? 'claude')?.models ?? [];
+  const modes = session.permissionModes ? MODES.filter((m) => session.permissionModes?.includes(m.mode)) : MODES;
 
   return (
     <GlassSurface class="composer" data-testid="composer">
@@ -141,7 +144,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
         rows={1}
         value={text}
         placeholder={
-          running ? 'Add to the queue…' : `Message ${session.agent === 'codex' ? 'Codex' : 'Claude'}`
+          running ? 'Add to the queue…' : `Message ${agentShortLabel(session, host.value)}`
         }
         aria-label="Message"
         enterkeyhint="send"
@@ -186,7 +189,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
               [
                 {
                   title: 'Permissions',
-                  items: MODES.map((m) => ({
+                  items: modes.map((m) => ({
                     label: m.label,
                     hint: m.hint,
                     icon: m.icon,
@@ -228,7 +231,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
               )
             }
           >
-            {session.model ?? 'Model'}
+            <span class="chip-text">{session.model ?? 'Model'}</span>
             <Icon name="down" size={12} stroke={2.6} />
           </button>
         )}

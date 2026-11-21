@@ -23,7 +23,8 @@
  * `PHONECODE_GEMINI_BIN`) replaces a preset's or entry's command; the e2e
  * suite points it at `e2e/fakes/fake-acp.mjs`.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { stateDir } from '../config.ts';
 import { log } from '../log.ts';
@@ -38,11 +39,15 @@ export interface AcpAgentConfig {
   /** Arguments that print the version (default `--version`); `null` skips the version probe. */
   versionArgs: string[] | null;
   source: 'builtin' | 'config';
+  /** Arguments of the agent's terminal sign-in, for the "log in first" notice when it advertises none. */
+  loginArgs?: string[];
 }
 
 type Preset = Omit<AcpAgentConfig, 'source' | 'env' | 'versionArgs'> & {
   env?: Record<string, string>;
   versionArgs?: string[] | null;
+  /** Where the official installer puts the binary (`~/` = home), tried when `command` is not on PATH. */
+  fallbackPaths?: string[];
 };
 
 /** Registry-confirmed launch lines (registry ids in comments where they differ). */
@@ -64,9 +69,32 @@ export const ACP_PRESETS: readonly Preset[] = [
   { id: 'cline', name: 'Cline', command: 'cline', args: ['--acp'] },
   { id: 'qoder', name: 'Qoder CLI', command: 'qodercli', args: ['--acp'] },
   { id: 'vibe', name: 'Mistral Vibe', command: 'vibe-acp', args: [], versionArgs: null }, // mistral-vibe
+  // Google Antigravity CLI: `agy acp` is its own ACP server (added in 1.5.0, per the changelog in
+  // github.com/google-antigravity/antigravity-cli); checked against the 1.5.13 Linux build
+  // (initialize, authenticate, session/new|load|resume|list|close, set_mode, set_config_option,
+  // prompt, request_permission, elicitation/create, cancel). It advertises no terminal auth
+  // method; its sign-in for headless hosts is `agy acp --login`. The installer puts `agy` in
+  // ~/.local/bin, which a daemon started by a service manager may not have on PATH.
+  {
+    id: 'antigravity',
+    name: 'Antigravity',
+    command: 'agy',
+    args: ['acp'],
+    loginArgs: ['acp', '--login'],
+    fallbackPaths: ['~/.local/bin/agy'],
+  },
 ];
 
-const RESERVED = new Set(['claude', 'codex']);
+function presetCommand(p: Preset): string {
+  if (p.fallbackPaths === undefined || Bun.which(p.command) !== null) return p.command;
+  const found = p.fallbackPaths
+    .map((f) => (f.startsWith('~/') ? join(homedir(), f.slice(2)) : f))
+    .find(existsSync);
+  return found ?? p.command;
+}
+
+/** Native adapters (always win) and the new-session sheet's terminal tile. */
+const RESERVED = new Set(['claude', 'codex', 'terminal']);
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 export function binEnvName(id: string): string {
@@ -104,7 +132,7 @@ function readUserEntries(file: string): Array<Partial<AcpAgentConfig> & { id: st
       continue;
     }
     if (RESERVED.has(id)) {
-      log.warn(`ignoring agents.json entry "${id}": phone-code drives ${id} with its native adapter`);
+      log.warn(`ignoring agents.json entry "${id}": that id is reserved (native adapter or terminal)`);
       continue;
     }
     const entry: Partial<AcpAgentConfig> & { id: string; disabled?: boolean } = { id };
@@ -112,7 +140,8 @@ function readUserEntries(file: string): Array<Partial<AcpAgentConfig> & { id: st
     if (name) entry.name = name.slice(0, 60);
     const command = str(e['command'])?.trim();
     if (command) entry.command = command;
-    if (Array.isArray(e['args'])) entry.args = arr(e['args']).filter((a): a is string => typeof a === 'string');
+    if (Array.isArray(e['args']))
+      entry.args = arr(e['args']).filter((a): a is string => typeof a === 'string');
     if (isRec(e['env'])) entry.env = stringMap(e['env']);
     if (e['versionArgs'] === null) entry.versionArgs = null;
     else if (Array.isArray(e['versionArgs']))
@@ -136,11 +165,12 @@ export function loadAcpAgents(env: NodeJS.ProcessEnv = process.env): AcpAgentCon
     byId.set(p.id, {
       id: p.id,
       name: p.name,
-      command: p.command,
+      command: presetCommand(p),
       args: [...p.args],
       env: { ...p.env },
       versionArgs: p.versionArgs === undefined ? ['--version'] : p.versionArgs,
       source: 'builtin',
+      ...(p.loginArgs ? { loginArgs: [...p.loginArgs] } : {}),
     });
   }
   for (const u of user) {
@@ -161,6 +191,7 @@ export function loadAcpAgents(env: NodeJS.ProcessEnv = process.env): AcpAgentCon
       env: { ...base?.env, ...u.env },
       versionArgs: u.versionArgs === undefined ? (base?.versionArgs ?? ['--version']) : u.versionArgs,
       source: 'config',
+      ...(base?.loginArgs ? { loginArgs: base.loginArgs } : {}),
     });
   }
   for (const c of byId.values()) {

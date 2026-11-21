@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 import type {
-  AgentKind,
+  AgentId,
   Attachment,
   ChatItem,
   CreateSessionParams,
@@ -12,7 +12,7 @@ import type {
   SessionStatus,
   UserItem,
 } from '@phone-code/protocol';
-import type { AdapterRegistry, AgentEvents, AgentSession } from '../agents/types.ts';
+import { agentDisplayName, type AdapterRegistry, type AgentEvents, type AgentSession } from '../agents/types.ts';
 import { log } from '../log.ts';
 import { randomId } from '../util/files.ts';
 import { EventLog } from './event-log.ts';
@@ -33,7 +33,12 @@ export interface ChatDeps {
   transcriptsDir: string;
 }
 
-const AGENT_NAMES: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex' };
+const AGENT_NAMES: Partial<Record<AgentId, string>> = { claude: 'Claude', codex: 'Codex' };
+
+/** Short name for titles and notices: "Claude", "Codex", else the agent's display name ("Gemini CLI"). */
+function shortName(adapters: AdapterRegistry, agent: AgentId): string {
+  return AGENT_NAMES[agent] ?? agentDisplayName(adapters, agent);
+}
 
 function oneLine(text: string, max = 140): string {
   const flat = text.replaceAll(/\s+/g, ' ').trim();
@@ -92,7 +97,7 @@ export class ChatSession implements LiveSession {
 
   static create(
     id: string,
-    agent: AgentKind,
+    agent: AgentId,
     cwd: string,
     params: CreateSessionParams,
     deps: ChatDeps,
@@ -103,7 +108,8 @@ export class ChatSession implements LiveSession {
       id,
       kind: 'agent',
       agent,
-      title: title !== undefined && title !== '' ? title : `${AGENT_NAMES[agent]} · ${basename(cwd) || cwd}`,
+      agentName: agentDisplayName(deps.adapters, agent),
+      title: title !== undefined && title !== '' ? title : `${shortName(deps.adapters, agent)} · ${basename(cwd) || cwd}`,
       cwd,
       createdAt: now,
       updatedAt: now,
@@ -123,6 +129,8 @@ export class ChatSession implements LiveSession {
     const status: SessionStatus =
       rec.info.status === 'running' || rec.info.status === 'waiting' ? 'idle' : rec.info.status;
     const info: SessionInfo = { ...rec.info, status };
+    if (info.agent !== undefined && info.agentName === undefined)
+      info.agentName = agentDisplayName(deps.adapters, info.agent);
     const s = new ChatSession(deps, info, rec.seq + RESTORE_SEQ_MARGIN, rec.titleLocked, rec.nativeSessionId);
     s.autoTitle = false;
     return s;
@@ -158,6 +166,14 @@ export class ChatSession implements LiveSession {
     await this.ensureLoaded();
     const kind = this.info.agent ?? 'claude';
     const adapter = this.deps.adapters[kind];
+    if (adapter === undefined) {
+      this.notice(
+        'error',
+        `${this.info.agentName ?? kind} is not set up on this computer any more (no agent "${kind}" in phone-code's agent list).`,
+      );
+      this.setStatus('error');
+      return undefined;
+    }
     this.generation += 1;
     const events = this.eventsFor(this.generation);
     this.suppressHistory = this.items.length > 0 && this.nativeSessionId !== undefined;
@@ -181,7 +197,7 @@ export class ChatSession implements LiveSession {
       log.warn(`agent ${kind} failed to start for session ${this.info.id}`, err);
       this.notice(
         'error',
-        `Could not start ${AGENT_NAMES[kind]}: ${err instanceof Error ? err.message : String(err)}`,
+        `Could not start ${shortName(this.deps.adapters, kind)}: ${err instanceof Error ? err.message : String(err)}`,
       );
       this.setStatus('error');
       return undefined;
@@ -213,6 +229,8 @@ export class ChatSession implements LiveSession {
         if (!live()) return;
         if (meta.model !== undefined) this.info.model = meta.model;
         if (meta.permissionMode !== undefined) this.info.permissionMode = meta.permissionMode;
+        if (meta.permissionModes !== undefined) this.info.permissionModes = meta.permissionModes;
+        if (meta.models !== undefined) this.info.models = meta.models;
         if (meta.title !== undefined && meta.title.trim() !== '' && !this.titleLocked) {
           this.info.title = oneLine(meta.title, 100);
           this.autoTitle = false;

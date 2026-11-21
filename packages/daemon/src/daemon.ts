@@ -108,8 +108,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   let publicUrl = '';
 
   const pairUrlFor = (code: string): string => `${publicUrl}/#/pair?c=${encodeURIComponent(code)}`;
+  // Test hook: a shorter pairing code lifetime (the e2e suite checks expiry).
+  const pairTtl = Number(process.env['PHONECODE_PAIR_TTL_MS']);
   const newPairCode = (): PairCode => {
-    const { code, expiresAt } = pairing.create('pair');
+    const { code, expiresAt } = pairing.create('pair', pairTtl > 0 ? pairTtl : undefined);
     return { code, expiresAt, pairUrl: pairUrlFor(code) };
   };
 

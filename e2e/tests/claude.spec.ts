@@ -1,31 +1,33 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../lib/fixtures.ts';
-import { createSession, lastText, send, SHOTS, waitTurn } from '../lib/ui.ts';
+import { createSession, lastText, send, shot, waitTurn } from '../lib/ui.ts';
 
-test('streams a markdown answer', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude');
+test('streams a markdown answer', async ({ phone }) => {
+  await createSession(phone, 'claude');
   await send(phone, 'hello there');
   await expect(phone.testId('chat-item-user')).toContainText('hello there');
   await waitTurn(phone, 1);
   const text = lastText(phone);
   await expect(text).toHaveAttribute('data-streaming', 'false');
   await expect(text.locator('strong, code, li').first()).toBeVisible();
-  await phone.page.screenshot({ path: SHOTS + 'chat-hello.png' });
+  await shot(phone, 'chat-hello');
 });
 
-test('Bash permission: allow, deny, deny with feedback, always allow', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude');
+test('Bash permission: allow, deny, deny with feedback, always allow', async ({ phone }) => {
+  await createSession(phone, 'claude');
   const perm = phone.testId('chat-item-permission');
 
   await send(phone, 'run tests please');
   await expect(perm.last()).toHaveAttribute('data-status', 'pending');
   await expect(perm.last()).toContainText('npm test');
-  await phone.page.screenshot({ path: SHOTS + 'chat-perm.png' });
+  await shot(phone, 'chat-perm');
   await perm.last().getByTestId('permission-allow').click();
   await waitTurn(phone, 1);
   await expect(perm.nth(0)).toHaveAttribute('data-status', 'allowed');
-  await expect(phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]').first()).toHaveAttribute('data-status', 'done');
+  await expect(
+    phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]').first(),
+  ).toHaveAttribute('data-status', 'done');
   await expect(phone.testId('transcript').locator('table')).toBeVisible();
 
   await send(phone, 'run tests again');
@@ -58,7 +60,7 @@ test('Bash permission: allow, deny, deny with feedback, always allow', async ({ 
 });
 
 test('Edit shows a diff and really changes the file', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude', { folder: daemon.folder('edit-claude') });
+  await createSession(phone, 'claude', { folder: daemon.folder('edit-claude') });
   const file = join(daemon.userHome, 'edit-claude', 'notes.md');
   await send(phone, 'edit file');
   const perm = phone.testId('chat-item-permission').last();
@@ -79,16 +81,16 @@ test('Edit shows a diff and really changes the file', async ({ phone, daemon }) 
   await expect(edit).toHaveAttribute('data-status', 'done');
   await edit.locator('.tool-head').click();
   await expect(edit.getByTestId('diff-view')).toContainText('hello phone-code');
-  await phone.page.screenshot({ path: SHOTS + 'chat-diff.png' });
+  await shot(phone, 'chat-diff');
 });
 
-test('question card is answered', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude');
+test('question card is answered', async ({ phone }) => {
+  await createSession(phone, 'claude');
   await send(phone, 'ask me something');
   const q = phone.testId('chat-item-question');
   await expect(q).toHaveAttribute('data-status', 'pending');
   await expect(q).toContainText('Which package manager should I use?');
-  await phone.page.screenshot({ path: SHOTS + 'chat-question.png' });
+  await shot(phone, 'chat-question');
   await q.getByTestId('question-option').first().click();
   await q.getByTestId('question-submit').click();
   await expect(q).toHaveAttribute('data-status', 'answered');
@@ -98,8 +100,8 @@ test('question card is answered', async ({ phone, daemon }) => {
   await expect(lastText(phone)).toContainText(label.trim());
 });
 
-test('todo list updates live', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude');
+test('todo list updates live', async ({ phone }) => {
+  await createSession(phone, 'claude');
   await send(phone, 'make a todo list');
   const todo = phone.testId('chat-item-todo').last();
   await expect(todo).toBeVisible();
@@ -107,8 +109,8 @@ test('todo list updates live', async ({ phone, daemon }) => {
   await waitTurn(phone, 1);
 });
 
-test('interrupting a long stream', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude');
+test('interrupting a long stream', async ({ phone }) => {
+  await createSession(phone, 'claude');
   await send(phone, 'tell me something long');
   const text = lastText(phone);
   await expect(text).toHaveAttribute('data-streaming', 'true');
@@ -123,14 +125,14 @@ test('interrupting a long stream', async ({ phone, daemon }) => {
   await waitTurn(phone, 2);
 });
 
-test('a crash shows an error and the next message recovers', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude');
+test('a crash shows an error and the next message recovers', async ({ phone }) => {
+  await createSession(phone, 'claude');
   await send(phone, 'please crash now');
   const notice = phone.testId('chat-item-notice').last();
   await expect(notice).toContainText(/exited unexpectedly/);
   await waitTurn(phone, 1, 'error');
   await expect(phone.testId('chat-title')).toContainText('Error');
-  await phone.page.screenshot({ path: SHOTS + 'chat-crash.png' });
+  await shot(phone, 'chat-crash');
   await send(phone, 'hello, are you back?');
   await waitTurn(phone, 2);
   await expect(lastText(phone)).toContainText('fake Claude');
@@ -138,7 +140,7 @@ test('a crash shows an error and the next message recovers', async ({ phone, dae
 });
 
 test('switching permission mode and model', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude', { folder: daemon.folder('modes-claude') });
+  await createSession(phone, 'claude', { folder: daemon.folder('modes-claude') });
   await phone.testId('composer-mode').click();
   await phone.testId('mode-menu').getByTestId('mode-acceptEdits').click();
   await expect(phone.testId('composer-mode')).toHaveText(/Edits/);
@@ -165,7 +167,7 @@ const PNG = Buffer.from(
 );
 
 test('attaching a photo', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'claude');
+  await createSession(phone, 'claude');
   await phone.testId('composer-file').setInputFiles({ name: 'shot.png', mimeType: 'image/png', buffer: PNG });
   await expect(phone.testId('composer').locator('.att img')).toBeVisible();
   await send(phone, 'what is in this photo');

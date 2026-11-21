@@ -3,8 +3,23 @@
  * browser contexts) that fail the test on any unexpected console error or
  * uncaught page error.
  */
-import { test as base, expect, devices, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import {
+  test as base,
+  expect,
+  devices,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from '@playwright/test';
 import { Daemon, type DaemonOptions } from './daemon.ts';
+import { parse, str } from './json.ts';
+
+declare global {
+  interface Window {
+    /** The app's websockets, recorded by an init script (see openPhone). */
+    e2eSockets?: WebSocket[];
+  }
+}
 
 export { expect };
 
@@ -49,12 +64,28 @@ export class Phone {
     await expect(this.testId('conn-state')).toHaveAttribute('data-status', 'open');
   }
 
+  /** Cut the network: go offline and drop the open websockets. */
+  async goOffline(): Promise<void> {
+    await this.context.setOffline(true);
+    await this.page.evaluate(() => {
+      for (const ws of window.e2eSockets ?? []) ws.close();
+    });
+    await expect.poll(() => this.openSockets()).toBe(0);
+  }
+
+  async goOnline(): Promise<void> {
+    await this.context.setOffline(false);
+    await expect.poll(() => this.openSockets(), { timeout: 20_000 }).toBe(1);
+  }
+
+  openSockets(): Promise<number> {
+    return this.page.evaluate(() => (window.e2eSockets ?? []).filter((ws) => ws.readyState === 1).length);
+  }
+
   /** The device id this phone was paired as (from storage). */
   async deviceId(): Promise<string> {
-    return this.page.evaluate(() => {
-      const raw = localStorage.getItem('pc.creds');
-      return raw === null ? '' : (JSON.parse(raw) as { deviceId: string }).deviceId;
-    });
+    const raw = await this.page.evaluate(() => localStorage.getItem('pc.creds'));
+    return raw === null ? '' : str(parse(raw), 'deviceId');
   }
 }
 
@@ -77,6 +108,18 @@ async function openPhone(browser: Browser, daemon: Daemon, phones: Phone[]): Pro
     ...IPHONE,
     baseURL: daemon.url,
     serviceWorkers: 'block',
+  });
+  // Keep a handle on the app's websockets so a test can cut them like a flaky network would.
+  await context.addInitScript(() => {
+    const Native = window.WebSocket;
+    const sockets: WebSocket[] = [];
+    Object.assign(window, { e2eSockets: sockets });
+    window.WebSocket = class extends Native {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        sockets.push(this);
+      }
+    };
   });
   const page = await context.newPage();
   const p = new Phone(context, page, daemon);

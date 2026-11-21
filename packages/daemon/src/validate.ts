@@ -3,7 +3,7 @@
  * is rebuilt field by field, so unknown properties never reach the core.
  */
 import type {
-  AgentKind,
+  AgentId,
   Attachment,
   ClientMessage,
   CreateSessionParams,
@@ -55,7 +55,14 @@ function optOneOf<T extends string>(o: Obj, key: string, values: readonly T[]): 
   return o[key] === undefined || o[key] === null ? undefined : oneOf(o, key, values);
 }
 
-const AGENTS: readonly AgentKind[] = ['claude', 'codex'];
+/** Native kinds and ACP agent ids share one shape (see AgentId); the manager checks the id is known. */
+const AGENT_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+function optAgent(o: Obj, key: string): AgentId | undefined {
+  const v = o[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'string' || !AGENT_ID.test(v)) throw new Invalid(`${key} must be an agent id`);
+  return v;
+}
 const KINDS: readonly SessionKind[] = ['terminal', 'agent'];
 const MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
 const DECISIONS: readonly PermissionDecision[] = ['allow', 'allowAlways', 'deny'];
@@ -90,7 +97,7 @@ function attachments(v: unknown): Attachment[] | undefined {
 function createParams(v: unknown): CreateSessionParams {
   const p = obj(v, 'params');
   const out: CreateSessionParams = { kind: oneOf(p, 'kind', KINDS) };
-  const agent = optOneOf(p, 'agent', AGENTS);
+  const agent = optAgent(p, 'agent');
   if (out.kind === 'agent' && agent === undefined) throw new Invalid('agent is required for agent sessions');
   if (agent !== undefined) out.agent = agent;
   const cwd = optStr(p, 'cwd', 4096);
@@ -135,7 +142,7 @@ function parseObject(o: Obj): ClientMessage {
       return { t, id: str(o, 'id', ID_MAX, 1), ...(path === undefined ? {} : { path }) };
     }
     case 'history.list': {
-      const agent = optOneOf(o, 'agent', AGENTS);
+      const agent = optAgent(o, 'agent');
       return { t, id: str(o, 'id', ID_MAX, 1), ...(agent === undefined ? {} : { agent }) };
     }
     case 'sub': {

@@ -30,7 +30,7 @@
 (*  - "Work" is an rpc whose handler awaits I/O (session.create's           *)
 (*    assertDirectory, chat.send on a not yet loaded transcript, ...).      *)
 (***************************************************************************)
-EXTENDS Naturals, Sequences, FiniteSets
+EXTENDS Naturals, Sequences, FiniteSets, TLC
 
 CONSTANTS
     Codes, Devs, Conns, IPs,
@@ -307,6 +307,9 @@ Next ==
     \/ \E w \in work : WorkDone(w)
 
 Spec == Init /\ [][Next]_vars /\ \A k \in Conns : WF_vars(PreAuthFail(k))
+
+(* Code, device, socket and IP slots are interchangeable (safety runs only). *)
+Symmetry == Permutations(Codes) \cup Permutations(Devs) \cup Permutations(Conns) \cup Permutations(IPs)
 
 ------------------------------------------------------------------------------
 (* ---------------- properties -------------------------------------------- *)

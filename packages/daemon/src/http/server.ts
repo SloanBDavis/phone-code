@@ -126,6 +126,15 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     return json(res);
   }
 
+  /** The phone unpairs itself: forget its token so it stops working everywhere. */
+  function unpair(req: Request): Response {
+    const token = bearer(req);
+    const device = token === undefined ? undefined : opts.devices.authenticate(token);
+    if (device === undefined) return json({ error: 'unauthorized' }, 401);
+    opts.control.revoke(device.id);
+    return json({ ok: true });
+  }
+
   async function control(req: Request, path: string): Promise<Response> {
     if (path === '/_control/status' && req.method === 'GET') return json(opts.control.status());
     if (path === '/_control/pair' && req.method === 'POST') return json(opts.control.newPairCode());
@@ -174,6 +183,7 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     if (path.startsWith('/api/')) {
       if (path === '/api/pair' && req.method === 'POST') return pair(req, ip);
       if (path === '/api/handoff' && req.method === 'POST') return handoff(req);
+      if (path === '/api/unpair' && req.method === 'POST') return unpair(req);
       if (path === '/api/health' && req.method === 'GET') return json({ ok: true, version: DAEMON_VERSION });
       return json({ error: 'not found' }, 404);
     }

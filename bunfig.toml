@@ -1,0 +1,7 @@
+# Bun configuration for the whole monorepo.
+[install]
+# Save exact versions on `bun add`, so the lockfile is not the only thing pinning them.
+exact = true
+# Workspaces get their own node_modules with only the packages they declare.
+linker = "isolated"
+# CI installs with `bun install --frozen-lockfile`; locally the lockfile may change.

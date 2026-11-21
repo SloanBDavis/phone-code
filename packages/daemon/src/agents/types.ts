@@ -99,7 +99,9 @@ const NATIVE_NAMES: Record<AgentKind, string> = { claude: 'Claude Code', codex: 
 export function agentDisplayName(adapters: AdapterRegistry, id: AgentId): string {
   const a = adapters[id];
   if (a?.name !== undefined) return a.name;
-  return id === 'claude' || id === 'codex' ? NATIVE_NAMES[id] : id;
+  if (id === 'claude') return NATIVE_NAMES.claude;
+  if (id === 'codex') return NATIVE_NAMES.codex;
+  return id;
 }
 
 /** All adapters, native first, in registry order. */

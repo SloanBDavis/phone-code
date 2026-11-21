@@ -3,6 +3,7 @@ import { useSignal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import '../../styles/chat.css';
 import { copyLastResponse, deleteSession, renameSession } from '../../lib/actions';
+import { agentLabel, agentShortLabel } from '../../lib/agents';
 import { client } from '../../lib/client';
 import { chatOf, host, sessionById } from '../../lib/state';
 import { copyText, tildify } from '../../lib/util';
@@ -45,7 +46,7 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
   }, []);
 
   if (!s) return null;
-  const agent = s.agent === 'codex' ? 'Codex' : 'Claude';
+  const agent = agentShortLabel(s, host.value);
   const loaded = chat.loaded.value;
   const empty = loaded && chat.ids.value.length === 0 && chat.pending.value.length === 0;
 
@@ -95,7 +96,7 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
         ) : empty ? (
           <div class="chat-empty">
             <Glyph kind={glyphOf(s)} size={58} />
-            <h2>{agent === 'Claude' ? 'Claude Code' : 'Codex'}</h2>
+            <h2>{agentLabel(s, host.value)}</h2>
             <p>
               in <code class="cmd">{tildify(s.cwd, host.value?.home)}</code>
             </p>

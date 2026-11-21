@@ -141,7 +141,10 @@ class Client {
     set.add(l);
     return () => {
       set.delete(l);
-      if (set.size === 0) this.term.delete(sessionId);
+      if (set.size > 0) return;
+      this.term.delete(sessionId);
+      // The next terminal view starts empty, so it needs a full snapshot, not a replay.
+      this.seqs.delete(sessionId);
     };
   }
 

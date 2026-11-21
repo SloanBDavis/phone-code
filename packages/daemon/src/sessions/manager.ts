@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { basename } from 'node:path';
-import type { AgentKind, CreateSessionParams, ResumableSession, SessionInfo } from '@phone-code/protocol';
+import type { AgentId, CreateSessionParams, ResumableSession, SessionInfo } from '@phone-code/protocol';
 import type { AdapterRegistry } from '../agents/types.ts';
 import type { StatePaths } from '../config.ts';
 import { assertDirectory, expandPath } from '../fs-list.ts';
@@ -136,7 +136,8 @@ export class SessionManager implements SessionHost {
     const id = randomId(9);
     let session: AnySession;
     if (params.kind === 'agent') {
-      const agent: AgentKind = params.agent ?? 'claude';
+      const agent: AgentId = params.agent ?? 'claude';
+      if (this.adapters[agent] === undefined) throw new Error(`Unknown agent "${agent}"`);
       session = ChatSession.create(id, agent, cwd, params, this.chatDeps());
     } else {
       const shell = userShell();
@@ -174,11 +175,12 @@ export class SessionManager implements SessionHost {
     return true;
   }
 
-  async history(agent: AgentKind | undefined): Promise<ResumableSession[]> {
-    const kinds: AgentKind[] = agent === undefined ? ['claude', 'codex'] : [agent];
+  async history(agent: AgentId | undefined): Promise<ResumableSession[]> {
+    // Without an agent: the native ones only (listing an ACP agent's sessions starts its process).
+    const kinds: AgentId[] = agent === undefined ? ['claude', 'codex'] : [agent];
     const lists = await Promise.all(
       kinds.map((k) =>
-        this.adapters[k].listResumable(50).catch((err: unknown) => {
+        (this.adapters[k]?.listResumable(50) ?? Promise.resolve([])).catch((err: unknown) => {
           log.warn(`listResumable failed for ${k}`, err);
           return [];
         }),

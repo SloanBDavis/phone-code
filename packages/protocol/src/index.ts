@@ -349,6 +349,12 @@ export interface HandoffResponse {
   expiresAt: number;
 }
 
+/*
+ * Unpair: POST /api/unpair with `Authorization: Bearer <token>` -> {ok: true}.
+ * The daemon forgets the device: its token stops working and its open
+ * websockets are closed.
+ */
+
 /** Result type helpers for rpc calls. */
 export interface RpcResults {
   'session.create': SessionInfo;

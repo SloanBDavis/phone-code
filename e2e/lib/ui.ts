@@ -1,6 +1,5 @@
 /** UI steps shared by the specs, written the way a user moves through the app. */
 import { expect, type Locator } from '@playwright/test';
-import type { Daemon } from './daemon.ts';
 import type { Phone } from './fixtures.ts';
 
 export type Kind = 'claude' | 'codex' | 'terminal';
@@ -12,7 +11,6 @@ export type Kind = 'claude' | 'codex' | 'terminal';
  */
 export async function createSession(
   phone: Phone,
-  daemon: Daemon,
   kind: Kind,
   opts: { folder?: string; model?: string; mode?: string } = {},
 ): Promise<string> {
@@ -22,7 +20,7 @@ export async function createSession(
   await expect(sheet).toBeVisible();
   await sheet.getByTestId(`new-kind-${kind}`).click();
   await expect(sheet.getByTestId(`new-kind-${kind}`)).toHaveAttribute('aria-pressed', 'true');
-  await pickFolder(phone, daemon, opts.folder ?? 'project');
+  await pickFolder(phone, opts.folder ?? 'project');
   if (opts.model !== undefined) {
     await sheet.getByTestId('new-model').click();
     await page.getByRole('menuitem', { name: opts.model }).click();
@@ -41,7 +39,7 @@ export async function createSession(
 }
 
 /** In the open new-session sheet: choose `folder` (relative to HOME) with the folder picker. */
-export async function pickFolder(phone: Phone, daemon: Daemon, folder: string): Promise<void> {
+export async function pickFolder(phone: Phone, folder: string): Promise<void> {
   const sheet = phone.testId('new-session-sheet');
   await sheet.getByTestId('new-folder').click();
   const picker = phone.testId('folder-picker');
@@ -56,14 +54,16 @@ export async function pickFolder(phone: Phone, daemon: Daemon, folder: string): 
   }
   for (const part of folder.split('/').filter(Boolean)) {
     const before = await crumb.innerText();
-    await picker.getByTestId('folder-entry').filter({ hasText: new RegExp(`^${part}$`) }).click();
+    await picker
+      .getByTestId('folder-entry')
+      .filter({ hasText: new RegExp(`^${part}$`) })
+      .click();
     await expect(crumb).not.toHaveText(before);
   }
   await picker.getByTestId('folder-choose').click();
   await expect(picker).toBeHidden();
-  const name = folder.split('/').filter(Boolean).pop() ?? '~';
+  const name = folder.split('/').findLast((p) => p !== '') ?? '~';
   await expect(sheet.getByTestId('new-folder')).toContainText(name);
-  void daemon;
 }
 
 export function row(phone: Phone, sessionId: string): Locator {
@@ -97,3 +97,15 @@ export async function back(phone: Phone): Promise<void> {
 
 /** Where screenshots taken for visual review go (E2E_SHOTS, default the OS temp dir). */
 export const SHOTS = `${process.env['E2E_SHOTS'] ?? `${process.env['TMPDIR'] ?? '/tmp'}/phonecode-shots`}/`;
+
+/** Screenshot for visual review once screen transitions have settled. */
+export async function shot(phone: Phone, name: string): Promise<void> {
+  await expect(phone.page.locator('.screen-host.moving')).toHaveCount(0);
+  await phone.page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  await phone.page.screenshot({ path: `${SHOTS}${name}.png` });
+}

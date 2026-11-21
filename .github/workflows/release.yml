@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build release artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+        env:
+          CI: 'true'
+      # Cross-compiles every target; fails if the tag does not match packages/daemon/package.json.
+      - run: bun run release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            release/*.tar.gz
+            release/SHA256SUMS
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: release/npm/*.tgz
+          if-no-files-found: error
+
+  smoke:
+    name: Smoke test ${{ matrix.target }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+          - { os: macos-latest, target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      # Exercises install.sh end to end: platform detection, checksum, install, --version.
+      - name: Install with install.sh
+        run: PHONECODE_BASE_URL="file://$PWD/release" PHONECODE_INSTALL="$RUNNER_TEMP/bin" sh install.sh
+      - name: Verify the macOS code signature
+        if: runner.os == 'macOS'
+        run: codesign --verify --verbose=2 "$RUNNER_TEMP/bin/phonecode"
+      - name: Pair and run a terminal
+        run: bun scripts/smoke-binary.ts "$RUNNER_TEMP/bin/phonecode"
+
+  publish:
+    name: Create GitHub release
+    needs: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" release/*.tar.gz release/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --verify-tag $prerelease

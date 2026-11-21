@@ -3,25 +3,25 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/*.ts", "scripts/npm/launcher.cjs"],
-      "project": ["scripts/**/*.{ts,cjs}"]
+      "project": ["scripts/**/*.{ts,cjs}"],
     },
     "packages/daemon": {
       "entry": ["src/screen-worker.ts"],
-      "project": ["src/**/*.ts", "scripts/**/*.ts"]
+      "project": ["src/**/*.ts", "scripts/**/*.ts"],
     },
     "packages/web": {
       "entry": ["src/sw.js", "scripts/*.mjs"],
       "project": ["src/**/*.{ts,tsx,js}", "scripts/**/*.mjs"],
       // gen-icons.mjs uses a globally installed Playwright on purpose (see its header).
-      "ignoreDependencies": ["playwright"]
+      "ignoreDependencies": ["playwright"],
     },
     "packages/protocol": {},
     "e2e": {
       "entry": ["fakes/*.mjs"],
-      "project": ["**/*.{ts,mjs}"]
-    }
+      "project": ["**/*.{ts,mjs}"],
+    },
   },
   // Unused exports and types are not enforced yet (46 findings in src when this
   // was added). See them with: bunx knip --include exports,types
-  "exclude": ["exports", "types"]
+  "exclude": ["exports", "types"],
 }

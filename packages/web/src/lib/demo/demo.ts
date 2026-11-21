@@ -474,7 +474,8 @@ export class DemoTransport implements Transport {
           status: 'idle',
           ...(p.kind === 'agent'
             ? {
-                model: p.model ?? demoHost.agents.find((a) => a.kind === p.agent)?.models?.[0],
+                model: p.model ?? demoHost.agentCatalog?.find((a) => a.id === p.agent)?.models?.[0],
+                ...(p.agent ? { agentName: demoHost.agentCatalog?.find((a) => a.id === p.agent)?.name ?? p.agent } : {}),
                 permissionMode: p.permissionMode ?? 'default',
               }
             : {}),

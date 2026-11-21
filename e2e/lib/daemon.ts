@@ -7,17 +7,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { num, parse, record, str } from './json.ts';
 
 export const REPO = resolve(import.meta.dirname, '..', '..');
 const CLI = join(REPO, 'packages/daemon/src/cli.ts');
 const FAKES = join(REPO, 'e2e/fakes');
-
-interface Ready {
-  url: string;
-  port: number;
-  pairCode: string;
-  pairUrl: string;
-}
 
 function freePort(): Promise<number> {
   return new Promise((ok, fail) => {
@@ -90,6 +84,7 @@ export class Daemon {
       CLAUDE_CONFIG_DIR: join(this.userHome, '.claude'),
       CODEX_HOME: join(this.userHome, '.codex'),
       FAKE_SPEED: '2',
+      ...(process.env['E2E_WEB_DIR'] === undefined ? {} : { PHONECODE_WEB_DIR: process.env['E2E_WEB_DIR'] }),
       ...this.opts.env,
     };
   }
@@ -102,20 +97,20 @@ export class Daemon {
     });
     this.proc = proc;
     this.exited = new Promise((ok) => proc.once('exit', () => ok()));
-    const ready = await new Promise<Ready>((ok, fail) => {
+    const ready = await new Promise<unknown>((ok, fail) => {
       let buf = '';
       const timer = setTimeout(() => fail(new Error(`daemon did not start:\n${this.output}`)), 15_000);
-      proc.stdout?.on('data', (chunk: Buffer) => {
+      proc.stdout.on('data', (chunk: Buffer) => {
         const s = chunk.toString();
         this.output += s;
         buf += s;
         const m = /PHONECODE_READY (\{.*\})\n/.exec(buf);
         if (m?.[1] !== undefined) {
           clearTimeout(timer);
-          ok(JSON.parse(m[1]) as Ready);
+          ok(parse(m[1]));
         }
       });
-      proc.stderr?.on('data', (chunk: Buffer) => {
+      proc.stderr.on('data', (chunk: Buffer) => {
         this.output += chunk.toString();
       });
       proc.once('exit', (code) => {
@@ -123,10 +118,10 @@ export class Daemon {
         fail(new Error(`daemon exited with ${code}:\n${this.output}`));
       });
     });
-    if (ready.port !== this.port) throw new Error(`daemon moved to port ${ready.port}`);
-    this.url = ready.url;
-    this.pairCode = ready.pairCode;
-    this.pairUrl = ready.pairUrl;
+    if (num(ready, 'port') !== this.port) throw new Error(`daemon moved to port ${num(ready, 'port')}`);
+    this.url = str(ready, 'url');
+    this.pairCode = str(ready, 'pairCode');
+    this.pairUrl = str(ready, 'pairUrl');
   }
 
   /** Stop gracefully (SIGTERM), as Ctrl-C would. */
@@ -152,11 +147,8 @@ export class Daemon {
   }
 
   private control(): { port: number; token: string } {
-    const v = JSON.parse(readFileSync(join(this.home, 'control.json'), 'utf8')) as {
-      port: number;
-      token: string;
-    };
-    return v;
+    const v = parse(readFileSync(join(this.home, 'control.json'), 'utf8'));
+    return { port: num(v, 'port'), token: str(v, 'token') };
   }
 
   private async call(method: string, path: string, body?: unknown): Promise<unknown> {
@@ -172,12 +164,13 @@ export class Daemon {
 
   /** A fresh single-use pairing code, like `phonecode pair`. */
   async newPairCode(): Promise<{ code: string; pairUrl: string }> {
-    return (await this.call('POST', '/_control/pair')) as { code: string; pairUrl: string };
+    const r = await this.call('POST', '/_control/pair');
+    return { code: str(r, 'code'), pairUrl: str(r, 'pairUrl') };
   }
 
   async devices(): Promise<Array<{ id: string; name: string }>> {
-    const r = (await this.call('GET', '/_control/devices')) as { devices: Array<{ id: string; name: string }> };
-    return r.devices;
+    const list = record(await this.call('GET', '/_control/devices'))['devices'];
+    return (Array.isArray(list) ? list : []).map((d) => ({ id: str(d, 'id'), name: str(d, 'name') }));
   }
 
   /** Runs the real CLI (`phonecode <args>`) against this daemon's state. */
@@ -210,7 +203,6 @@ export class Daemon {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ code, deviceName: 'script' }),
     });
-    const j = (await res.json()) as { token: string };
-    return j.token;
+    return str(await res.json(), 'token');
   }
 }

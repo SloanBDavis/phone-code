@@ -1,7 +1,11 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "react", "jsx-a11y"],
-  "categories": { "correctness": "error", "suspicious": "error", "perf": "error" },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
   "rules": {
     "eqeqeq": "error",
     "no-var": "error",
@@ -16,8 +20,41 @@
     "typescript/consistent-type-imports": "error",
     "typescript/no-unnecessary-condition": "error",
     "import/no-cycle": "error",
-    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
-    "react/react-in-jsx-scope": "off"
+    "import/no-unassigned-import": [
+      "error",
+      {
+        "allow": ["**/*.css"]
+      }
+    ],
+    "react/react-in-jsx-scope": "off",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/return-await": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "typescript/no-redundant-type-constituents": "error",
+    "typescript/no-duplicate-type-constituents": "error",
+    "typescript/no-unsafe-enum-comparison": "error",
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/consistent-type-exports": "error",
+    "typescript/no-wrapper-object-types": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/throw-new-error": "error",
+    "import/no-duplicates": "error",
+    "eslint/radix": "error"
   },
-  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "packages/daemon/web/**"]
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "packages/daemon/web/**"],
+  "overrides": [
+    {
+      "files": ["scripts/**", "e2e/**"],
+      "rules": {
+        "eslint/no-await-in-loop": "off"
+      }
+    }
+  ]
 }

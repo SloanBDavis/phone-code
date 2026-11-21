@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import { handoff, pair } from './api';
+import { forgetDevice, handoff, pair } from './api';
 import { client } from './client';
 import { creds } from './storage';
 import { isIOS, isStandalone } from './util';
@@ -66,6 +66,8 @@ export async function redeem(code: string): Promise<void> {
   const res = await pair(code);
   creds.value = { ...res, pairedAt: Date.now() };
   pairReason.value = null;
+  // Spent: never redeem it again (e.g. when this phone is unpaired later).
+  autoCode.value = null;
   const u = new URL(location.href);
   u.hash = '#/';
   u.searchParams.delete('h');
@@ -98,9 +100,17 @@ export async function refreshHandoff(): Promise<void> {
   }
 }
 
+/** The user unpairs this phone: the host forgets it too (best effort, e.g. when offline). */
+export function unpairDevice(): void {
+  const token = creds.value?.token;
+  if (token) void forgetDevice(token).catch(() => undefined);
+  unpair();
+}
+
 export function unpair(reason?: string): void {
   client.stop();
   creds.value = null;
+  autoCode.value = null;
   pairReason.value = reason ?? null;
   const u = new URL(location.href);
   u.search = '';

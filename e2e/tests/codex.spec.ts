@@ -1,24 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../lib/fixtures.ts';
-import { createSession, lastText, send, SHOTS, waitTurn } from '../lib/ui.ts';
+import { createSession, lastText, send, shot, waitTurn } from '../lib/ui.ts';
 
-test('streams an answer', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'codex');
+test('streams an answer', async ({ phone }) => {
+  await createSession(phone, 'codex');
   await send(phone, 'hello codex');
   await waitTurn(phone, 1);
   await expect(lastText(phone)).toHaveAttribute('data-streaming', 'false');
   await expect(lastText(phone)).not.toHaveText('');
-  await phone.page.screenshot({ path: `${SHOTS}codex-hello.png` });
+  await shot(phone, 'codex-hello');
 });
 
-test('command approval: allow, deny, allow for the session', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'codex');
+test('command approval: allow, deny, allow for the session', async ({ phone }) => {
+  await createSession(phone, 'codex');
   const perm = phone.testId('chat-item-permission');
   await send(phone, 'run tests');
   await expect(perm.nth(0)).toHaveAttribute('data-status', 'pending');
   await expect(perm.nth(0)).toContainText('npm test');
-  await phone.page.screenshot({ path: `${SHOTS}codex-perm.png` });
+  await shot(phone, 'codex-perm');
   await perm.nth(0).getByTestId('permission-allow').click();
   await waitTurn(phone, 1);
   await expect(perm.nth(0)).toHaveAttribute('data-status', 'allowed');
@@ -45,7 +45,7 @@ test('command approval: allow, deny, allow for the session', async ({ phone, dae
 });
 
 test('file change approval with a diff, the file changes on disk', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'codex', { folder: daemon.folder('edit-codex') });
+  await createSession(phone, 'codex', { folder: daemon.folder('edit-codex') });
   const file = join(daemon.userHome, 'edit-codex', 'notes.md');
   await send(phone, 'edit file');
   let perm = phone.testId('chat-item-permission').last();
@@ -66,8 +66,8 @@ test('file change approval with a diff, the file changes on disk', async ({ phon
   await expect(edit).toHaveAttribute('data-status', 'done');
 });
 
-test('question, plan and interrupt', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'codex');
+test('question, plan and interrupt', async ({ phone }) => {
+  await createSession(phone, 'codex');
   await send(phone, 'ask me');
   const q = phone.testId('chat-item-question');
   await expect(q).toHaveAttribute('data-status', 'pending');
@@ -90,8 +90,8 @@ test('question, plan and interrupt', async ({ phone, daemon }) => {
   await waitTurn(phone, 3, 'interrupted');
 });
 
-test('crash and recovery', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'codex');
+test('crash and recovery', async ({ phone }) => {
+  await createSession(phone, 'codex');
   await send(phone, 'crash please');
   await expect(phone.testId('chat-item-notice').last()).toBeVisible();
   await waitTurn(phone, 1, 'error');
@@ -100,8 +100,8 @@ test('crash and recovery', async ({ phone, daemon }) => {
   await expect(phone.testId('chat-title')).toContainText('Ready');
 });
 
-test('model and mode switching', async ({ phone, daemon }) => {
-  await createSession(phone, daemon, 'codex');
+test('model and mode switching', async ({ phone }) => {
+  await createSession(phone, 'codex');
   await phone.testId('composer-model').click();
   const items = phone.testId('model-menu').getByRole('menuitem');
   const second = (await items.nth(1).innerText()).trim();

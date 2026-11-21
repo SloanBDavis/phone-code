@@ -1,14 +1,15 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import '../styles/settings.css';
-import { exitDemo, unpair } from '../lib/boot';
+import { exitDemo, unpairDevice } from '../lib/boot';
+import { agentCatalog } from '../lib/agents';
 import { pushSupport, disablePush, enablePush } from '../lib/push';
 import { deviceId, host, isDemo } from '../lib/state';
 import { creds, settings, updateSettings, type ThemePref } from '../lib/storage';
 import { haptic, isStandalone } from '../lib/util';
 import { APP_VERSION, SOURCE_URL } from '../lib/version';
 import { BackButton, TopBar, useScrolled } from '../ui/chrome';
-import { Glyph } from '../ui/glyph';
+import { Glyph, agentGlyph } from '../ui/glyph';
 import { Icon, Spinner } from '../ui/icons';
 import { alertDialog, toast } from '../ui/overlay';
 import { ConnectionLabel } from './sessions';
@@ -107,10 +108,12 @@ export function SettingsScreen(): JSX.Element {
           <section class="section">
             <h2 class="section-head">Agents</h2>
             <div class="list">
-              {h.agents.map((a) => (
-                <div class="cell static" key={a.kind}>
-                  <Glyph kind={a.kind} size={30} />
-                  <span class="cell-main cell-title">{a.kind === 'claude' ? 'Claude Code' : 'Codex'}</span>
+              {agentCatalog(h)
+                .filter((a) => a.impl === 'native' || a.available || a.source === 'config')
+                .map((a) => (
+                <div class="cell static" key={a.id} data-testid="settings-agent" data-agent={a.id}>
+                  <Glyph kind={agentGlyph(a.id)} size={30} />
+                  <span class="cell-main cell-title">{a.name}</span>
                   <span class={`cell-value ${a.available ? '' : 'warn'}`}>
                     {a.available ? (a.version ? `v${a.version}` : 'Installed') : 'Not installed'}
                   </span>
@@ -217,7 +220,7 @@ export function SettingsScreen(): JSX.Element {
                     confirm: 'Unpair',
                     destructive: true,
                     testid: 'unpair-dialog',
-                  }).then((ok) => ok && unpair())
+                  }).then((ok) => ok && unpairDevice())
                 }
               >
                 <span class="cell-main cell-title">Unpair from {c?.host.name ?? 'host'}</span>

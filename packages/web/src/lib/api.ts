@@ -68,6 +68,11 @@ export function handoff(token: string): Promise<HandoffResponse> {
   return post('/api/handoff', {}, isHandoff, token);
 }
 
+/** Asks the host to forget this device (revokes its token). */
+export async function forgetDevice(token: string): Promise<void> {
+  await post('/api/unpair', {}, isRecord, token);
+}
+
 /** Accepts a full pairing URL (from the QR or a pasted link) or a bare code. */
 export function parsePairing(input: string): { code: string; origin?: string } | null {
   const s = input.trim();

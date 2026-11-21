@@ -7,16 +7,18 @@
 
 const { spawn } = require('node:child_process');
 const { accessSync, chmodSync, constants, existsSync } = require('node:fs');
-const { join } = require('node:path');
+const path = require('node:path');
 
 const SUPPORTED = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'];
 const platform = `${process.platform}-${process.arch}`;
 
+/** Prints the message and exits; never returns. */
 function fail(message) {
   process.stderr.write(`phone-code: ${message}\n`);
-  process.exit(1);
+  return process.exit(1);
 }
 
+/** The binary to run. PHONECODE_BINARY overrides the lookup (for testing a local build). */
 function findBinary() {
   if (process.env.PHONECODE_BINARY) return process.env.PHONECODE_BINARY;
   if (!SUPPORTED.includes(platform)) {
@@ -24,9 +26,9 @@ function findBinary() {
   }
   const pkg = `@phone-code/${platform}`;
   try {
-    return join(require.resolve(`${pkg}/package.json`).replace(/package\.json$/, ''), 'bin', 'phonecode');
+    return path.join(path.dirname(require.resolve(`${pkg}/package.json`)), 'bin', 'phonecode');
   } catch {
-    fail(
+    return fail(
       `the ${pkg} package is missing. It is an optional dependency of phone-code;\n` +
         'reinstall without --no-optional / --omit=optional, or use the install script:\n' +
         '  curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install.sh | sh',

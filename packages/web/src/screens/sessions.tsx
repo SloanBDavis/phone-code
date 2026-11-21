@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useComputed } from '@preact/signals';
 import type { SessionInfo } from '@phone-code/protocol';
 import { deleteSession, renameSession } from '../lib/actions';
+import { agentLabel } from '../lib/agents';
 import { exitDemo } from '../lib/boot';
 import { client } from '../lib/client';
 import { now } from '../lib/clock';
@@ -105,11 +106,12 @@ function SessionRow({ s }: { s: SessionInfo }): JSX.Element {
         class={`session-row status-${s.status}`}
         data-testid="session-row"
         data-session-id={s.id}
+        data-agent={s.kind === 'agent' ? (s.agent ?? 'claude') : undefined}
         data-status={s.status}
         onClick={() => push({ name: 'session', id: s.id })}
       >
         {s.unread && <span class="unread-dot" data-testid="session-unread" aria-label="Unread" />}
-        <span class="session-glyph">
+        <span class="session-glyph" title={s.kind === 'agent' ? agentLabel(s, host.value) : undefined}>
           <Glyph kind={glyphOf(s)} size={46} />
           <StatusBadge s={s} />
         </span>

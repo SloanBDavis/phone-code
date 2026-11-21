@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import type {
-  AgentKind,
+  AgentId,
   CreateSessionParams,
   FsListResult,
   PermissionMode,
@@ -9,6 +9,7 @@ import type {
 } from '@phone-code/protocol';
 import '../styles/new-session.css';
 import '../styles/settings.css';
+import { agentCatalog } from '../lib/agents';
 import { client } from '../lib/client';
 import { now } from '../lib/clock';
 import { push } from '../lib/nav';
@@ -16,7 +17,7 @@ import { host, sessions } from '../lib/state';
 import { pushRecentDir, recentDirs, settings } from '../lib/storage';
 import { basename, haptic, relTime, tildify } from '../lib/util';
 import { GlassButton } from '../ui/glass';
-import { Glyph, agentName, type GlyphKind } from '../ui/glyph';
+import { Glyph, agentGlyph, agentName } from '../ui/glyph';
 import { Icon, Spinner } from '../ui/icons';
 import { openMenu, toast } from '../ui/overlay';
 import { MODES, modeInfo } from './chat/composer';
@@ -141,12 +142,21 @@ function FolderPicker({
   );
 }
 
+/** A tile in the sheet: an agent id (native or ACP) or the terminal. */
+type Choice = AgentId | 'terminal';
+
 export default function NewSessionSheet({ close }: { close: () => void }): JSX.Element {
   const h = host.value;
-  const agents = h?.agents ?? [];
-  const available = (k: AgentKind): boolean => agents.some((a) => a.kind === k && a.available);
-  const firstKind: GlyphKind = available('claude') ? 'claude' : available('codex') ? 'codex' : 'terminal';
-  const [kind, setKind] = useState<GlyphKind>(firstKind);
+  const agents = agentCatalog(h);
+  const available = (k: Choice): boolean => agents.some((a) => a.id === k && a.available);
+  // Claude Code and Codex always get a tile; ACP agents only when installed, or when the user configured them.
+  const agentTiles = agents.filter(
+    (a) => a.impl === 'native' || a.available || a.source === 'config',
+  );
+  const firstKind: Choice = agentTiles.find((a) => a.available)?.id ?? 'terminal';
+  const [kind, setKind] = useState<Choice>(firstKind);
+  const label = (k: Choice): string =>
+    k === 'terminal' ? agentName('terminal') : (agents.find((a) => a.id === k)?.name ?? agentName(agentGlyph(k)));
   const recents = recentDirs();
   const [cwd, setCwd] = useState<string>(recents[0] ?? h?.home ?? '~');
   const [picking, setPicking] = useState(false);
@@ -155,7 +165,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<ResumableSession[] | null>(null);
 
-  const agentInfo = kind === 'terminal' ? undefined : agents.find((a) => a.kind === kind);
+  const agentInfo = kind === 'terminal' ? undefined : agents.find((a) => a.id === kind);
   const models = agentInfo?.models ?? [];
 
   useEffect(() => {
@@ -210,7 +220,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
       />
     );
 
-  const kinds: GlyphKind[] = ['claude', 'codex', 'terminal'];
+  const kinds: Choice[] = [...agentTiles.map((a) => a.id), 'terminal'];
   const home = h?.home;
 
   return (
@@ -224,7 +234,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
         <fieldset class="kind-tiles" aria-label="Session type">
           {kinds.map((k) => {
             const off = k !== 'terminal' && !available(k);
-            const info = k === 'terminal' ? undefined : agents.find((a) => a.kind === k);
+            const info = k === 'terminal' ? undefined : agents.find((a) => a.id === k);
             return (
               <button
                 key={k}
@@ -238,8 +248,8 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                 }}
                 data-testid={`new-kind-${k}`}
               >
-                <Glyph kind={k} size={44} />
-                <span class="kind-name">{agentName(k)}</span>
+                <Glyph kind={k === 'terminal' ? 'terminal' : agentGlyph(k)} size={44} />
+                <span class="kind-name">{label(k)}</span>
                 <span class="kind-sub">
                   {off
                     ? 'Not installed'
@@ -356,7 +366,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
             data-testid="new-start"
           >
             {busy ? <Spinner size={18} /> : null}
-            Start {agentName(kind)}
+            Start {label(kind)}
           </button>
         </div>
 
@@ -370,7 +380,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                 </div>
               )}
               {history?.length === 0 && (
-                <div class="cell static cell-sub">No past {agentName(kind)} sessions found.</div>
+                <div class="cell static cell-sub">No past {label(kind)} sessions found.</div>
               )}
               {history?.map((r) => (
                 <button

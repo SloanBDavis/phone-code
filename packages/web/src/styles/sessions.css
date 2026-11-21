@@ -19,6 +19,14 @@
   background: linear-gradient(150deg, var(--codex-a), var(--codex-b));
 }
 
+.glyph-acp {
+  background: linear-gradient(150deg, var(--acp-a), var(--acp-b));
+}
+
+.glyph-antigravity {
+  background: linear-gradient(150deg, var(--agy-a), var(--agy-b));
+}
+
 .glyph-terminal {
   background: linear-gradient(150deg, var(--term-a), var(--term-b));
   color: var(--term-mark);

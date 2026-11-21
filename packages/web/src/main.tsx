@@ -51,6 +51,20 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   );
 }
 
+// After phone-code is updated on the host, the chunks of the build this page
+// came from are gone: reload once into the new build instead of breaking.
+addEventListener('vite:preloadError', (e) => {
+  try {
+    // At most once per 30 s, so a chunk that is really missing cannot cause a reload loop.
+    if (Date.now() - Number(sessionStorage.getItem('pc.chunkReload') ?? 0) < 30_000) return;
+    sessionStorage.setItem('pc.chunkReload', String(Date.now()));
+  } catch {
+    return;
+  }
+  e.preventDefault();
+  location.reload();
+});
+
 // Warm the chunks the user is likely to open next once the first paint is done.
 const idle = (fn: () => void): void => {
   if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout: 3000 });

@@ -1,5 +1,5 @@
 import { expect, test, type Phone } from '../lib/fixtures.ts';
-import { back, createSession, lastText, row, send, SHOTS, waitTurn } from '../lib/ui.ts';
+import { back, createSession, lastText, row, send, shot, waitTurn } from '../lib/ui.ts';
 
 /** Swipe a session row left with a real touch gesture to reveal its actions. */
 async function swipe(phone: Phone, sessionId: string): Promise<void> {
@@ -8,7 +8,7 @@ async function swipe(phone: Phone, sessionId: string): Promise<void> {
   const y = box.y + box.height / 2;
   const x0 = box.x + box.width - 30;
   const cdp = await phone.context.newCDPSession(phone.page);
-  const touch = (type: string, x: number): Promise<unknown> =>
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number): Promise<unknown> =>
     cdp.send('Input.dispatchTouchEvent', {
       type,
       touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
@@ -20,14 +20,14 @@ async function swipe(phone: Phone, sessionId: string): Promise<void> {
   await expect(phone.page.locator('.swipe[data-open="true"]')).toHaveCount(1);
 }
 
-test('creates Claude, Codex and terminal sessions with the folder picker', async ({ phone, daemon }) => {
-  const claude = await createSession(phone, daemon, 'claude');
+test('creates Claude, Codex and terminal sessions with the folder picker', async ({ phone }) => {
+  const claude = await createSession(phone, 'claude');
   await expect(phone.testId('chat-title')).toContainText('Claude · project');
   await back(phone);
-  const codex = await createSession(phone, daemon, 'codex', { folder: 'project/src' });
+  const codex = await createSession(phone, 'codex', { folder: 'project/src' });
   await expect(phone.testId('chat-title')).toContainText('Codex · src');
   await back(phone);
-  const term = await createSession(phone, daemon, 'terminal', { folder: 'other' });
+  const term = await createSession(phone, 'terminal', { folder: 'other' });
   await back(phone);
   for (const id of [claude, codex, term]) await expect(row(phone, id)).toBeVisible();
   await expect(row(phone, codex)).toContainText('~/project/src');
@@ -35,14 +35,14 @@ test('creates Claude, Codex and terminal sessions with the folder picker', async
   // Recent folders are offered next time.
   await phone.testId('new-session').click();
   await expect(phone.testId('new-recent-dir')).toHaveCount(3);
-  await phone.page.screenshot({ path: `${SHOTS}new-session.png` });
+  await shot(phone, 'new-session');
   await phone.testId('new-session-close').click();
   await expect(phone.testId('new-session-sheet')).toBeHidden();
-  await phone.page.screenshot({ path: `${SHOTS}sessions.png` });
+  await shot(phone, 'sessions');
 });
 
-test('rename and delete from the list', async ({ phone, daemon }) => {
-  const id = await createSession(phone, daemon, 'terminal');
+test('rename and delete from the list', async ({ phone }) => {
+  const id = await createSession(phone, 'terminal');
   await back(phone);
   await swipe(phone, id);
   await phone.testId('session-rename').click();
@@ -63,8 +63,8 @@ test('rename and delete from the list', async ({ phone, daemon }) => {
   await expect(row(phone, id)).toHaveCount(0);
 });
 
-test('rename and delete from the chat menu', async ({ phone, daemon }) => {
-  const id = await createSession(phone, daemon, 'claude');
+test('rename and delete from the chat menu', async ({ phone }) => {
+  const id = await createSession(phone, 'claude');
   await phone.testId('chat-menu-btn').click();
   await phone.testId('menu-rename').click();
   await phone.testId('rename-dialog-input').fill('Renamed chat');
@@ -81,8 +81,8 @@ test('rename and delete from the chat menu', async ({ phone, daemon }) => {
   await expect(row(phone, id)).toHaveCount(0);
 });
 
-test('status sections and unread change live', async ({ phone, daemon }) => {
-  const id = await createSession(phone, daemon, 'claude');
+test('status sections and unread change live', async ({ phone }) => {
+  const id = await createSession(phone, 'claude');
   await send(phone, 'run tests');
   await expect(phone.testId('chat-item-permission')).toHaveAttribute('data-status', 'pending');
   await back(phone);
@@ -90,7 +90,7 @@ test('status sections and unread change live', async ({ phone, daemon }) => {
   const waiting = phone.testId('section-waiting');
   await expect(waiting.locator(`[data-session-id="${id}"]`)).toHaveAttribute('data-status', 'waiting');
   await expect(row(phone, id).locator('.pill-attention')).toHaveText('Approval');
-  await phone.page.screenshot({ path: `${SHOTS}sessions-waiting.png` });
+  await shot(phone, 'sessions-waiting');
 
   await row(phone, id).click();
   await phone.testId('chat-item-permission').getByTestId('permission-allow').click();
@@ -112,14 +112,14 @@ test('status sections and unread change live', async ({ phone, daemon }) => {
   await send(phone, 'something long please');
   await back(phone);
   await expect(phone.testId('section-running').locator(`[data-session-id="${id}"]`)).toBeVisible();
-  await phone.page.screenshot({ path: `${SHOTS}sessions-running.png` });
+  await shot(phone, 'sessions-running');
   await row(phone, id).click();
   await phone.testId('composer-stop').click();
   await waitTurn(phone, 2, 'interrupted');
 });
 
-test('a question shows as a question in the list', async ({ phone, daemon }) => {
-  const id = await createSession(phone, daemon, 'claude');
+test('a question shows as a question in the list', async ({ phone }) => {
+  const id = await createSession(phone, 'claude');
   await send(phone, 'ask me');
   await expect(phone.testId('chat-item-question')).toHaveAttribute('data-status', 'pending');
   await back(phone);
