@@ -5,6 +5,7 @@ import { PAIR_CODE_TTL_MS, type PairingCodes } from '../auth/pairing.ts';
 import { DAEMON_VERSION } from '../config.ts';
 import type { HostInfoProvider } from '../host-info.ts';
 import { log } from '../log.ts';
+import { arrivedOverHttps, isLoopbackIp, isProxied, transportRefusal } from '../net/transport.ts';
 import { isRecord, parseJson } from '../util/guards.ts';
 import { Connection, type ClientContext, type WsData } from '../ws-client.ts';
 import { SECURITY_HEADERS, serveManifest, serveStatic } from './static.ts';
@@ -12,6 +13,7 @@ import type { WebAssets } from './web-assets.ts';
 
 const MAX_JSON_BODY = 4096;
 const PORT_ATTEMPTS = 20;
+const HSTS = 'max-age=31536000';
 
 export interface ControlApi {
   token: string;
@@ -29,8 +31,10 @@ export interface ServerOptions {
   host: HostInfoProvider;
   client: ClientContext;
   control: ControlApi;
-  /** Origins (besides same-origin and loopback) allowed to open the websocket. */
-  publicOrigin: () => string | undefined;
+  /** Allow plain http from the network (--insecure). */
+  insecure: boolean;
+  /** The advertised URL; its origin may open the websocket. */
+  publicUrl: () => string | undefined;
 }
 
 function json(data: unknown, status = 200): Response {
@@ -47,10 +51,6 @@ async function readJsonBody(req: Request): Promise<Record<string, unknown> | und
   if (text.length > MAX_JSON_BODY) return undefined;
   const v = parseJson(text);
   return isRecord(v) ? v : undefined;
-}
-
-function isLoopback(ip: string): boolean {
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }
 
 const extraOrigins = new Set(
@@ -95,10 +95,10 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
   const controlToken = Buffer.from(opts.control.token);
 
   function controlAllowed(req: Request, ip: string): boolean {
-    // cloudflared also connects from loopback, so loopback alone proves nothing:
-    // require the secret from control.json and reject proxied requests.
-    if (!isLoopback(ip) || req.headers.has('cf-connecting-ip') || req.headers.has('x-forwarded-for'))
-      return false;
+    // cloudflared and tailscale serve also connect from loopback, so loopback
+    // alone proves nothing: require the secret from control.json and reject
+    // anything carrying proxy headers.
+    if (!isLoopbackIp(ip) || isProxied(req)) return false;
     const presented = Buffer.from(req.headers.get('x-phonecode-control') ?? '');
     return presented.length === controlToken.length && timingSafeEqual(presented, controlToken);
   }
@@ -139,12 +139,27 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     return json({ error: 'not found' }, 404);
   }
 
-  const fetch = async (req: Request, server: Bun.Server<WsData>): Promise<Response | undefined> => {
-    const url = new URL(req.url);
+  function publicOrigin(): string | undefined {
+    const u = opts.publicUrl();
+    return u === undefined ? undefined : new URL(u).origin;
+  }
+
+  const route = async (
+    req: Request,
+    server: Bun.Server<WsData>,
+    url: URL,
+    ip: string,
+  ): Promise<Response | undefined> => {
     const path = url.pathname;
-    const ip = server.requestIP(req)?.address ?? 'unknown';
+    if (!opts.insecure && (path === '/ws' || path.startsWith('/api/'))) {
+      const refusal = transportRefusal(req, ip);
+      if (refusal !== undefined) {
+        log.info(`refused ${path} from ${ip}: not encrypted`);
+        return json({ error: refusal }, 403);
+      }
+    }
     if (path === '/ws') {
-      if (!originAllowed(req, opts.publicOrigin())) {
+      if (!originAllowed(req, publicOrigin())) {
         log.info(`rejected websocket from origin ${req.headers.get('origin') ?? ''}`);
         return new Response('Forbidden origin', { status: 403 });
       }
@@ -166,6 +181,17 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
       return new Response('Method not allowed', { status: 405 });
     if (path === '/manifest.webmanifest') return serveManifest(url, opts.assets);
     return serveStatic(req, path, opts.assets);
+  };
+
+  const fetch = async (req: Request, server: Bun.Server<WsData>): Promise<Response | undefined> => {
+    const url = new URL(req.url);
+    const ip = server.requestIP(req)?.address ?? 'unknown';
+    const res = await route(req, server, url, ip);
+    // Pin browsers to https once they reached us through an https proxy.
+    if (res !== undefined && arrivedOverHttps(req, ip, opts.publicUrl())) {
+      res.headers.set('Strict-Transport-Security', HSTS);
+    }
+    return res;
   };
 
   const options: Bun.Serve.Options<WsData> = {

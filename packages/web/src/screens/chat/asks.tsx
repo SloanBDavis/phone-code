@@ -306,7 +306,7 @@ function useCardVisible(id: string | undefined): boolean {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     setVisible(false);
-    if (!id) return;
+    if (!id) return undefined;
     let io: IntersectionObserver | null = null;
     let tries = 0;
     let timer = 0;

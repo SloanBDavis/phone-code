@@ -38,7 +38,7 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
   useEffect(() => {
     const dock = dockRef.current;
     const screen = screenRef.current;
-    if (!dock || !screen) return;
+    if (!dock || !screen) return undefined;
     const ro = new ResizeObserver(() => screen.style.setProperty('--dock-h', `${dock.offsetHeight}px`));
     ro.observe(dock);
     return () => ro.disconnect();

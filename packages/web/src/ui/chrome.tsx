@@ -9,7 +9,7 @@ export function useScrolled<T extends HTMLElement>(threshold = 8): [RefObject<T 
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el) return undefined;
     let frame = 0;
     const check = (): void => {
       frame = 0;

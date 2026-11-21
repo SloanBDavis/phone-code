@@ -1,46 +1,20 @@
-import { existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
-import { isRecord, parseJson } from '../util/guards.ts';
+import { log } from '../log.ts';
+import { detectTailscale, startTailscaleServe } from './tailscale.ts';
+import { isLoopbackUrl } from './transport.ts';
+import { hasCloudflared, startQuickTunnel, type Tunnel } from './tunnel.ts';
 
 export type UrlSource = 'explicit' | 'tunnel' | 'tailscale' | 'lan' | 'local';
 
 export interface PublicUrl {
   url: string;
   source: UrlSource;
-}
-
-const MAC_TAILSCALE = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
-
-function tailscaleBin(): string | undefined {
-  const found = Bun.which('tailscale');
-  if (found !== null) return found;
-  return process.platform === 'darwin' && existsSync(MAC_TAILSCALE) ? MAC_TAILSCALE : undefined;
-}
-
-/** MagicDNS name (or 100.x address) of this machine, if Tailscale is up. */
-export async function detectTailscale(timeoutMs = 1500): Promise<string | undefined> {
-  const bin = tailscaleBin();
-  if (bin === undefined) return undefined;
-  try {
-    const proc = Bun.spawn([bin, 'status', '--json'], {
-      stdout: 'pipe',
-      stderr: 'ignore',
-      timeout: timeoutMs,
-    });
-    const text = await new Response(proc.stdout).text();
-    if ((await proc.exited) !== 0) return undefined;
-    const status = parseJson(text);
-    if (!isRecord(status) || status['BackendState'] !== 'Running') return undefined;
-    const self = isRecord(status['Self']) ? status['Self'] : {};
-    const tailnet = isRecord(status['CurrentTailnet']) ? status['CurrentTailnet'] : {};
-    const dns = typeof self['DNSName'] === 'string' ? self['DNSName'].replace(/\.$/, '') : '';
-    if (tailnet['MagicDNSEnabled'] === true && dns !== '') return dns;
-    const ips: unknown = self['TailscaleIPs'];
-    if (!Array.isArray(ips)) return undefined;
-    return ips.find((ip): ip is string => typeof ip === 'string' && ip.startsWith('100.'));
-  } catch {
-    return undefined;
-  }
+  /** A phone can open it (it is not a loopback URL). */
+  phoneReachable: boolean;
+  /** https, or loopback http. */
+  secure: boolean;
+  /** Helper process (tunnel / tailscale serve) to stop on exit. */
+  helper?: Tunnel;
 }
 
 const VIRTUAL_IFACE = /^(?:docker|br-|veth|virbr|vmnet|utun|tun|tap|lo|awdl|llw|bridge|zt|tailscale)/;
@@ -70,24 +44,65 @@ function formatHost(host: string): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
 }
 
-/** explicit --url > tunnel > Tailscale > LAN IPv4 > localhost. */
-export async function resolvePublicUrl(opts: {
+export interface ResolveOptions {
+  /** --url, already validated as https or loopback http. */
   explicit?: string;
-  tunnel?: string;
+  /** --tunnel: Cloudflare quick tunnel. */
+  tunnel: boolean;
+  /** --insecure: advertise plain http on the network. */
+  insecure: boolean;
+  /** Try tailscale serve, then cloudflared, when nothing else was asked for. */
+  auto: boolean;
   bindHost: string;
   port: number;
-}): Promise<PublicUrl> {
-  if (opts.explicit !== undefined) return { url: opts.explicit.replace(/\/+$/, ''), source: 'explicit' };
-  if (opts.tunnel !== undefined) return { url: opts.tunnel, source: 'tunnel' };
-  const loopbackOnly =
-    opts.bindHost === '127.0.0.1' || opts.bindHost === 'localhost' || opts.bindHost === '::1';
-  if (loopbackOnly) return { url: `http://localhost:${opts.port}`, source: 'local' };
-  if (opts.bindHost !== '0.0.0.0' && opts.bindHost !== '::') {
-    return { url: `http://${formatHost(opts.bindHost)}:${opts.port}`, source: 'lan' };
+}
+
+async function tryHelper(
+  name: string,
+  start: () => Promise<Tunnel | undefined>,
+): Promise<Tunnel | undefined> {
+  try {
+    return await start();
+  } catch (err) {
+    log.warn(`${name} failed`, err);
+    return undefined;
   }
-  const ts = await detectTailscale();
-  if (ts !== undefined) return { url: `http://${formatHost(ts)}:${opts.port}`, source: 'tailscale' };
-  const lan = detectLanAddress();
-  if (lan !== undefined) return { url: `http://${lan}:${opts.port}`, source: 'lan' };
-  return { url: `http://localhost:${opts.port}`, source: 'local' };
+}
+
+/**
+ * explicit --url > --tunnel > --insecure LAN URL > auto (tailscale serve >
+ * cloudflared) > loopback only. Never yields plain http beyond loopback
+ * unless `insecure`.
+ */
+export async function resolvePublicUrl(opts: ResolveOptions): Promise<PublicUrl> {
+  const local: PublicUrl = {
+    url: `http://localhost:${opts.port}`,
+    source: 'local',
+    phoneReachable: false,
+    secure: true,
+  };
+  if (opts.explicit !== undefined) {
+    const url = opts.explicit.replace(/\/+$/, '');
+    return { url, source: 'explicit', phoneReachable: !isLoopbackUrl(url), secure: true };
+  }
+  if (opts.tunnel) {
+    const helper = await tryHelper('cloudflared tunnel', () => startQuickTunnel(opts.port));
+    if (helper !== undefined) return { url: helper.url, source: 'tunnel', phoneReachable: true, secure: true, helper };
+  }
+  if (opts.insecure) {
+    const specific = opts.bindHost !== '0.0.0.0' && opts.bindHost !== '::' ? opts.bindHost : undefined;
+    const host = specific ?? (await detectTailscale()) ?? detectLanAddress();
+    if (host === undefined) return local;
+    const url = `http://${formatHost(host)}:${opts.port}`;
+    return { url, source: 'lan', phoneReachable: !isLoopbackUrl(url), secure: isLoopbackUrl(url) };
+  }
+  if (opts.auto) {
+    const ts = await tryHelper('tailscale serve', () => startTailscaleServe(opts.port));
+    if (ts !== undefined) return { url: ts.url, source: 'tailscale', phoneReachable: true, secure: true, helper: ts };
+    if (hasCloudflared()) {
+      const cf = await tryHelper('cloudflared tunnel', () => startQuickTunnel(opts.port));
+      if (cf !== undefined) return { url: cf.url, source: 'tunnel', phoneReachable: true, secure: true, helper: cf };
+    }
+  }
+  return local;
 }

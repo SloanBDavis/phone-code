@@ -10,7 +10,6 @@ import { startServer } from './http/server.ts';
 import { WebAssets } from './http/web-assets.ts';
 import { log } from './log.ts';
 import { resolvePublicUrl, type UrlSource } from './net/url.ts';
-import { startQuickTunnel, type Tunnel } from './net/tunnel.ts';
 import { PushService } from './push.ts';
 import { SessionManager } from './sessions/manager.ts';
 import { ScreenWorker } from './sessions/screen.ts';
@@ -20,12 +19,20 @@ import { ConnectionRegistry, SESSIONS_TOPIC, type ClientContext, type WsData } f
 export interface DaemonOptions {
   adapters: AdapterRegistry;
   port?: number;
-  /** Bind address. Default 0.0.0.0 (all interfaces) so the phone can reach it. */
+  /**
+   * Bind address. Default 127.0.0.1: phones reach the daemon through an https
+   * proxy (tailscale serve, cloudflared, your own). The CLI only allows a
+   * non-loopback address together with `insecure`.
+   */
   hostname?: string;
-  /** Public https URL override (reverse proxy, tailscale serve, ...). */
+  /** Public URL override: https, or loopback http (reverse proxy, ...). */
   publicUrl?: string;
   /** Start a Cloudflare quick tunnel and use its URL. */
   tunnel?: boolean;
+  /** Serve plain http to the network (binds 0.0.0.0 unless `hostname`). */
+  insecure?: boolean;
+  /** With no --url/--tunnel/--insecure, try tailscale serve then cloudflared. Default true. */
+  autoTunnel?: boolean;
   /** State directory; defaults to PHONECODE_HOME or ~/.phonecode. */
   home?: string;
 }
@@ -39,6 +46,9 @@ export interface PairCode {
 export interface Daemon {
   url: string;
   urlSource: UrlSource;
+  /** False when only this computer can open `url` (no secure phone-reachable URL found). */
+  phoneReachable: boolean;
+  insecure: boolean;
   port: number;
   hostname: string;
   home: string;
@@ -93,7 +103,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   const registry = new ConnectionRegistry();
   const client: ClientContext = { devices, manager, host, push, registry };
   const controlToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
-  const hostname = opts.hostname ?? '0.0.0.0';
+  const insecure = opts.insecure === true;
+  const hostname = opts.hostname ?? (insecure ? '0.0.0.0' : '127.0.0.1');
   let publicUrl = '';
 
   const pairUrlFor = (code: string): string => `${publicUrl}/#/pair?c=${encodeURIComponent(code)}`;
@@ -110,7 +121,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
     pairing,
     host,
     client,
-    publicOrigin: () => (publicUrl === '' ? undefined : new URL(publicUrl).origin),
+    insecure,
+    publicUrl: () => (publicUrl === '' ? undefined : publicUrl),
     control: {
       token: controlToken,
       newPairCode,
@@ -137,20 +149,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   // Off the startup path: start the screen worker (it loads the terminal emulator).
   ScreenWorker.shared();
 
-  let tunnel: Tunnel | undefined;
-  if (opts.tunnel === true) {
-    try {
-      tunnel = await startQuickTunnel(port);
-    } catch (err) {
-      log.error('tunnel failed, falling back to direct URL:', err);
-    }
-  }
   const resolved = await resolvePublicUrl({
     ...(opts.publicUrl === undefined ? {} : { explicit: opts.publicUrl }),
-    ...(tunnel === undefined ? {} : { tunnel: tunnel.url }),
+    tunnel: opts.tunnel === true,
+    insecure,
+    auto: opts.autoTunnel !== false,
     bindHost: hostname,
     port,
   });
+  const tunnel = resolved.helper;
   publicUrl = resolved.url;
 
   const fixed = process.env['PHONECODE_PAIR_CODE'];
@@ -182,5 +189,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
     return stopping;
   };
 
-  return { url: publicUrl, urlSource: resolved.source, port, hostname, home, pair, newPairCode, stop };
+  return {
+    url: publicUrl,
+    urlSource: resolved.source,
+    phoneReachable: resolved.phoneReachable,
+    insecure,
+    port,
+    hostname,
+    home,
+    pair,
+    newPairCode,
+    stop,
+  };
 }

@@ -87,7 +87,7 @@ export function Transcript({
   useEffect(() => {
     const el = scrollRef.current;
     const inner = contentRef.current;
-    if (!el || !inner) return;
+    if (!el || !inner) return undefined;
     let last = inner.offsetHeight;
     const ro = new ResizeObserver(() => {
       const h = inner.offsetHeight;

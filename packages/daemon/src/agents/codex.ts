@@ -861,6 +861,41 @@ class CodexSession implements AgentSession {
   }
 }
 
+/** Ask a short-lived app-server for its model list (works without credentials). */
+async function probeModels(): Promise<string[] | undefined> {
+  const { promise: done, resolve: resolveIds } = Promise.withResolvers<string[] | undefined>();
+  const proc = spawnAgent(codexBin(), ['app-server'], {
+    cwd: process.cwd(),
+    env: childEnv(undefined, []),
+    onLine: (v) => {
+      const m = rec(v);
+      if (m.id !== 2) return;
+      const ids = arr(rec(m.result).data)
+        .map(rec)
+        .filter((x) => x.hidden !== true)
+        .map((x) => str(x.id))
+        .filter((x): x is string => !!x);
+      resolveIds(ids.length ? ids : undefined);
+    },
+  });
+  proc.writeJson({
+    id: 1,
+    method: 'initialize',
+    params: {
+      clientInfo: { name: 'phone_code', title: 'phone-code', version: CLIENT_VERSION },
+      capabilities: null,
+    },
+  });
+  proc.writeJson({ method: 'initialized' });
+  proc.writeJson({ id: 2, method: 'model/list', params: {} });
+  const timer = setTimeout(() => resolveIds(undefined), 5000);
+  void proc.exited.then(() => resolveIds(undefined));
+  const ids = await done;
+  clearTimeout(timer);
+  await proc.kill(200);
+  return ids;
+}
+
 export function createCodexAdapter(): AgentAdapter {
   return {
     kind: 'codex',
@@ -868,6 +903,7 @@ export function createCodexAdapter(): AgentAdapter {
       const out = await runQuick(codexBin(), ['--version']);
       if (out === undefined) return { available: false };
       const version = /\d+\.\d+\.\d+[\w.-]*/.exec(out)?.[0];
+      discoveredModels ??= await probeModels();
       return { available: true, ...(version ? { version } : {}), models: discoveredModels ?? DEFAULT_MODELS };
     },
     async start(opts, events) {

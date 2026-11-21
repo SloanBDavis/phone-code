@@ -9,21 +9,21 @@ export function lazy<P extends object>(
   let Loaded: ComponentType<P> | null = null;
   let pending: Promise<unknown> | null = null;
   const preload = (): Promise<unknown> => {
-    pending ??= load().then((m) => {
-      Loaded = m.default;
-    });
+    pending ??= (async () => {
+      Loaded = (await load()).default;
+    })();
     return pending;
   };
   function Lazy(props: P): JSX.Element | null {
     const [, setReady] = useState(Loaded !== null);
     useEffect(() => {
-      if (Loaded) return;
+      if (Loaded) return undefined;
       let alive = true;
-      preload()
-        .then(() => {
-          if (alive) setReady(true);
-        })
-        .catch(() => undefined);
+      const wait = async (): Promise<void> => {
+        await preload();
+        if (alive) setReady(true);
+      };
+      wait().catch(() => undefined);
       return () => {
         alive = false;
       };

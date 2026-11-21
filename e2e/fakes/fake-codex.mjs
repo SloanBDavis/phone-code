@@ -24,6 +24,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms / speed));
 const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const MODELS = ['gpt-fake-codex', 'gpt-fake-mini'];
 const nowS = () => Math.floor(Date.now() / 1000);
+const pad = (n) => String(n).padStart(2, '0');
 
 // ---------------------------------------------------------------- output
 function send(msg) {
@@ -180,7 +181,6 @@ function onMessage(msg) {
     case 'thread/start': {
       const id = randomUUID();
       const d = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
       const dir = path.join(
         codexHome,
         'sessions',

@@ -1,4 +1,5 @@
-import { signal } from '@preact/signals';
+import { batch, signal } from '@preact/signals';
+import { reducedMotion } from './util';
 
 export type Route = { name: 'home' } | { name: 'session'; id: string } | { name: 'settings' };
 
@@ -41,6 +42,8 @@ const same = (a: Route, b: Route): boolean => routeHash(a) === routeHash(b);
 export const stack = signal<Entry[]>([{ key: 0, route: { name: 'home' } }]);
 /** How the latest stack change should be animated. */
 export const lastAnim = signal<NavAnim>('none');
+/** A popped entry kept on screen while its exit animation runs. */
+export const leaving = signal<Entry | null>(null);
 
 let started = false;
 /** Set when the UI already animated a pop (swipe-back) before history caught up. */
@@ -70,13 +73,19 @@ function onHashChange(): void {
   if (top && same(top.route, r)) return;
   const idx = s.findLastIndex((e) => same(e.route, r));
   if (idx >= 0) {
-    lastAnim.value = popAnimated ? 'pop-done' : 'pop';
+    batch(() => {
+      lastAnim.value = popAnimated ? 'pop-done' : 'pop';
+      leaving.value = popAnimated || reducedMotion() ? null : (top ?? null);
+      stack.value = s.slice(0, idx + 1);
+    });
     popAnimated = false;
-    stack.value = s.slice(0, idx + 1);
     return;
   }
-  lastAnim.value = 'push';
-  stack.value = [...s, { key: nextKey++, route: r }];
+  batch(() => {
+    lastAnim.value = 'push';
+    leaving.value = null;
+    stack.value = [...s, { key: nextKey++, route: r }];
+  });
 }
 
 export function push(r: Route): void {

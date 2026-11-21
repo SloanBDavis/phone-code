@@ -51,7 +51,7 @@ const ANIM_MS = 320;
 
 function LayerCtx({ layer }: { layer: Layer }): JSX.Element {
   useEffect(() => {
-    if (!layer.closing) return;
+    if (!layer.closing) return undefined;
     const t = setTimeout(() => removeLayer(layer.id), reducedMotion() ? 10 : ANIM_MS);
     return () => clearTimeout(t);
   }, [layer.closing, layer.id]);
@@ -231,7 +231,7 @@ function Menu({
 
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el) return undefined;
     const root = document.querySelector<HTMLElement>('.app');
     const app = root?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
     const vw = app.width;

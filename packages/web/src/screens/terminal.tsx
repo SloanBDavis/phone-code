@@ -141,7 +141,7 @@ export default function TerminalScreen({
 
   useEffect(() => {
     const el = boxRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const term = new Terminal({
       fontFamily: "ui-monospace, 'SF Mono', SFMono-Regular, 'JetBrains Mono', Menlo, monospace",
       fontSize: settings.peek().termFontSize,
@@ -163,14 +163,14 @@ export default function TerminalScreen({
     // WebGL is fastest on desktop; iOS Safari loses WebGL contexts under memory
     // pressure, so it uses the DOM renderer, which is reliable there.
     if (!isIOS()) {
-      void import('@xterm/addon-webgl')
-        .then(({ WebglAddon }) => {
-          if (termRef.current !== term) return;
-          const gl = new WebglAddon();
-          gl.onContextLoss(() => gl.dispose());
-          term.loadAddon(gl);
-        })
-        .catch(() => undefined);
+      const loadGl = async (): Promise<void> => {
+        const { WebglAddon } = await import('@xterm/addon-webgl');
+        if (termRef.current !== term) return;
+        const gl = new WebglAddon();
+        gl.onContextLoss(() => gl.dispose());
+        term.loadAddon(gl);
+      };
+      loadGl().catch(() => undefined);
     }
 
     let cols = 0;

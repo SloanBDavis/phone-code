@@ -16,6 +16,7 @@
     "typescript/consistent-type-imports": "error",
     "typescript/no-unnecessary-condition": "error",
     "import/no-cycle": "error",
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
     "react/react-in-jsx-scope": "off"
   },
   "ignorePatterns": ["**/dist/**", "**/node_modules/**", "packages/daemon/web/**"]

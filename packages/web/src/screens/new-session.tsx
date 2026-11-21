@@ -53,14 +53,15 @@ function FolderPicker({
   useEffect(() => {
     let alive = true;
     setError(null);
-    client
-      .rpc({ t: 'fs.list', path })
-      .then((r) => {
+    const run = async (): Promise<void> => {
+      try {
+        const r = await client.rpc({ t: 'fs.list', path });
         if (alive) setRes(r);
-      })
-      .catch((e: unknown) => {
+      } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : 'Could not list this folder');
-      });
+      }
+    };
+    void run();
     return () => {
       alive = false;
     };
@@ -159,17 +160,19 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
 
   useEffect(() => {
     setModel(undefined);
-    if (kind === 'terminal') return;
+    if (kind === 'terminal') return undefined;
     let alive = true;
     setHistory(null);
-    client
-      .rpc({ t: 'history.list', agent: kind })
-      .then((r) => {
-        if (alive) setHistory(r);
-      })
-      .catch(() => {
-        if (alive) setHistory([]);
-      });
+    const run = async (): Promise<void> => {
+      let r: ResumableSession[] = [];
+      try {
+        r = await client.rpc({ t: 'history.list', agent: kind });
+      } catch {
+        r = [];
+      }
+      if (alive) setHistory(r);
+    };
+    void run();
     return () => {
       alive = false;
     };
