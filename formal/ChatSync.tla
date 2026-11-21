@@ -151,7 +151,7 @@ Upsert(i) ==
 (* flushes first (again: the FlushDelta step).  No seq is assigned yet.      *)
 Delta(i) ==
     /\ loaded /\ tok < MaxTok
-    /\ pend = None \/ pend.id = i
+    /\ IF pend = None THEN TRUE ELSE pend.id = i
     /\ tok' = tok + 1
     /\ pend' = IF pend = None THEN [id |-> i, toks |-> <<tok + 1>>]
                               ELSE [id |-> i, toks |-> Append(pend.toks, tok + 1)]

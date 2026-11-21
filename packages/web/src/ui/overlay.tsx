@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from 'preact';
+import type { ComponentChildren, JSX, TargetedPointerEvent } from 'preact';
 import { signal } from '@preact/signals';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { attachRefraction } from '../lib/glass';
@@ -132,7 +132,7 @@ function Sheet({
     const scroller = target.closest<HTMLElement>('.sheet-scroll');
     dragRef.current = { y0: e.clientY, t0: performance.now(), dy: 0, active: false, scroller };
   };
-  const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDialogElement>): void => {
+  const onPointerMove = (e: TargetedPointerEvent<HTMLDialogElement>): void => {
     const d = dragRef.current;
     if (!d) return;
     const dy = e.clientY - d.y0;

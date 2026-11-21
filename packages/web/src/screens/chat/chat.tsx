@@ -1,4 +1,4 @@
-import type { JSX } from 'preact';
+import type { JSX, TargetedMouseEvent } from 'preact';
 import { useSignal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import '../../styles/chat.css';
@@ -49,7 +49,7 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
   const loaded = chat.loaded.value;
   const empty = loaded && chat.ids.value.length === 0 && chat.pending.value.length === 0;
 
-  const menu = (e: JSX.TargetedMouseEvent<HTMLButtonElement>): void =>
+  const menu = (e: TargetedMouseEvent<HTMLButtonElement>): void =>
     openMenu(
       e.currentTarget,
       [

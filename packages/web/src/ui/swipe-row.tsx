@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from 'preact';
+import type { ComponentChildren, JSX, TargetedPointerEvent } from 'preact';
 import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import { haptic } from '../lib/util';
@@ -70,7 +70,7 @@ export function SwipeRow({
       t0: performance.now(),
     };
   };
-  const onMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
+  const onMove = (e: TargetedPointerEvent<HTMLDivElement>): void => {
     const s = gestureRef.current;
     if (!s) return;
     const dx = e.clientX - s.x0;

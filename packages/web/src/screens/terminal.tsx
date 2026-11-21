@@ -1,4 +1,4 @@
-import type { JSX } from 'preact';
+import type { JSX, TargetedMouseEvent } from 'preact';
 import { useSignal, useSignalEffect } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import { Terminal, type ITheme } from '@xterm/xterm';
@@ -279,7 +279,7 @@ export default function TerminalScreen({
       toast('Paste is not allowed here. Long-press the terminal instead.', 'info');
     }
   };
-  const menu = (e: JSX.TargetedMouseEvent<HTMLButtonElement>): void =>
+  const menu = (e: TargetedMouseEvent<HTMLButtonElement>): void =>
     openMenu(e.currentTarget, [
       {
         items: [

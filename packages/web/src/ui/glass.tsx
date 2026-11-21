@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ComponentChildren, HTMLAttributes, JSX } from 'preact';
+import type { ButtonHTMLAttributes, ComponentChildren, HTMLAttributes, JSX, TargetedMouseEvent } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { attachRefraction } from '../lib/glass';
 import { haptic } from '../lib/util';
@@ -65,7 +65,7 @@ export function GlassButton({
   /** Accessible name when the button shows only an icon. */
   label?: string;
   children?: ComponentChildren;
-  onClick?: (e: JSX.TargetedMouseEvent<HTMLButtonElement>) => void;
+  onClick?: (e: TargetedMouseEvent<HTMLButtonElement>) => void;
   variant?: Variant;
   class?: string;
   title?: string;
