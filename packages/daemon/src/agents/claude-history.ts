@@ -256,23 +256,11 @@ export async function loadClaudeTranscript(file: string, cwd: string, maxItems =
           ? content.startsWith('[Request interrupted')
           : arr(content).some((b) => (str(rec(b).text) ?? '').startsWith('[Request interrupted'))
       ) {
-        sink.upsert({
-          kind: 'notice',
-          id: `n:${str(e.uuid) ?? order.length}`,
-          ts: tsOf(e),
-          level: 'info',
-          text: 'Interrupted',
-        });
+        // A history kind (not a notice), so a daemon restart can drop it like the rest of the replay.
+        sink.upsert({ kind: 'turn', id: `turn:h:${str(e.uuid) ?? order.length}`, ts: tsOf(e), outcome: 'interrupted' });
       }
-    } else if (e.type === 'system' && e.subtype === 'compact_boundary') {
-      sink.upsert({
-        kind: 'notice',
-        id: `n:${str(e.uuid) ?? order.length}`,
-        ts: tsOf(e),
-        level: 'info',
-        text: 'Conversation compacted',
-      });
     }
+    // compact_boundary entries are skipped: the summary that follows is not shown either.
   }
   mapper.endTurn('completed');
   const all = order.map((id) => items.get(id)).filter((i): i is ChatItem => i !== undefined);

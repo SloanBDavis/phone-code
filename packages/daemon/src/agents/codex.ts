@@ -116,7 +116,8 @@ class CodexSession implements AgentSession {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly byRpc = new Map<string, string>();
   /** Cumulative thread token totals at the start of the current turn. */
-  private tokensAtTurnStart = { input: 0, output: 0 };
+  /** null until the first usage report after (re)start: a resumed thread's totals include old turns. */
+  private tokensAtTurnStart: { input: number; output: number } | null = null;
   private tokensNow = { input: 0, output: 0 };
   private turnStartedAt = 0;
   private interruptRequested = false;
@@ -157,6 +158,9 @@ class CodexSession implements AgentSession {
     });
     this.proc = proc;
     this.status.crashed = false;
+    // Token totals are per app-server process.
+    this.tokensNow = { input: 0, output: 0 };
+    this.tokensAtTurnStart = null;
     void proc.exited.then((info) => this.onExit(proc, info));
     try {
       await this.call('initialize', {
@@ -456,6 +460,13 @@ class CodexSession implements AgentSession {
       case 'thread/tokenUsage/updated': {
         const total = rec(rec(p.tokenUsage).total);
         this.tokensNow = { input: num(total.inputTokens) ?? 0, output: num(total.outputTokens) ?? 0 };
+        if (this.tokensAtTurnStart === null) {
+          const last = rec(rec(p.tokenUsage).last);
+          this.tokensAtTurnStart = {
+            input: this.tokensNow.input - (num(last.inputTokens) ?? 0),
+            output: this.tokensNow.output - (num(last.outputTokens) ?? 0),
+          };
+        }
         return;
       }
       case 'error': {
@@ -523,7 +534,7 @@ class CodexSession implements AgentSession {
   private beginTurn(): void {
     this.status.turnActive = true;
     this.turnStartedAt = Date.now();
-    this.tokensAtTurnStart = { ...this.tokensNow };
+    if (this.tokensAtTurnStart !== null) this.tokensAtTurnStart = { ...this.tokensNow };
     this.status.emit();
   }
 
@@ -548,8 +559,9 @@ class CodexSession implements AgentSession {
     this.cancelAllPending();
     this.finishOpenItems(outcome);
     const err = str(rec(turn.error).message);
-    const input = this.tokensNow.input - this.tokensAtTurnStart.input;
-    const output = this.tokensNow.output - this.tokensAtTurnStart.output;
+    const base = this.tokensAtTurnStart ?? this.tokensNow;
+    const input = this.tokensNow.input - base.input;
+    const output = this.tokensNow.output - base.output;
     this.events.upsert({
       kind: 'turn',
       id: `turn:${str(turn.id) ?? randomUUID()}`,
