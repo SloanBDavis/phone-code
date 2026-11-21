@@ -93,6 +93,12 @@ class Client {
     this.transport?.retryNow();
   }
 
+  /** An image stored for a session, as a blob (see lib/images.ts for the cache). */
+  image(sessionId: string, imageId: string, width?: number): Promise<Blob> {
+    if (!this.transport) return Promise.reject(new Error('Not connected'));
+    return this.transport.image(sessionId, imageId, width);
+  }
+
   send(msg: ClientMessage): void {
     if (this.transport?.send(msg)) return;
     if (msg.t === 'ping' || msg.t === 'hello') return;
@@ -158,13 +164,27 @@ class Client {
       ...c.pending.value,
       { localId, text, images, ts: Date.now(), status: 'sending' as const },
     ];
+    const patch = (p: Partial<PendingSend>): void => {
+      c.pending.value = c.pending.value.map((x) => (x.localId === localId ? withPatch(x, p) : x));
+    };
+    // Upload progress: how much of the message the socket has handed to the network.
+    let stopProgress = (): void => undefined;
+    if (attachments.length) {
+      const total = attachments.reduce((n, a) => n + a.data.length, text.length + 200);
+      patch({ progress: 0 });
+      const timer = window.setInterval(() => {
+        const left = this.transport?.buffered() ?? 0;
+        patch({ progress: Math.max(0, Math.min(1, 1 - left / total)) });
+      }, 120);
+      stopProgress = () => clearInterval(timer);
+    }
     try {
       const res = await this.rpc({
         t: 'chat.send',
         sessionId,
         text,
         ...(attachments.length ? { attachments } : {}),
-      });
+      }).finally(stopProgress);
       if (c.items.has(res.itemId)) c.pending.value = c.pending.value.filter((p) => p.localId !== localId);
       else
         c.pending.value = c.pending.value.map((p) =>
@@ -172,7 +192,7 @@ class Client {
         );
     } catch {
       c.pending.value = c.pending.value.map((p) =>
-        p.localId === localId ? withPatch(p, { status: 'failed' }) : p,
+        p.localId === localId ? withPatch(p, { status: 'failed', progress: undefined }) : p,
       );
     }
   }

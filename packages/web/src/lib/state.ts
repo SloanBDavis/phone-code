@@ -28,6 +28,8 @@ export interface PendingSend {
   status: 'sending' | 'failed';
   /** Server item id, once the daemon acknowledged the send. */
   awaitId?: string;
+  /** 0..1 while photos upload. */
+  progress?: number;
 }
 
 export interface ChatState {

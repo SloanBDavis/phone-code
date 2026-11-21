@@ -65,6 +65,21 @@ export class WsTransport implements Transport {
     return true;
   }
 
+  buffered(): number {
+    return this.ws?.bufferedAmount ?? 0;
+  }
+
+  /** `<img>` cannot send the bearer token, so images are fetched as blobs. */
+  async image(sessionId: string, imageId: string, width?: number): Promise<Blob> {
+    const q = width ? `?w=${Math.round(width)}` : '';
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(sessionId)}/images/${encodeURIComponent(imageId)}${q}`,
+      { headers: { authorization: `Bearer ${this.token}` } },
+    );
+    if (!res.ok) throw new Error(`Image not available (${res.status})`);
+    return res.blob();
+  }
+
   retryNow(): void {
     if (this.stopped) return;
     if (this.ws && this.ws.readyState <= WebSocket.OPEN && this.ready) return;

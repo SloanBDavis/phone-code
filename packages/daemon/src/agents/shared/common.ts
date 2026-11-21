@@ -120,6 +120,15 @@ export function safeEvents(events: AgentEvents): AgentEvents {
     status: guard((s: SessionStatus) => events.status(s)),
     nativeSessionId: guard((id: string) => events.nativeSessionId(id)),
     meta: guard((m: Parameters<AgentEvents['meta']>[0]) => events.meta(m)),
+    image: (data, name) => {
+      try {
+        return events.image(data, name);
+      } catch (e) {
+        console.error('[agents] image consumer threw:', e);
+        return undefined;
+      }
+    },
+    imageFile: (p, name) => events.imageFile(p, name).catch(() => undefined),
   };
 }
 

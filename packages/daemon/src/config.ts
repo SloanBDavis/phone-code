@@ -26,6 +26,10 @@ export interface StatePaths {
   sessions: string;
   transcripts: string;
   terminals: string;
+  /** Per-session image store (images/store.ts). */
+  images: string;
+  /** Search index of past conversations (history/index-file.ts). */
+  index: string;
   vapid: string;
   control: string;
 }
@@ -37,6 +41,8 @@ export function statePaths(root: string): StatePaths {
     sessions: join(root, 'sessions.json'),
     transcripts: join(root, 'transcripts'),
     terminals: join(root, 'terminals'),
+    images: join(root, 'images'),
+    index: join(root, 'index'),
     vapid: join(root, 'vapid.json'),
     control: join(root, 'control.json'),
   };

@@ -10,12 +10,22 @@ import type {
   AgentKind,
   Attachment,
   ChatItem,
+  ImageRef,
   ModelOption,
   PermissionDecision,
   PermissionMode,
   ResumableSession,
   SessionStatus,
+  SlashCommand,
 } from '@phone-code/protocol';
+
+/**
+ * What an adapter receives for each thing the user attached. Images were
+ * stored and sniffed by the core first: `mediaType` is the real type, `data`
+ * the base64 bytes, `path` the stored file (for agents that take local files)
+ * and `ref` the ImageRef shown in the transcript.
+ */
+export type AgentAttachment = Attachment & { path?: string; ref?: ImageRef };
 
 export interface AgentStartOptions {
   cwd: string;
@@ -46,13 +56,26 @@ export interface AgentEvents {
     modelOptions?: ModelOption[];
     /** Permission modes the agent can switch to (absent: all four). */
     permissionModes?: PermissionMode[];
+    /** Slash commands the agent accepts in this session (replaces the previous list). */
+    commands?: SlashCommand[];
   }): void;
+  /**
+   * Store an image the agent produced (base64 or raw bytes) in the session's
+   * image store and get its ref. Synchronous; undefined when the bytes are
+   * not a PNG/JPEG/GIF/WebP or over a size cap.
+   */
+  image(data: string | Uint8Array, name?: string): ImageRef | undefined;
+  /**
+   * Store a local image file the agent referenced, if its real path is inside
+   * the session folder or the agent's artifact directories (images/markdown.ts).
+   */
+  imageFile(path: string, name?: string): Promise<ImageRef | undefined>;
 }
 
 /** One live agent conversation. */
 export interface AgentSession {
   /** Send a user message. The core has already added the UserItem to the transcript. */
-  send(text: string, attachments?: Attachment[]): Promise<void>;
+  send(text: string, attachments?: AgentAttachment[]): Promise<void>;
   /** Stop the current turn (like pressing Esc in the TUI). */
   interrupt(): Promise<void>;
   /** Answer a PermissionItem the adapter upserted. The adapter upserts its new status. */
@@ -83,6 +106,10 @@ export interface AgentAdapter {
     modelOptions?: ModelOption[];
     /** Permission modes the agent accepts (absent: default, acceptEdits, plan, bypassPermissions). */
     permissionModes?: PermissionMode[];
+    /** Slash commands known without a session (see AgentInfo.commands). */
+    commands?: SlashCommand[];
+    /** Why the agent is not usable and what to do (see AgentInfo.setupHint). */
+    setupHint?: string;
   }>;
   /**
    * Start (or resume) a conversation. Must not throw for "CLI missing" style

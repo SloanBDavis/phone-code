@@ -164,7 +164,8 @@ export class TerminalSession implements LiveSession {
 
   private activity(): void {
     this.info.updatedAt = Date.now();
-    if (this.fanout.size === 0 && this.info.unread !== true) {
+    // An archived terminal keeps running but does not light up as unread.
+    if (this.fanout.size === 0 && this.info.unread !== true && this.info.archived !== true) {
       this.info.unread = true;
       this.deps.host.changed('structure');
     } else {
@@ -297,6 +298,16 @@ export class TerminalSession implements LiveSession {
     this.info.title = title;
     this.titleLocked = true;
     this.deps.host.changed('structure');
+  }
+
+  /** Archiving a terminal only hides it: the shell keeps running until it exits. */
+  setArchived(archived: boolean): Promise<void> {
+    if (archived) {
+      this.info.archived = true;
+      this.info.unread = false;
+    } else delete this.info.archived;
+    this.deps.host.changed('structure');
+    return Promise.resolve();
   }
 
   toRecord(): PersistedSession {

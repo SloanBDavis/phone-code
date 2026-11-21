@@ -27,4 +27,8 @@ export interface Transport {
   send(msg: ClientMessage): boolean;
   /** Skip the backoff wait and try to connect right now. */
   retryNow(): void;
+  /** Bytes queued but not yet sent (for upload progress); 0 when unknown. */
+  buffered(): number;
+  /** The bytes of an image stored for a session (`?w=` for a thumbnail). */
+  image(sessionId: string, imageId: string, width?: number): Promise<Blob>;
 }

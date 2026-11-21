@@ -87,3 +87,39 @@ export function recentDirs(): string[] {
 export function pushRecentDir(path: string): void {
   save('pc.recentDirs', [path, ...recentDirs().filter((p) => p !== path)].slice(0, 6));
 }
+
+// ------------------------------------------------------------ per-harness defaults
+
+/** What a new chat with a harness starts with: the choices made last time. */
+export interface HarnessPrefs {
+  model?: string;
+  mode?: string;
+  cwd?: string;
+}
+
+function isPrefsMap(v: unknown): v is Record<string, HarnessPrefs> {
+  return isRecord(v) && Object.values(v).every((p) => isRecord(p));
+}
+
+export const harnessPrefs = signal<Record<string, HarnessPrefs>>(load('pc.harness', {}, isPrefsMap));
+effect(() => save('pc.harness', harnessPrefs.value));
+
+export function setHarnessPrefs(harness: string, patch: HarnessPrefs): void {
+  const cur = harnessPrefs.value[harness] ?? {};
+  const next: HarnessPrefs = { ...cur, ...patch };
+  for (const k of Object.keys(patch) as Array<keyof HarnessPrefs>) if (patch[k] === undefined) delete next[k];
+  harnessPrefs.value = { ...harnessPrefs.value, [harness]: next };
+}
+
+/** The harness the last new chat used (an agent id or `terminal`). */
+export const lastHarness = signal<string | null>(load<string | null>('pc.lastHarness', null, (v): v is string | null => v === null || isString(v)));
+effect(() => save('pc.lastHarness', lastHarness.value));
+
+/** "Said once" notes (e.g. what plain http leaves out), so the app never nags. */
+export function seen(key: string): boolean {
+  return load(`pc.seen.${key}`, false, (v): v is boolean => typeof v === 'boolean');
+}
+
+export function markSeen(key: string): void {
+  save(`pc.seen.${key}`, true);
+}

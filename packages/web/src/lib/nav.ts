@@ -1,115 +1,68 @@
-import { batch, signal } from '@preact/signals';
-import { reducedMotion } from './util';
+import { signal } from '@preact/signals';
+import { isString } from './guards';
+import { load, save } from './storage';
 
-export type Route = { name: 'home' } | { name: 'session'; id: string } | { name: 'settings' };
-
-export interface Entry {
-  key: number;
-  route: Route;
-}
-
-export type NavAnim = 'push' | 'pop' | 'none';
-
-let nextKey = 1;
+/**
+ * Where the main pane is: a new, not yet created chat, or a session (chat or
+ * terminal). There is no stack: the sidebar switches between chats, so a
+ * switch replaces the route instead of pushing a screen.
+ */
+export type Route = { name: 'new' } | { name: 'session'; id: string };
 
 export function routeHash(r: Route): string {
-  switch (r.name) {
-    case 'home':
-      return '#/';
-    case 'session':
-      return `#/s/${encodeURIComponent(r.id)}`;
-    case 'settings':
-      return '#/settings';
-    default: {
-      const never: never = r;
-      return never;
-    }
-  }
+  return r.name === 'new' ? '#/' : `#/s/${encodeURIComponent(r.id)}`;
 }
 
 export function parseHash(hash: string): Route | null {
   const path = hash.replace(/^#/, '').split('?')[0] ?? '';
-  if (path === '' || path === '/') return { name: 'home' };
-  if (path === '/settings') return { name: 'settings' };
+  if (path === '' || path === '/') return { name: 'new' };
   const m = /^\/s\/(.+)$/.exec(path);
   if (m?.[1]) return { name: 'session', id: decodeURIComponent(m[1]) };
   return null;
 }
 
-const same = (a: Route, b: Route): boolean => routeHash(a) === routeHash(b);
+const LAST = 'pc.lastChat';
 
-/** The navigation stack, synced with history so the hardware/browser back works. */
-export const stack = signal<Entry[]>([{ key: 0, route: { name: 'home' } }]);
-/** How the latest stack change should be animated. */
-export const lastAnim = signal<NavAnim>('none');
-/** A popped entry kept on screen while its exit animation runs. */
-export const leaving = signal<Entry | null>(null);
+export const route = signal<Route>({ name: 'new' });
 
 let started = false;
 
+/**
+ * Launch opens the chat that was open last time (or a new chat). Switching
+ * chats replaces the history entry, so the browser's back button does not
+ * walk through every chat ever opened.
+ */
 export function startNav(): void {
   if (started) return;
   started = true;
-  const r = parseHash(location.hash);
-  if (r && r.name !== 'home') {
-    // Deep link: put home underneath so "back" stays inside the app.
-    history.replaceState(history.state, '', `${location.pathname}${location.search}#/`);
-    history.pushState(null, '', `${location.pathname}${location.search}${routeHash(r)}`);
-    stack.value = [
-      { key: 0, route: { name: 'home' } },
-      { key: nextKey++, route: r },
-    ];
+  let r = parseHash(location.hash) ?? { name: 'new' };
+  if (r.name === 'new' && (location.hash === '' || location.hash === '#/')) {
+    const last = load<string | null>(LAST, null, (v): v is string | null => v === null || isString(v));
+    if (last) r = { name: 'session', id: last };
   }
-  addEventListener('hashchange', onHashChange);
-}
-
-function onHashChange(): void {
-  const r = parseHash(location.hash);
-  if (!r) return;
-  const s = stack.value;
-  const top = s[s.length - 1];
-  if (top && same(top.route, r)) return;
-  const idx = s.findLastIndex((e) => same(e.route, r));
-  if (idx >= 0) {
-    batch(() => {
-      lastAnim.value = 'pop';
-      leaving.value = reducedMotion() ? null : (top ?? null);
-      stack.value = s.slice(0, idx + 1);
-    });
-    return;
-  }
-  batch(() => {
-    lastAnim.value = 'push';
-    leaving.value = null;
-    stack.value = [...s, { key: nextKey++, route: r }];
+  set(r);
+  addEventListener('hashchange', () => {
+    const next = parseHash(location.hash);
+    if (next && routeHash(next) !== routeHash(route.peek())) set(next, false);
   });
 }
 
-export function push(r: Route): void {
-  const top = stack.value[stack.value.length - 1];
-  if (top && same(top.route, r)) return;
-  location.hash = routeHash(r);
+function set(r: Route, write = true): void {
+  route.value = r;
+  save(LAST, r.name === 'session' ? r.id : null);
+  if (write && location.hash !== routeHash(r))
+    history.replaceState(history.state, '', `${location.pathname}${location.search}${routeHash(r)}`);
 }
 
-/**
- * Back one screen. The stack changes synchronously (the UI never waits for
- * `hashchange`); history follows, and its hashchange then finds the stack
- * already there and does nothing.
- */
-export function pop(): void {
-  const s = stack.value;
-  const top = s[s.length - 1];
-  if (s.length < 2 || !top) return;
-  batch(() => {
-    lastAnim.value = 'pop';
-    leaving.value = reducedMotion() ? null : top;
-    stack.value = s.slice(0, -1);
-  });
-  history.back();
+export function openChat(id: string): void {
+  set({ name: 'session', id });
 }
 
-/** Go back to the root (e.g. after deleting the open session). */
-export function popToRoot(): void {
-  const n = stack.value.length - 1;
-  if (n > 0) history.go(-n);
+export function openNew(): void {
+  set({ name: 'new' });
 }
+
+export const currentSessionId = (): string | null => {
+  const r = route.value;
+  return r.name === 'session' ? r.id : null;
+};

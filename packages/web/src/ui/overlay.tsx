@@ -217,6 +217,10 @@ export interface MenuItem {
   testid?: string;
   /** Secondary line under the label. */
   hint?: string;
+  /** Shown instead of the check column, e.g. a harness glyph. */
+  lead?: ComponentChildren;
+  /** Looks unavailable but stays tappable (e.g. to explain how to set it up). */
+  dim?: boolean;
   onSelect: () => void;
 }
 
@@ -227,6 +231,7 @@ export interface MenuSection {
 
 /** Opens a glass context menu anchored to an element. */
 export function openMenu(anchor: Element, sections: MenuSection[], opts: { testid?: string } = {}): void {
+  if (!sections.some((x) => x.items.length)) return;
   haptic('light');
   addLayer((close, closing) => (
     <Menu anchor={anchor} sections={sections} close={close} closing={closing} testid={opts.testid} />
@@ -350,7 +355,9 @@ function Menu({
         }
       >
         <div class="menu-scroll">
-          {sections.map((s) => (
+          {sections
+            .filter((s) => s.items.length > 0)
+            .map((s) => (
             <div class="menu-section" key={s.title ?? s.items[0]?.label}>
               {s.title && <div class="menu-title">{s.title}</div>}
               {s.items.map((it) => (
@@ -358,7 +365,7 @@ function Menu({
                   key={it.label}
                   type="button"
                   role="menuitem"
-                  class={`menu-item ${it.destructive ? 'destructive' : ''} ${it.checked ? 'checked' : ''}`}
+                  class={`menu-item ${it.destructive ? 'destructive' : ''} ${it.checked ? 'checked' : ''} ${it.dim ? 'dim' : ''} ${it.lead ? 'has-lead' : ''}`}
                   disabled={it.disabled}
                   data-testid={it.testid}
                   onClick={() => {
@@ -367,12 +374,20 @@ function Menu({
                     it.onSelect();
                   }}
                 >
-                  <span class="menu-check">{it.checked && <Icon name="check" size={16} stroke={2.4} />}</span>
+                  {it.lead ? (
+                    <span class="menu-lead">{it.lead}</span>
+                  ) : (
+                    <span class="menu-check">{it.checked && <Icon name="check" size={16} stroke={2.4} />}</span>
+                  )}
                   <span class="menu-label">
                     {it.label}
                     {it.hint && <small>{it.hint}</small>}
                   </span>
-                  {it.icon && <Icon name={it.icon} size={19} />}
+                  {it.lead && it.checked ? (
+                    <Icon name="check" size={17} stroke={2.4} />
+                  ) : (
+                    it.icon && <Icon name={it.icon} size={19} />
+                  )}
                 </button>
               ))}
             </div>
@@ -487,24 +502,49 @@ function Alert({
 
 // ------------------------------------------------------------------ toast
 
-const toastMsg = signal<{ text: string; icon?: IconName; n: number } | null>(null);
+interface ToastAction {
+  label: string;
+  run: () => void;
+  testid?: string;
+}
+
+const toastMsg = signal<{ text: string; icon?: IconName; action?: ToastAction; n: number } | null>(null);
 let toastTimer: number | undefined;
 
-export function toast(text: string, icon?: IconName): void {
-  toastMsg.value = { text, icon, n: (toastMsg.value?.n ?? 0) + 1 };
+/** A short note at the bottom; with an action (Undo) it stays a little longer. */
+export function toast(text: string, icon?: IconName, opts: { action?: ToastAction } = {}): void {
+  toastMsg.value = { text, icon, action: opts.action, n: (toastMsg.value?.n ?? 0) + 1 };
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => {
-    toastMsg.value = null;
-  }, 1800);
+  toastTimer = window.setTimeout(
+    () => {
+      toastMsg.value = null;
+    },
+    opts.action ? 4500 : 1800,
+  );
 }
 
 function ToastHost(): JSX.Element | null {
   const t = toastMsg.value;
   if (!t) return null;
   return (
-    <output class="toast glass glass-regular" key={t.n} data-testid="toast">
+    <output class={`toast glass glass-regular ${t.action ? 'has-action' : ''}`} key={t.n} data-testid="toast">
       {t.icon && <Icon name={t.icon} size={17} stroke={2.2} />}
       {t.text}
+      {t.action && (
+        <button
+          type="button"
+          class="toast-action"
+          data-testid={t.action.testid}
+          onClick={() => {
+            const run = t.action?.run;
+            toastMsg.value = null;
+            clearTimeout(toastTimer);
+            run?.();
+          }}
+        >
+          {t.action.label}
+        </button>
+      )}
     </output>
   );
 }

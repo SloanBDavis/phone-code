@@ -4,21 +4,28 @@ import type {
   Attachment,
   ChatItem,
   CreateSessionParams,
+  ImageRef,
   NoticeItem,
   PermissionDecision,
   PermissionMode,
   ServerMessage,
   SessionInfo,
   SessionStatus,
+  SlashCommand,
   UserItem,
 } from '@phone-code/protocol';
 import {
   agentDisplayName,
   type AdapterRegistry,
+  type AgentAttachment,
   type AgentEvents,
   type AgentSession,
 } from '../agents/types.ts';
+import { artifactRoots, imagePathsIn } from '../images/markdown.ts';
+import { sniffImage } from '../images/sniff.ts';
+import type { ImageStore } from '../images/store.ts';
 import { log } from '../log.ts';
+import { UserError } from '../util/errors.ts';
 import { randomId } from '../util/files.ts';
 import { EventLog } from './event-log.ts';
 import { Fanout } from './fanout.ts';
@@ -28,7 +35,6 @@ import type { LiveSession, PersistedSession, SessionHost, Subscriber } from './t
 const DELTA_COALESCE_MS = 30;
 /** Restored sessions start their seq far past anything a client may still hold. */
 const RESTORE_SEQ_MARGIN = 100_000;
-const MAX_INLINE_ATTACHMENTS = 1_000_000;
 /** Item kinds an adapter replays when resuming; dropped if we already own the transcript. */
 const HISTORY_KINDS = new Set<ChatItem['kind']>(['user', 'text', 'thinking', 'tool', 'turn']);
 
@@ -36,6 +42,22 @@ export interface ChatDeps {
   host: SessionHost;
   adapters: AdapterRegistry;
   transcriptsDir: string;
+  images: ImageStore;
+}
+
+/**
+ * Bytes the image store accepts, converting what it does not (an iPhone's
+ * HEIC on macOS, BMP, TIFF) to JPEG with Bun.Image when this computer can
+ * decode it. Undefined when it is not an image we can show.
+ */
+async function normalizeImage(bytes: Uint8Array): Promise<Uint8Array | undefined> {
+  if (sniffImage(bytes) !== undefined) return bytes;
+  try {
+    const out = await new Bun.Image(bytes, { maxPixels: 64_000_000 }).jpeg({ quality: 88 }).bytes();
+    return sniffImage(out) === undefined ? undefined : out;
+  } catch {
+    return undefined;
+  }
 }
 
 const AGENT_NAMES: Partial<Record<AgentId, string>> = { claude: 'Claude', codex: 'Codex' };
@@ -82,6 +104,9 @@ export class ChatSession implements LiveSession {
   private pendingDelta: { itemId: string; text: string } | undefined;
   private deltaTimer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
+  private commands: SlashCommand[] | undefined;
+  /** Text items already scanned for local image references (id + text length). */
+  private readonly scanned = new Set<string>();
 
   private constructor(
     private readonly deps: ChatDeps,
@@ -240,13 +265,51 @@ export class ChatSession implements LiveSession {
         if (meta.permissionModes !== undefined) this.info.permissionModes = meta.permissionModes;
         if (meta.models !== undefined) this.info.models = meta.models;
         if (meta.modelOptions !== undefined) this.info.modelOptions = meta.modelOptions;
+        if (meta.commands !== undefined) {
+          this.commands = meta.commands;
+          if (Object.keys(meta).length === 1) return; // commands are not part of SessionInfo
+        }
         if (meta.title !== undefined && meta.title.trim() !== '' && !this.titleLocked) {
           this.info.title = oneLine(meta.title, 100);
           this.autoTitle = false;
         }
         this.deps.host.changed('structure');
       },
+      image: (data, name) => {
+        const bytes = typeof data === 'string' ? Buffer.from(data, 'base64') : data;
+        const res = this.deps.images.put(this.info.id, bytes, name);
+        if (!res.ok) log.debug(`agent image not stored in ${this.info.id}: ${res.error}`);
+        return res.ok ? res.ref : undefined;
+      },
+      imageFile: (path, name) => this.deps.images.putFile(this.info.id, path, this.imageRoots(), name),
     };
+  }
+
+  /** Where local image files may be read from for this session (see images/markdown.ts). */
+  private imageRoots(): string[] {
+    return [this.info.cwd, ...artifactRoots(this.info.agent ?? 'claude')];
+  }
+
+  /** Attach the local images a finished text item links to (once per id and text). */
+  private scanImages(item: ChatItem): void {
+    if (item.kind !== 'text' || item.streaming || item.text === '') return;
+    const key = `${item.id}:${item.text.length}`;
+    if (this.scanned.has(key)) return;
+    this.scanned.add(key);
+    const paths = imagePathsIn(item.text, this.info.cwd);
+    if (paths.length === 0) return;
+    void Promise.all(
+      paths.map((p) => this.deps.images.putFile(this.info.id, p, this.imageRoots(), basename(p))),
+    ).then((found) => {
+      const refs = found.filter((r): r is ImageRef => r !== undefined);
+      const at = this.index.get(item.id);
+      const cur = at === undefined ? undefined : this.items[at];
+      if (refs.length === 0 || this.disposed || cur?.kind !== 'text' || cur.text !== item.text) return;
+      const have = new Set((cur.images ?? []).map((r) => r.id));
+      const add = refs.filter((r) => !have.has(r.id));
+      if (add.length > 0) this.upsert({ ...cur, images: [...(cur.images ?? []), ...add] });
+      return undefined;
+    });
   }
 
   // ---------------------------------------------------- transcript mutation
@@ -270,12 +333,26 @@ export class ChatSession implements LiveSession {
   private upsert(input: ChatItem): void {
     this.flushDelta();
     const item: ChatItem = { ...input };
+    // Adapters re-send items without the image refs the core attached: keep them.
+    const at = this.index.get(item.id);
+    const prev = at === undefined ? undefined : this.items[at];
+    if (
+      prev !== undefined &&
+      (item.kind === 'text' || item.kind === 'tool') &&
+      prev.kind === item.kind &&
+      item.images === undefined &&
+      prev.images !== undefined &&
+      (item.kind !== 'text' || (prev.kind === 'text' && prev.text === item.text))
+    ) {
+      item.images = prev.images;
+    }
     this.place(item);
     this.seq += 1;
     this.emit({ t: 'chat.item', sessionId: this.info.id, seq: this.seq, item });
     this.file.touch(item);
     this.activity(previewOf(item));
     if (item.kind === 'turn' && this.fanout.size === 0) this.deps.host.attention(this.info, 'turn');
+    this.scanImages(item);
   }
 
   private delta(itemId: string, text: string): void {
@@ -375,17 +452,63 @@ export class ChatSession implements LiveSession {
     this.deps.host.changed('structure');
   }
 
+  /**
+   * Images go to the session's image store (type sniffed from the bytes) and
+   * reach the agent with their stored path; other files pass through as before.
+   */
+  private async storeAttachments(
+    attachments: Attachment[],
+  ): Promise<{ forAgent: AgentAttachment[]; images: ImageRef[]; others: Attachment[] }> {
+    const forAgent: AgentAttachment[] = [];
+    const images: ImageRef[] = [];
+    const others: Attachment[] = [];
+    for (const a of attachments) {
+      const raw = Buffer.from(a.data, 'base64');
+      const looksImage = a.mediaType.startsWith('image/') || sniffImage(raw) !== undefined;
+      if (!looksImage) {
+        forAgent.push(a);
+        others.push(a);
+        continue;
+      }
+      // oxlint-disable-next-line no-await-in-loop -- at most 10, in order
+      const bytes = await normalizeImage(raw);
+      if (bytes === undefined) throw new UserError(`${a.name ?? 'That file'} is not a PNG, JPEG, GIF or WebP image.`);
+      const res = this.deps.images.put(this.info.id, bytes, a.name);
+      if (!res.ok) throw new UserError(`Could not attach ${a.name ?? 'the image'}: ${res.error}`);
+      // oxlint-disable-next-line no-await-in-loop -- see above
+      const path = await this.deps.images.pathOf(this.info.id, res.ref.id);
+      images.push(res.ref);
+      forAgent.push({
+        mediaType: res.ref.mediaType,
+        data: bytes === raw ? a.data : Buffer.from(bytes).toString('base64'),
+        ...(a.name === undefined ? {} : { name: a.name }),
+        ...(path === undefined ? {} : { path }),
+        ref: res.ref,
+      });
+    }
+    return { forAgent, images, others };
+  }
+
   /** Adds the UserItem and hands the message to the agent. Returns the item id. */
   async send(text: string, attachments: Attachment[] | undefined): Promise<string> {
     await this.ensureLoaded();
     const item: UserItem = { id: `u_${randomId()}`, ts: Date.now(), kind: 'user', text };
+    let forAgent: AgentAttachment[] | undefined;
     if (attachments !== undefined && attachments.length > 0) {
-      const total = attachments.reduce((n, a) => n + a.data.length, 0);
-      item.attachments = attachments.map((a) => ({
-        mediaType: a.mediaType,
-        ...(a.name === undefined ? {} : { name: a.name }),
-        ...(total <= MAX_INLINE_ATTACHMENTS ? { data: a.data } : {}),
-      }));
+      const stored = await this.storeAttachments(attachments);
+      forAgent = stored.forAgent;
+      if (stored.images.length > 0) item.images = stored.images;
+      // Transcripts carry no inline bytes any more: only what the other files were.
+      if (stored.others.length > 0)
+        item.attachments = stored.others.map((a) => ({
+          mediaType: a.mediaType,
+          ...(a.name === undefined ? {} : { name: a.name }),
+        }));
+    }
+    if (this.info.archived === true) {
+      // Sending to an archived chat brings it back to the sidebar.
+      delete this.info.archived;
+      this.deps.host.changed('structure');
     }
     this.upsert(item);
     if (this.autoTitle && text.trim() !== '') {
@@ -393,11 +516,11 @@ export class ChatSession implements LiveSession {
       this.autoTitle = false;
       this.deps.host.changed('structure');
     }
-    void this.deliver(text, attachments);
+    void this.deliver(text, forAgent);
     return item.id;
   }
 
-  private async deliver(text: string, attachments: Attachment[] | undefined): Promise<void> {
+  private async deliver(text: string, attachments: AgentAttachment[] | undefined): Promise<void> {
     const agent = await this.ensureAgent();
     if (agent === undefined) return;
     // A pending permission / question keeps the session `waiting`: the adapter only
@@ -435,6 +558,43 @@ export class ChatSession implements LiveSession {
     this.agent?.setModel(model).catch((err: unknown) => log.warn('setModel failed', err));
   }
 
+  /** Slash commands the running agent reported, if it did. */
+  get agentCommands(): SlashCommand[] | undefined {
+    return this.commands;
+  }
+
+  /**
+   * Archive (hide from the sidebar, stop the agent process, keep the
+   * transcript) or bring back. The agent starts again, resuming the same
+   * conversation, with the next message.
+   */
+  async setArchived(archived: boolean): Promise<void> {
+    if (archived) {
+      this.info.archived = true;
+      this.info.unread = false;
+      this.deps.host.changed('structure');
+      await this.suspend();
+    } else if (this.info.archived === true) {
+      delete this.info.archived;
+      this.deps.host.changed('structure');
+    }
+  }
+
+  /** Stop the agent process but keep the session usable (it restarts lazily on the next message). */
+  private async suspend(): Promise<void> {
+    this.flushDelta();
+    const agent = this.agent ?? (await this.starting);
+    this.agent = undefined;
+    if (agent !== undefined) {
+      await agent.dispose().catch((err: unknown) => log.warn(`agent dispose failed for ${this.info.id}`, err));
+    }
+    // Late events of the stopped process are ignored from here on.
+    this.generation += 1;
+    this.commands = undefined;
+    if (!this.disposed) this.setStatus('idle');
+    await this.file.flush();
+  }
+
   toRecord(): PersistedSession {
     return {
       info: this.info,
@@ -464,7 +624,7 @@ export class ChatSession implements LiveSession {
     await this.file.flush();
   }
 
-  removeFiles(): Promise<void> {
-    return this.file.remove();
+  async removeFiles(): Promise<void> {
+    await Promise.all([this.file.remove(), this.deps.images.removeSession(this.info.id)]);
   }
 }
