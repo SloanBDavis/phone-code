@@ -306,6 +306,33 @@ restriction one_compromise:
 // check.sh runs each lemma by name and compares the result with the
 // expectation for the variant; see the table there.
 
+// ---- source lemmas (proved first, then reused by the proofs below)
+// Without them the backward search loops on "the attacker knows the token of
+// a device that was paired through a handoff code minted with a token it
+// knows". They hold whenever the phone's own channel is TLS (not PLAIN), in
+// every other variant, and check.sh requires them to verify wherever they are
+// defined: a falsified [reuse] lemma would make the later proofs unsound.
+#ifdef PLAIN
+#else
+// The attacker knows a pairing code only if the QR leaked.
+lemma src_pair_code [reuse]:
+  "All c #i #j. Issued(c)@i & K(c)@j ==> Ex #k. QRLeaked(c)@k"
+
+// The attacker knows a device token only if that device, or an ancestor,
+// was redeemed by someone other than the owner's phone or had its token stolen.
+lemma src_token [use_induction, reuse]:
+  "All lin t #i #j. DeviceToken(lin, t)@i & K(t)@j ==>
+     Ex A alin #m. DevLin(A, alin)@m & (alin = lin | alin << lin)
+       & ((Ex #k. Compromised(A)@k) | (Ex ch c #k. PairedVia(ch, A, c)@k & not (ch = 'ph')))"
+
+// The attacker knows a handoff code only if its URL leaked or it knows the
+// minting device's token.
+lemma src_handoff_code [reuse]:
+  "All h P #i #j. HandoffMinted(h, P)@i & K(h)@j ==>
+     (Ex #k. HandoffLeaked(h)@k)
+     | (Ex lin t #k #l #n. DevLin(P, lin)@k & DeviceToken(lin, t)@l & K(t)@n & #n < #j)"
+#endif
+
 // ---- sanity: the honest protocol runs (the model is not vacuous)
 
 lemma exec_pair_hello:

@@ -20,7 +20,7 @@
     "knip": "knip",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run knip && bun scripts/protocol-doc.ts --check",
     "e2e": "bun run --filter e2e test",
-    "dev": "bun run --filter phone-code dev",
+    "dev": "bun packages/daemon/src/cli.ts",
     "prepare": "[ -n \"$CI\" ] || [ ! -d .git ] || lefthook install"
   },
   "devDependencies": {
