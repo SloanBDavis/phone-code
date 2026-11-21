@@ -119,7 +119,23 @@ export function upsertItem(sessionId: string, item: ChatItem): void {
   const c = chatOf(sessionId);
   const existing = c.items.get(item.id);
   if (existing) {
+    const before = existing.value;
     existing.value = item;
+    // A tool row can be nested later (ACP: under the question card that stands for it).
+    const from = before.kind === 'tool' ? before.parentId : undefined;
+    const to = item.kind === 'tool' ? item.parentId : undefined;
+    if (from !== to) {
+      if (from === undefined) c.ids.value = c.ids.value.filter((x) => x !== item.id);
+      else {
+        const old = childrenOf(c, from);
+        old.value = old.value.filter((x) => x !== item.id);
+      }
+      if (to === undefined) c.ids.value = [...c.ids.value, item.id];
+      else {
+        const ch = childrenOf(c, to);
+        ch.value = [...ch.value, item.id];
+      }
+    }
   } else {
     c.items.set(item.id, signal(item));
     c.kinds.set(item.id, item.kind);

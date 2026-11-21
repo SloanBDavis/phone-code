@@ -1,8 +1,11 @@
 /**
  * Claude Code session files: `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`
- * (one JSON entry per line; sub-agent transcripts live in subdirectories or
- * are marked `isSidechain`). Used for the resume picker and for replaying a
- * past conversation into the chat when resuming.
+ * (one JSON entry per line). Sub-agent transcripts live next to it in
+ * `<sessionId>/subagents/agent-<agentId>.jsonl` (entries marked `isSidechain`),
+ * each with an `agent-<agentId>.meta.json` naming the Agent/Task tool_use that
+ * started it (`toolUseId`); older CLIs kept sidechain entries in the session
+ * file itself, without a reliable link to their Task call. Used for the resume
+ * picker and for replaying a past conversation into the chat when resuming.
  */
 import { open, readdir, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
@@ -265,9 +268,76 @@ export async function loadClaudeTranscript(file: string, cwd: string, maxItems =
     }
     // compact_boundary entries are skipped: the summary that follows is not shown either.
   }
+  await replaySubagents(file, chain, mapper);
   mapper.endTurn('completed');
   const all = order.map((id) => items.get(id)).filter((i): i is ChatItem => i !== undefined);
   // Tools from the old run that never finished will not finish now.
   for (const item of all) if (item.kind === 'tool' && item.status === 'running') item.status = 'error';
   return all.length > maxItems ? all.slice(all.length - maxItems) : all;
+}
+
+/** agentId -> the tool_use id whose result names it (`toolUseResult.agentId` of an Agent/Task call). */
+function agentToolIds(entries: Rec[], into: Map<string, string>): void {
+  for (const e of entries) {
+    const agentId = str(rec(e.toolUseResult).agentId);
+    if (e.type !== 'user' || !agentId || into.has(agentId)) continue;
+    const block = arr(rec(e.message).content)
+      .map(rec)
+      .find((b) => b.type === 'tool_result');
+    const toolUseId = str(block?.tool_use_id);
+    if (toolUseId) into.set(agentId, toolUseId);
+  }
+}
+
+/**
+ * Replays the tool calls of the session's sub-agents (see the header) under
+ * their Agent/Task card, the way the live stream nests them through
+ * `parent_tool_use_id`. Only agents whose starting call is in the replayed
+ * conversation are shown; a sub-agent's own sub-agents follow their parent.
+ */
+async function replaySubagents(file: string, chain: Rec[], mapper: ClaudeMapper): Promise<void> {
+  const dir = path.join(path.dirname(file), path.basename(file, '.jsonl'), 'subagents');
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return; // no sub-agents
+  }
+  const ids = names
+    .map((n) => /^agent-([\w-]+)\.jsonl$/.exec(n)?.[1])
+    .filter((id): id is string => id !== undefined);
+  const agents = await mapPool(ids, 8, async (id) => {
+    let toolUseId: string | undefined;
+    try {
+      toolUseId = str(rec(JSON.parse(await readFile(path.join(dir, `agent-${id}.meta.json`), 'utf8'))).toolUseId);
+    } catch {
+      // no meta file: fall back to the agentId in the starting call's result
+    }
+    try {
+      const entries = parseLines(await readFile(path.join(dir, `agent-${id}.jsonl`), 'utf8'), false, false);
+      return { id, toolUseId, entries };
+    } catch {
+      return undefined;
+    }
+  });
+  const loaded = agents.filter((a): a is NonNullable<typeof a> => a !== undefined);
+  const byResult = new Map<string, string>();
+  agentToolIds(chain, byResult);
+  for (const a of loaded) agentToolIds(a.entries, byResult);
+  let left = loaded
+    .map((a) => ({ ...a, parent: a.toolUseId ?? byResult.get(a.id) }))
+    .filter((a): a is typeof a & { parent: string } => a.parent !== undefined);
+  // Parents first: a nested agent's starting call is in its parent agent's transcript.
+  for (;;) {
+    const ready = left.filter((a) => mapper.tools.has(a.parent));
+    if (ready.length === 0) return;
+    for (const a of ready) {
+      for (const e of a.entries) {
+        if (e.type === 'assistant') mapper.onAssistant({ ...e, parentToolUseID: a.parent });
+        else if (e.type === 'user' && arr(rec(e.message).content).some((b) => rec(b).type === 'tool_result'))
+          mapper.onToolResults(e);
+      }
+    }
+    left = left.filter((a) => !ready.includes(a));
+  }
 }

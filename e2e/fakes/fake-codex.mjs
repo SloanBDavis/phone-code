@@ -479,6 +479,43 @@ async function command(c, turn, cmd, { output, exitCode = 0, approval = true }) 
 const scenarios = [];
 const scenario = (re, fn) => scenarios.push({ re, fn });
 
+// The process stops reading stdin after this turn but keeps running (a wedged app-server).
+let closeInputAfterTurn = false;
+scenario(/close (?:your )?input/i, async (c) => {
+  await c.message('Closing my input now.');
+  closeInputAfterTurn = true;
+});
+
+// An approval request that arrives after the turn completed.
+let lateAskAfterTurn = false;
+let lateDecision = 'none';
+scenario(/late ask/i, async (c) => {
+  await c.message("I'll fetch in the background.");
+  lateAskAfterTurn = true;
+});
+scenario(/background decision/i, async (c) => {
+  await c.message(`Background request: ${lateDecision}`);
+});
+
+function lateAsk(turn) {
+  const id = nextServerId++;
+  send({
+    id,
+    method: 'item/commandExecution/requestApproval',
+    params: {
+      threadId: thread.id,
+      turnId: turn.id,
+      itemId: `call_${randomUUID()}`,
+      command: 'git fetch',
+      cwd: thread.cwd,
+      reason: 'Fetch in the background',
+    },
+  });
+  serverWaiters.set(id, (res) => {
+    lateDecision = typeof res.decision === 'string' ? res.decision : JSON.stringify(res);
+  });
+}
+
 scenario(/crash/i, async (c) => {
   await c.message('Starting, this will go badly');
   process.stderr.write('fake-codex: simulated crash\n');
@@ -713,4 +750,20 @@ async function runTurn(turn, input) {
   current = null;
   notify('thread/status/changed', { threadId: thread.id, status: { type: 'idle' } });
   notify('turn/completed', { threadId: thread.id, turn: { ...turn, items: [], itemsView: 'notLoaded' } });
+  if (lateAskAfterTurn) {
+    lateAskAfterTurn = false;
+    await sleep(300);
+    lateAsk(turn);
+  }
+  if (closeInputAfterTurn) {
+    closeInputAfterTurn = false;
+    process.stdin.removeAllListeners('end');
+    process.stdin.destroy();
+    try {
+      fs.closeSync(0); // the host's next write fails with EPIPE
+    } catch {
+      // already closed
+    }
+    setInterval(() => {}, 60_000); // keep running without input
+  }
 }

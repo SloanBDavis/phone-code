@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../lib/fixtures.ts';
-import { createSession, lastText, send, shot, waitTurn } from '../lib/ui.ts';
+import { createSession, lastText, row, send, shot, waitTurn } from '../lib/ui.ts';
 
 test('streams a markdown answer', async ({ phone }) => {
   await createSession(phone, 'claude');
@@ -137,6 +137,68 @@ test('a crash shows an error and the next message recovers', async ({ phone }) =
   await waitTurn(phone, 2);
   await expect(lastText(phone)).toContainText('fake Claude');
   await expect(phone.testId('chat-title')).toContainText('Ready');
+});
+
+test('a CLI that stops reading its input: an error, and the next message restarts it', async ({ phone }) => {
+  await createSession(phone, 'claude');
+  await send(phone, 'close input');
+  await waitTurn(phone, 1);
+  // Long enough that the write fails (Bun reports EPIPE only for writes it cannot finish at once).
+  await send(phone, `are you there ${'z'.repeat(20_000)}`);
+  await expect(phone.testId('chat-item-notice').last()).toContainText('stopped reading its input');
+  await waitTurn(phone, 2, 'error');
+  await expect(phone.testId('chat-title')).toContainText('Error');
+  await send(phone, 'hello, are you back?');
+  await waitTurn(phone, 3);
+  await expect(lastText(phone)).toContainText('fake Claude');
+  await expect(phone.testId('chat-title')).toContainText('Ready');
+});
+
+test('stop cancels a permission asked after the turn ended', async ({ phone }) => {
+  await createSession(phone, 'claude');
+  await send(phone, 'late ask');
+  await waitTurn(phone, 1);
+  const perm = phone.testId('chat-item-permission').last();
+  await expect(perm).toHaveAttribute('data-status', 'pending');
+  await expect(perm).toContainText('git fetch');
+  await phone.testId('composer-stop').click();
+  await expect(perm).toHaveAttribute('data-status', 'cancelled');
+  await expect(phone.testId('chat-title')).toContainText('Ready');
+  // The CLI was told, so it does not wait for an answer.
+  await send(phone, 'background decision?');
+  await waitTurn(phone, 2);
+  await expect(lastText(phone)).toContainText('Background request: deny (interrupt)');
+});
+
+test('thinking text is streamed', async ({ phone }) => {
+  await createSession(phone, 'claude');
+  await send(phone, 'think first');
+  await waitTurn(phone, 1);
+  const thinking = phone.testId('chat-item-thinking');
+  await expect(thinking).toHaveCount(1);
+  await thinking.locator('.thinking-head').click();
+  await expect(thinking.locator('.thinking-body')).toContainText('consider the options');
+});
+
+test('resuming restores the sub-agent tool calls inside the agent card', async ({ phone, daemon }) => {
+  const id = await createSession(phone, 'claude', { folder: daemon.folder('resume-agent') });
+  await send(phone, 'start an agent for the walrus');
+  await waitTurn(phone, 1);
+  const task = phone.testId('chat-item-task');
+  await expect(task.locator('.task-count')).toHaveText('1 steps');
+  await phone.testId('chat-menu-btn').click();
+  await phone.testId('menu-delete').click();
+  await phone.testId('delete-dialog-confirm').click();
+  await expect(row(phone, id)).toHaveCount(0);
+
+  await phone.testId('new-session').click();
+  await phone.testId('resume-row').filter({ hasText: 'walrus' }).click();
+  await expect(phone.testId('screen-chat')).toBeVisible();
+  await expect(task.locator('.task-count')).toHaveText('1 steps');
+  const nested = task.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
+  await expect(nested).toHaveAttribute('data-status', 'done');
+  // Nested only: no top-level Bash row.
+  await expect(phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveCount(1);
 });
 
 test('switching permission mode and model', async ({ phone, daemon }) => {

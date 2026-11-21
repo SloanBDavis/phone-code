@@ -286,7 +286,11 @@ export interface ToolItem extends ItemBase {
   /** Text result, truncated by the daemon to a sane size. */
   output?: string;
   outputTruncated?: boolean;
-  /** For sub-agent tool calls: id of the parent Task tool item. */
+  /**
+   * For sub-agent tool calls: id of the parent Task tool item. Also set (and
+   * possibly only later) on an ACP tool call that a question card stands for:
+   * then it is the QuestionItem's id and the row is not shown on its own.
+   */
   parentId?: string;
 }
 

@@ -354,7 +354,110 @@ async function search(c) {
   await c.say('Found one TODO.');
 }
 
+// The process stops reading stdin after this prompt but keeps running (a wedged agent).
+let closeInputAfterTurn = false;
+// A permission request that arrives after the prompt ended.
+let lateAskAfterTurn = false;
+let lateDecision = 'none';
+
+async function lateAsk(s) {
+  const res = await request('session/request_permission', {
+    sessionId: s.id,
+    toolCall: {
+      toolCallId: `call_${randomUUID().slice(0, 8)}`,
+      title: 'git fetch',
+      kind: 'execute',
+      status: 'pending',
+      rawInput: { command: 'git fetch' },
+    },
+    options: [
+      { optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' },
+      { optionId: 'cancel', name: 'Reject', kind: 'reject_once' },
+    ],
+  });
+  const o = res?.result?.outcome;
+  lateDecision = o?.outcome === 'selected' ? o.optionId : (o?.outcome ?? 'error');
+}
+
+/** Antigravity-style question: a generic tool call plus a form elicitation that names it. */
+async function askMe(c) {
+  if (!clientCaps.elicitation?.form) {
+    await c.say('Which color should I use, blue or red?');
+    return;
+  }
+  const id = `call_${randomUUID().slice(0, 8)}`;
+  c.tool(id, { title: 'Run ask_question', kind: 'other', status: 'in_progress', rawInput: {} });
+  const answer = await request('elicitation/create', {
+    sessionId: c.s.id,
+    toolCallId: id,
+    mode: 'form',
+    message: 'The agent has a question.',
+    requestedSchema: {
+      type: 'object',
+      properties: {
+        q1: {
+          type: 'string',
+          title: 'Which color?',
+          oneOf: [
+            { const: '1', title: '(Recommended) Blue' },
+            { const: '2', title: 'Red' },
+          ],
+        },
+        q1_other: { type: 'string', title: 'Other', description: 'Optional free-form answer to: Which color?' },
+        q2: {
+          type: 'array',
+          title: 'Which platforms?',
+          items: {
+            anyOf: [
+              { const: 'ios', title: 'iOS' },
+              { const: 'android', title: 'Android' },
+              { const: 'web', title: 'Web' },
+            ],
+          },
+        },
+        q3: {
+          type: 'string',
+          title: 'Which license?',
+          oneOf: [
+            { const: 'mit', title: 'MIT' },
+            { const: 'apache', title: 'Apache-2.0' },
+          ],
+        },
+        q3_other: { type: 'string', title: 'Other', description: 'Optional free-form answer to: Which license?' },
+      },
+    },
+  });
+  const r = answer.result ?? {};
+  c.toolUpdate(id, {
+    status: 'completed',
+    content: [{ type: 'content', content: { type: 'text', text: JSON.stringify(r) } }],
+  });
+  if (r.action !== 'accept') {
+    await c.say(`No answer (${r.action ?? 'error'}).`);
+    return;
+  }
+  await c.say(`Received: ${JSON.stringify(r.content)}`);
+}
+
 const SCENARIOS = [
+  [
+    /close (?:your )?input/i,
+    async (c) => {
+      await c.say('Closing my input now.');
+      closeInputAfterTurn = true;
+    },
+  ],
+  [
+    /late ask/i,
+    async (c) => {
+      await c.say("I'll fetch in the background.");
+      lateAskAfterTurn = true;
+    },
+  ],
+  [/background decision/i, (c) => c.say(`Background request: ${lateDecision}`)],
+  // How Antigravity reports a failed model call: as an ordinary reply that ends the turn.
+  [/model error/i, (c) => c.say('⚠ agent executor error: model unavailable (RESOURCE_EXHAUSTED)')],
+  [/ask me/i, askMe],
   [
     /crash/i,
     async (c) => {
@@ -446,6 +549,22 @@ async function prompt(id, params) {
     },
     { keep: false },
   );
+  if (lateAskAfterTurn) {
+    lateAskAfterTurn = false;
+    await sleep(300);
+    void lateAsk(s);
+  }
+  if (closeInputAfterTurn) {
+    closeInputAfterTurn = false;
+    process.stdin.removeAllListeners('end');
+    process.stdin.destroy();
+    try {
+      fs.closeSync(0); // the host's next write fails with EPIPE
+    } catch {
+      // already closed
+    }
+    setInterval(() => {}, 60_000); // keep running without input
+  }
   return undefined;
 }
 

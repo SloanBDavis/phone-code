@@ -649,7 +649,8 @@ class AcpSession implements AgentSession {
       err.last = false;
     }
     const marker = this.cfg.errorReplyPrefix;
-    if (kind === 'text' && marker !== undefined && this.replay === 'none' && this.text?.kind !== 'text') {
+    const continues = this.text !== undefined && this.text.kind === kind && same(this.text.messageId);
+    if (kind === 'text' && marker !== undefined && this.replay === 'none' && !continues) {
       // A new agent message: it may be the agent's way of reporting a failure.
       this.closeText();
       this.held = { text: delta, messageId };
@@ -1118,7 +1119,8 @@ class AcpSession implements AgentSession {
     if (outcome === 'completed' && this.errorReply?.last) {
       // The agent reported a failure as its reply (errorReplyPrefix) and ended the turn.
       outcome = 'error';
-      error = oneLine(this.errorReply.text.trim().slice(this.cfg.errorReplyPrefix?.length ?? 0).trim(), 300);
+      const detail = this.errorReply.text.trim().slice(this.cfg.errorReplyPrefix?.length ?? 0);
+      error = oneLine(detail.trim(), 300) || undefined;
     }
     this.finishOpenItems(outcome);
     this.emitTurn(outcome, outcome === 'error' ? (error ?? 'Turn failed') : undefined, usage);

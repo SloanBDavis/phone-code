@@ -1015,6 +1015,7 @@ async function runTurn(msg) {
   }
   if (closeInputAfterTurn) {
     closeInputAfterTurn = false;
+    process.stdin.removeAllListeners('end');
     process.stdin.destroy();
     try {
       fs.closeSync(0); // the host's next write fails with EPIPE
