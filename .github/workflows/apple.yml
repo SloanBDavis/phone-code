@@ -1,0 +1,197 @@
+name: Apple
+
+# The native iOS and macOS app (apple/). Builds it with xcodebuild, runs the
+# Core package's end-to-end tests against the real daemon, and runs the
+# XCUITests on the iOS simulator and on macOS against the daemon with the
+# scripted fake agents, uploading a screenshot of every main screen.
+
+on:
+  push:
+    paths:
+      - 'apple/**'
+      - '.github/workflows/apple.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  PHONECODE_PAIR_CODE: UITEST-PAIR-01
+  DAEMON_PORT: '7777'
+
+jobs:
+  core-linux:
+    name: Core end-to-end (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Swift toolchain
+        run: |
+          if ! command -v swift >/dev/null; then
+            echo "::error::no Swift toolchain on this runner image"
+            exit 1
+          fi
+          swift --version
+      - name: Core end-to-end tests
+        working-directory: apple/PhoneCodeCore
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee ../../core-linux.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-linux-log
+          path: core-linux.log
+
+  core-macos:
+    name: Core end-to-end (macOS, URLSession WebSocket)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: xcodebuild -version && swift --version
+      - name: Core end-to-end tests
+        working-directory: apple/PhoneCodeCore
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee ../../core-macos.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-macos-log
+          path: core-macos.log
+
+  app:
+    name: App (${{ matrix.platform }})
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ios, macos]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available | grep -E 'iPhone' | head -20 || true
+
+      - name: Generated project is up to date
+        continue-on-error: true
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.48.0/xcodegen.zip
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen"
+          "$RUNNER_TEMP/xcodegen/xcodegen/bin/xcodegen" generate --spec apple/project.yml
+          git diff --stat --exit-code -- apple/PhoneCode.xcodeproj || {
+            echo "::warning::apple/PhoneCode.xcodeproj differs from what apple/project.yml generates"
+            git diff -- apple/PhoneCode.xcodeproj | head -200
+            git checkout -- apple/PhoneCode.xcodeproj
+            exit 1
+          }
+
+      - name: Pick destination
+        id: dest
+        run: |
+          if [ "${{ matrix.platform }}" = ios ]; then
+            NAME=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = json.load(sys.stdin)["devices"]
+          names = [d["name"] for rt, ds in sorted(devs.items(), reverse=True) if "iOS" in rt for d in ds]
+          pref = [n for n in names if n == "iPhone 17 Pro"] or [n for n in names if n.startswith("iPhone")]
+          print(pref[0])')
+            echo "destination=platform=iOS Simulator,name=$NAME" >> "$GITHUB_OUTPUT"
+            echo "signing=CODE_SIGNING_ALLOWED=NO" >> "$GITHUB_OUTPUT"
+          else
+            echo "destination=platform=macOS" >> "$GITHUB_OUTPUT"
+            echo "signing=CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= ENABLE_HARDENED_RUNTIME=NO PC_BUNDLE_ID_PREFIX=dev.phonecode.ci" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build app and UI tests
+        run: |
+          status=0
+          xcodebuild build-for-testing \
+            -project apple/PhoneCode.xcodeproj -scheme PhoneCode \
+            -destination "${{ steps.dest.outputs.destination }}" \
+            -derivedDataPath DerivedData \
+            -skipPackagePluginValidation -skipMacroValidation \
+            ${{ steps.dest.outputs.signing }} \
+            > build-${{ matrix.platform }}.log 2>&1 || status=$?
+          grep -E '(error|warning):|BUILD|\*\*' build-${{ matrix.platform }}.log | sort -u | head -400 || true
+          tail -5 build-${{ matrix.platform }}.log
+          exit $status
+
+      - name: Start the daemon with the fake agents
+        run: |
+          ROOT="$RUNNER_TEMP/pc"
+          mkdir -p "$ROOT/home/project" "$ROOT/state"
+          echo '# project' > "$ROOT/home/project/README.md"
+          FAKES="$GITHUB_WORKSPACE/e2e/fakes"
+          ( cd "$ROOT/home" && \
+            HOME="$ROOT/home" SHELL=/bin/bash PHONECODE_HOME="$ROOT/state" PHONECODE_JSON=1 \
+            PHONECODE_CLAUDE_BIN="$FAKES/fake-claude.mjs" PHONECODE_CODEX_BIN="$FAKES/fake-codex.mjs" \
+            PHONECODE_GEMINI_BIN="$FAKES/fake-acp.mjs" CLAUDE_CONFIG_DIR="$ROOT/home/.claude" \
+            CODEX_HOME="$ROOT/home/.codex" FAKE_ACP_HOME="$ROOT/fake-acp" FAKE_SPEED=2 \
+            nohup bun "$GITHUB_WORKSPACE/packages/daemon/src/cli.ts" --local --port "$DAEMON_PORT" \
+              > "$GITHUB_WORKSPACE/daemon-${{ matrix.platform }}.log" 2>&1 & )
+          for i in $(seq 1 60); do
+            curl -sf "http://127.0.0.1:$DAEMON_PORT/api/health" && break
+            sleep 1
+          done
+          curl -sf "http://127.0.0.1:$DAEMON_PORT/api/health"
+
+      - name: UI tests
+        run: |
+          status=0
+          TEST_RUNNER_PC_UITEST_DAEMON="http://127.0.0.1:$DAEMON_PORT" \
+          TEST_RUNNER_PC_UITEST_CODE="$PHONECODE_PAIR_CODE" \
+          xcodebuild test-without-building \
+            -project apple/PhoneCode.xcodeproj -scheme PhoneCode \
+            -destination "${{ steps.dest.outputs.destination }}" \
+            -derivedDataPath DerivedData \
+            -resultBundlePath "uitests-${{ matrix.platform }}.xcresult" \
+            ${{ steps.dest.outputs.signing }} \
+            > uitests-${{ matrix.platform }}.log 2>&1 || status=$?
+          grep -E 'Test Case|error:|failed|passed|\*\*' uitests-${{ matrix.platform }}.log | head -400 || true
+          exit $status
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          mkdir -p screenshots
+          if [ -d "uitests-${{ matrix.platform }}.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "uitests-${{ matrix.platform }}.xcresult" --output-path screenshots || true
+            ls -la screenshots
+          fi
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-${{ matrix.platform }}
+          path: |
+            screenshots/
+            build-${{ matrix.platform }}.log
+            uitests-${{ matrix.platform }}.log
+            daemon-${{ matrix.platform }}.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-${{ matrix.platform }}-xcresult
+          path: uitests-${{ matrix.platform }}.xcresult

@@ -48,7 +48,7 @@
     "import/no-duplicates": "error",
     "eslint/radix": "error"
   },
-  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "packages/daemon/web/**"],
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "packages/daemon/web/**", "apple/**"],
   "overrides": [
     {
       "files": ["scripts/**", "e2e/**"],

@@ -10,3 +10,10 @@ states
 release/
 formal/.tools/
 formal/*_TTrace_*
+# Apple app (apple/)
+.build/
+DerivedData/
+xcuserdata/
+*.xcresult
+apple/Config/Signing.local.xcconfig
+apple/PhoneCodeCore/.swiftpm/
