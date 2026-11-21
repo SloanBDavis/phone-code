@@ -156,14 +156,15 @@ flowchart LR
 - **`packages/web`**: the phone app. Preact with signals, Vite, xterm.js, marked and highlight.js loaded on demand. About 53 kB gzipped for the first screen.
 - **`packages/protocol`**: TypeScript types for the WebSocket protocol, shared by both sides. See [docs/protocol.md](docs/protocol.md).
 - **`e2e`**: Playwright tests that drive the real daemon with scripted fake `claude` and `codex` binaries.
-- **`formal`**: TLA+ models of the chat sync and pairing protocols, checked with TLC.
+- **`formal`**: TLA+ models of the chat sync and pairing protocols, checked with TLC, and a Tamarin model of pairing and authentication against a network attacker.
 
 ## Security
 
 Pairing a phone gives it a shell on your computer as your user, and agents that can run commands. Treat a paired phone like an unlocked laptop.
 
 - The daemon binds loopback and refuses unencrypted connections from the network unless you pass `--insecure`.
-- Pairing codes are random (about 49 bits), single use, expire after 5 minutes, and failed attempts are rate limited.
+- Pairing codes are single use and expire after 5 minutes. The QR link carries a 128-bit secret; the 10-character code you can type instead (about 49 bits) is rate limited, and that limit cannot block the QR link.
+- Revoking a device also revokes the devices paired through it, such as its Home Screen app.
 - Each device gets a random 256-bit token. The daemon stores only its SHA-256 hash; revoke a device any time.
 - On the phone the token is stored in the app's local storage. Anyone who can open the app on your unlocked phone can use your computer.
 - `--tunnel` makes the pairing screen reachable from the whole internet and lets Cloudflare see your traffic.

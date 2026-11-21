@@ -1,5 +1,11 @@
 # Formal models of phone-code
 
+Two tiers. The TLA+ models below check the daemon's state machines with
+honest participants (crashes, persistence, races). The Tamarin model in
+[`tamarin/`](#tamarin-attacker-model-of-pairing-and-authentication) checks
+pairing and authentication against an attacker who controls the network,
+runs web pages in the user's browser, and may see the QR or steal a token.
+
 TLA+ specifications of the three pieces of protocol logic that are easy to
 get wrong and hard to test, checked with TLC. They model the daemon as it is
 implemented (each action names the file and function it stands for), not an
@@ -140,6 +146,11 @@ Properties:
 - `RateLimitHolds`. Within one window, at most `FailIp` failed attempts per IP
   and `FailGlobal` overall reach the code comparison. (8 and 40 in the code; 1
   and 2 in the model.)
+- `RevokeCascades`. No device paired through a revoked device's handoff
+  codes (transitively) is in the store or has an authorized socket.
+  `PairingAuth_bug_cascade.cfg` (`FixCascade = FALSE`, the code before the
+  lineage fix) pins the counterexample: Pair, Handoff(d1), Pair(child) →
+  RevokeViaControl(d1), and the child stays authorized.
 - `RevokedStaysRevoked`. Once the CLI said "Revoked", the device is not in the
   store, even after a crash and restart, and none of its sockets is
   authorized.
@@ -201,13 +212,25 @@ These are separate runs with `-workers 4`, on a 4-core container. The whole defa
 
 ## Reproductions
 
-The scripts that reproduced bugs 1-6 against a real daemon are not part of the
-repository. Each one started `PHONECODE_HOME=<tmp> PHONECODE_ECHO_AGENT=1
-PHONECODE_JSON=1 PHONECODE_PAIR_CODE=… bun packages/daemon/src/cli.ts`; bug 6
-used `PHONECODE_CLAUDE_BIN=e2e/fakes/fake-claude.mjs` instead of the echo
-agent. They then drove the daemon over HTTP and the websocket, and used
-kill -9 where the trace has a crash. All six reproduced before the fix and not
-after it. They are good candidates for e2e tests.
+The scripts that reproduced bugs 1-6 against a real daemon are now e2e
+regression tests, each checking the invariant the fix restored so that it
+holds in every interleaving rather than depending on hitting a window:
+
+- Bug 1: `e2e/tests/sync-regressions.spec.ts` (restart, read the seq, kill -9
+  at once, restart: the new seq must be larger). No timing involved.
+- Bug 2: same file (sub + unsub right after a restart, a second connection
+  waits for the same transcript load; no frames may follow the unsub).
+- Bug 3, 4: `e2e/tests/revocation.spec.ts` (kill -9 right after the CLI
+  printed "Revoked").
+- Bug 5: `e2e/tests/startup-revoke.spec.ts`. A fake `tailscale` on PATH holds
+  startup open (`status` reports HTTPS, `serve` waits for a file the test
+  creates), so the window is deterministic. No `--tunnel`.
+- Bug 6: same sync file, but it can no longer catch a regression of the core
+  fix alone: the Claude and Codex adapters now re-report their real status
+  after every send, which masks it. It guards the user-visible behaviour.
+
+Removing each fix (tried for 1-5 and for the cascade, Host, Origin, client-key
+and link fixes) makes its test fail.
 
 ## What is _not_ covered
 
@@ -228,14 +251,13 @@ after it. They are good candidates for e2e tests.
   closes the socket with 1013, is modeled as a disconnect.
 - **Cryptography**: codes and tokens are assumed unguessable, and guesses never
   match. Constant-time comparison and token hashing are not modeled.
-- **Availability**: the global rate limit (40 failures per minute), and the
-  per-IP limit behind a tunnel where every request comes from loopback, let an
-  attacker block legitimate pairing indefinitely. This is a design trade-off
-  and is not checked as a property. A paired device can also evict the banner
-  pairing code by minting `MAX_ACTIVE_CODES` handoff codes.
-- **Device lineage**: revoking a device does not revoke devices that were
-  paired through its handoff codes _before_ the revocation. Those are listed
-  separately in `phonecode devices`.
+- **Availability**: only the typed form of a pairing code is rate limited
+  (per client, keyed on the proxy-reported address, and 40 failures a minute
+  overall), so someone who can reach `/api/pair` can keep typed pairing
+  blocked; the QR link and handoff codes cannot be blocked (`Pair(c, ip,
+  "link")` ignores the limit). Not checked as a property. A paired device can
+  also evict the banner pairing code by minting `MAX_ACTIVE_CODES` handoff
+  codes (the web app keeps at most two alive: it re-mints every 3 minutes).
 - **Two daemons on one state directory**, a failing disk, clock jumps.
 - **Adapters other than Claude** in PermissionReq. Their pending maps were
   read, not modeled. Two adapter-side observations were not fixed, because the
@@ -252,3 +274,111 @@ after it. They are good candidates for e2e tests.
 - **Web client**: its seq handling (`fresh`, snapshot reset, inbox replay
   after reconnect) is modeled and no bug was found in it. The UI is out of
   scope.
+
+## Tamarin: attacker model of pairing and authentication
+
+`tamarin/PhoneCode.spthy`, checked by `tamarin/check.sh` with Tamarin 1.12.0
+and Maude 3.5.1 (official GitHub release binaries, Linux x86_64, pinned by
+SHA-256, downloaded into `formal/.tools/`). The script proves every lemma in
+every deployment variant (one Tamarin process per lemma, `JOBS` in parallel)
+and fails on any result that differs from the table in the script, or on a
+timeout. `TAMARIN_OUT=dir` keeps each proof and attack trace.
+
+### What is modelled (each rule names its code)
+
+- Channels per deployment. `Req`/`Res` facts are the TLS connection between
+  the phone and the daemon (tailscale serve, cloudflared, a `--url` proxy,
+  loopback): the attacker cannot read, inject or replay. `NET_CLIENT` lets the
+  attacker open its own connection and read the answers (tunnel URL, your
+  proxy, a tailnet member, another local user). `PLAIN` puts the phone's
+  traffic on the attacker's wire (`--insecure`, or a tunnel operator who is the
+  attacker: the same rules). In every variant, web pages in the user's
+  browser can post to `127.0.0.1` without reading the answer (`csrf`) and
+  can DNS-rebind a name to it and read answers (`rebind`).
+- The QR is authentic (the attacker cannot change what the terminal shows);
+  `QR_LEAK` makes it non-confidential (photo, shoulder surfing). The pairing
+  URL keeps the code in the fragment and responses carry
+  `Referrer-Policy: no-referrer`, so the URL is not leaked via Referer or
+  server logs; browser history and screenshots are the QR_LEAK case.
+  `HANDOFF_LEAK` leaks the `?h=` handoff code (page URL, manifest start_url,
+  history, a proxy log). The web app re-mints it every 3 minutes while the
+  install coach is open; every mint is a fresh code in the model, so that is
+  covered. `COMPROMISE` steals one device's token.
+- Daemon: pairing and handoff codes are linear facts (single use, expiry and
+  eviction consume them); devices are `!Dev(id, lineage, token)`, where a
+  handoff child's lineage is `<id, parent, parent's lineage>`. Revocation is
+  modelled by restrictions on lookups (`live_self`, `live_cascade`); the Host
+  and Origin checks are restrictions on the `rebind` / `csrf` channels. Old
+  behaviour can be switched back on: `NO_CASCADE`, `NO_HANDOFF_FORGET`,
+  `NO_HOST_CHECK`, `NO_ORIGIN_CHECK`.
+- Assumed: ideal TLS with certificate checking by the phone; unguessable
+  codes, tokens and control secret (no guessing, so the rate limit is out of
+  scope); an honest browser (origin-scoped localStorage, no XSS, no custom
+  headers cross-origin, no-cors answers unreadable); a private terminal and
+  `control.json`; JSON string ids/tokens (no type confusion); one daemon
+  epoch (crashes and in-flight requests are the TLA+ model's job). A paired
+  device's shell, which could read `control.json`, is not a protocol step.
+
+### Lemmas
+
+Source lemmas (`src_*`, `no_att_auth`, `src_auth_thief`, all `[reuse]`, some
+by induction) name the only ways the attacker learns a code or token: a
+leaked QR, a leaked handoff URL, a stolen token. They must verify wherever
+they are defined. The others:
+
+| Lemma | In plain words |
+| --- | --- |
+| `exec_*` | The honest runs exist: pair + hello, handoff child + hello, owner revoke. |
+| `token_secret` | The token of a device your phone paired stays secret (unless stolen). |
+| `pair_code_secret`, `handoff_code_secret`, `control_secret` | A code you did not leak, a handoff code minted for your phone, the control secret: never learned. |
+| `sessions_only_owner_devices` | A socket is authorized only for a device your phone paired. |
+| `hello_injective_agreement` | Every authorized socket is one your phone opened for that device; a captured hello authorizes no other. |
+| `codes_redeemed_only_by_owner` | Every device created from a code was created by your phone's request. |
+| `code_single_use` | A code yields at most one device, even when leaked. |
+| `owner_first_excludes_others` | Once your phone redeemed a code, nobody else gets a device from it. |
+| `race_loss_is_visible` | If someone else redeemed it first, your phone got no device from it (it shows the error). |
+| `no_pair_after_expiry` | An expired or evicted code pairs nothing. |
+| `handoff_bound_to_minter` | A handoff device is the child of the device that minted the code, and only a holder of that device's token minted it. |
+| `no_handoff_after_revoke` | A handoff code minted before its device was revoked pairs nothing afterwards. |
+| `revoked_no_session`, `revoke_cascades` | After a revocation, no socket for the device or any device paired through it. |
+| `revoke_only_owner_or_holder` | Only your CLI, the device itself, or a holder of its token revokes it. |
+| `revoke_evicts_thief` | After you revoke a stolen device, the thief has no socket left, through it or anything it paired. |
+| `control_only_owner_cli` | Only your CLI is accepted on `/_control` (no network attacker, no CSRF or rebinding page). |
+
+### Results
+
+RESULTS_TABLE
+
+### Findings
+
+1. **DNS rebinding (real, fixed).** `tailscale_qr_seen_old_host`: with
+   Tailscale, an attacker who only photographed the QR is off the tailnet and
+   cannot use it, except through the user's own browser: a page on the
+   attacker's domain, rebound to `127.0.0.1:7777`, is same-origin with itself,
+   so it could POST the code to `/api/pair`, read the token, and open `/ws`
+   (`originAllowed` accepted it because Origin's host equals Host). Trace:
+   Leak_QR, Page_Rebind(pair), Page_RebindAnswer, Page_Rebind(hello),
+   D_Hello. Fix: `http/server.ts` `hostAllowed` on `/api`, `/ws`,
+   `/_control`. e2e: `pairing-limits.spec.ts`.
+2. **CSRF on `/api/pair` (real, fixed).** `tailscale_qr_seen_old_origin`: a
+   foreign page could post a no-cors form to `/api/pair`, burning a seen code
+   (the owner's phone then fails) or the typed-code rate limit. It cannot read
+   the token, so `sessions_only_owner_devices` still holds. Fix: POST
+   `/api/*` with a foreign Origin gets 403.
+3. **Revocation did not cascade (real, fixed).** `stolen_token_old_nocascade`:
+   a thief with a token mints a handoff code, pairs its own device, and keeps
+   it after the owner revokes the stolen one (`revoke_evicts_thief`
+   falsified). Fix: `DeviceRecord.parent`, `DeviceStore.revoke` removes
+   descendants transitively, `PairingCodes.forgetDevices` drops their codes;
+   `phonecode devices` shows `via <id>`, `revoke` lists what went with it.
+   Cost: unpairing the Safari device also unpairs the Home Screen app set up
+   from it (the dialog says so). TLA+: `RevokeCascades`.
+4. **Expected, documented limits.** `public_qr_seen`, `public_handoff_leak`:
+   whoever holds a code while it is valid and can reach the endpoint wins the
+   race for that one device; single use and visibility hold, and a handoff
+   device dies with its parent. `stolen_token`: the thief is a user until you
+   revoke (then `revoke_evicts_thief` holds). `insecure` (= tunnel operator as
+   attacker): token, codes and sessions are all lost; trace for
+   `token_secret`: Phone_Hello, Net_PhoneOut (the attacker reads the token),
+   Net_DaemonIn / Att_Connect with it, D_Hello. Control lemmas still hold.
+5. `old_handoff_forget` keeps PairingAuth bug 3 demonstrated in this model too.

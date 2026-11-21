@@ -99,7 +99,7 @@ if [[ "${1:-}" == "--one" ]]; then
   for f in $flags; do dflags+=("-D=$f"); done
   start=$(date +%s.%N)
   set +e
-  timeout "$LEMMA_TIMEOUT" "$TAMARIN" --prove="$lemma" "${dflags[@]}" "$THEORY" \
+  timeout "$LEMMA_TIMEOUT" "$TAMARIN" +RTS -N1 -RTS --prove="$lemma" "${dflags[@]}" "$THEORY" \
     --output="$out/$variant.$lemma.spthy" >"$out/$variant.$lemma.log" 2>&1
   rc=$?
   set -e
