@@ -9,7 +9,7 @@ import { TaskCard, TodoCard, ToolGroup } from './tools';
 
 type Block = { k: 'one'; id: string } | { k: 'tools'; ids: string[] };
 
-const PAGE = 120;
+const PAGE = 60;
 const STICK_PX = 72;
 
 export interface ScrollApi {
