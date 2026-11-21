@@ -221,7 +221,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
         <GlassButton icon="close" label="Close" onClick={close} testid="new-session-close" />
       </div>
       <div class="sheet-scroll">
-        <div class="kind-tiles" role="radiogroup" aria-label="Session type">
+        <fieldset class="kind-tiles" aria-label="Session type">
           {kinds.map((k) => {
             const off = k !== 'terminal' && !available(k);
             const info = k === 'terminal' ? undefined : agents.find((a) => a.kind === k);
@@ -229,8 +229,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
               <button
                 key={k}
                 type="button"
-                role="radio"
-                aria-checked={kind === k}
+                aria-pressed={kind === k}
                 class={`kind-tile ${kind === k ? 'on' : ''}`}
                 disabled={off}
                 onClick={() => {
@@ -253,7 +252,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
               </button>
             );
           })}
-        </div>
+        </fieldset>
 
         <div class="section">
           <div class="list">

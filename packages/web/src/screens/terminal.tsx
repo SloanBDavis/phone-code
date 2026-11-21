@@ -93,6 +93,10 @@ function ctrlChar(ch: string): string | null {
   return v === undefined ? null : String.fromCharCode(v);
 }
 
+function fontBy(d: number): void {
+  updateSettings({ termFontSize: Math.max(9, Math.min(22, settings.peek().termFontSize + d)) });
+}
+
 const keep = (e: PointerEvent): void => e.preventDefault(); // keep the keyboard up
 
 function Key({
@@ -233,7 +237,7 @@ export default function TerminalScreen({
       termRef.current = null;
       term.dispose();
     };
-  }, [sessionId]);
+  }, [sessionId, ctrl, alt, exited, ready]);
 
   // Live settings: font size and theme.
   useSignalEffect(() => {
@@ -275,13 +279,8 @@ export default function TerminalScreen({
       toast('Paste is not allowed here. Long-press the terminal instead.', 'info');
     }
   };
-  const fontBy = (d: number): void => {
-    const n = Math.max(9, Math.min(22, settings.peek().termFontSize + d));
-    updateSettings({ termFontSize: n });
-  };
-
-  const menu = (e: MouseEvent): void =>
-    openMenu(e.currentTarget as Element, [
+  const menu = (e: JSX.TargetedMouseEvent<HTMLButtonElement>): void =>
+    openMenu(e.currentTarget, [
       {
         items: [
           { label: 'Rename', icon: 'pencil', onSelect: () => void renameSession(s) },
@@ -318,7 +317,7 @@ export default function TerminalScreen({
           </GlassButton>
         }
         right={
-          <GlassSurface class="glass-group" role="group" aria-label="Text size">
+          <GlassSurface class="glass-group">
             <button
               type="button"
               aria-label="Smaller text"
@@ -464,7 +463,8 @@ export default function TerminalScreen({
           aria-label={keyboardOpen.value ? 'Hide keyboard' : 'Show keyboard'}
           onPointerDown={keep}
           onClick={() => {
-            if (keyboardOpen.value) (document.activeElement as HTMLElement | null)?.blur();
+            const active = document.activeElement;
+            if (keyboardOpen.value && active instanceof HTMLElement) active.blur();
             else termRef.current?.focus();
           }}
           data-testid="key-keyboard"

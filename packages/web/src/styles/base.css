@@ -38,6 +38,17 @@ select {
   color: inherit;
 }
 
+fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+output {
+  display: block;
+}
+
 button {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;

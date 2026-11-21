@@ -62,6 +62,8 @@ function verb(t: ToolItem): string {
   }
 }
 
+const plural = (c: number, one: string, many: string): string => `${c} ${c === 1 ? one : many}`;
+
 /** "Ran 3 commands, edited 2 files" */
 export function summarize(tools: ToolItem[]): string {
   const n: Record<string, number> = {};
@@ -80,14 +82,13 @@ export function summarize(tools: ToolItem[]): string {
                 : 'other';
     n[k] = (n[k] ?? 0) + 1;
   }
-  const plural = (c: number, one: string, many: string): string => `${c} ${c === 1 ? one : many}`;
   const parts: string[] = [];
   if (n.cmd) parts.push(`ran ${plural(n.cmd, 'command', 'commands')}`);
   if (n.edit) parts.push(`edited ${plural(n.edit, 'file', 'files')}`);
   if (n.read) parts.push(`read ${plural(n.read, 'file', 'files')}`);
-  if (n.search) parts.push(`${plural(n.search, 'search', 'searches')}`);
+  if (n.search) parts.push(plural(n.search, 'search', 'searches'));
   if (n.fetch) parts.push(`fetched ${plural(n.fetch, 'page', 'pages')}`);
-  if (n.other) parts.push(`${plural(n.other, 'other step', 'other steps')}`);
+  if (n.other) parts.push(plural(n.other, 'other step', 'other steps'));
   const s = parts.join(', ');
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -122,6 +123,8 @@ function Output({
 }
 
 interface DiffLine {
+  /** Position in the patch; diff lines are positional by nature. */
+  key: string;
   kind: 'add' | 'del' | 'ctx' | 'hunk';
   text: string;
   a?: number;
@@ -139,15 +142,16 @@ function parsePatch(patch: string): DiffLine[] {
     if (m) {
       a = Number(m[1]);
       b = Number(m[2]);
-      out.push({ kind: 'hunk', text: (m[3] ?? '').trim() });
+      out.push({ key: `h${out.length}`, kind: 'hunk', text: (m[3] ?? '').trim() });
       continue;
     }
     const sign = raw[0];
     const text = raw.slice(1);
-    if (sign === '+') out.push({ kind: 'add', text, b: b++ });
-    else if (sign === '-') out.push({ kind: 'del', text, a: a++ });
+    const key = `l${out.length}`;
+    if (sign === '+') out.push({ key, kind: 'add', text, b: b++ });
+    else if (sign === '-') out.push({ key, kind: 'del', text, a: a++ });
     else if (sign === '\\') continue;
-    else out.push({ kind: 'ctx', text, a: a++, b: b++ });
+    else out.push({ key, kind: 'ctx', text, a: a++, b: b++ });
   }
   return out;
 }
@@ -161,14 +165,16 @@ export function DiffView({ patch, max = 60 }: { patch: string; max?: number }): 
       <div class="diff-scroll">
         <table>
           <tbody>
-            {shown.map((l, i) =>
+            {shown.map((l) =>
               l.kind === 'hunk' ? (
-                <tr key={i} class="d-hunk">
-                  <td class="d-n" colSpan={2} />
+                <tr key={l.key} class="d-hunk">
+                  <td class="d-n" colSpan={2} aria-hidden="true">
+                    {' '}
+                  </td>
                   <td class="d-t">{l.text || '⋯'}</td>
                 </tr>
               ) : (
-                <tr key={i} class={`d-${l.kind}`}>
+                <tr key={l.key} class={`d-${l.kind}`}>
                   <td class="d-n">{l.kind === 'add' ? '' : l.a}</td>
                   <td class="d-n">{l.kind === 'del' ? '' : l.b}</td>
                   <td class="d-t">
@@ -257,8 +263,8 @@ function TodoList({
 }): JSX.Element {
   return (
     <ul class="todos" data-testid="todo-list">
-      {todos.map((t, i) => (
-        <li key={i} class={`todo-${t.status}`}>
+      {todos.map((t) => (
+        <li key={t.text} class={`todo-${t.status}`}>
           <span class="todo-box" aria-hidden="true">
             {t.status === 'completed' && <Icon name="check" size={13} stroke={3} />}
             {t.status === 'in_progress' && <span class="todo-dot" />}
@@ -439,7 +445,7 @@ export function TaskCard({ chat, item }: { chat: ChatState; item: Signal<ChatIte
   if (t.kind !== 'tool') return null;
   const prompt =
     t.input && typeof t.input === 'object' && 'prompt' in t.input
-      ? String((t.input as { prompt: unknown }).prompt)
+      ? String(t.input.prompt)
       : '';
   return (
     <div class={`task-card st-${t.status}`} data-testid="chat-item-task" data-status={t.status}>

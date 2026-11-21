@@ -49,9 +49,9 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
   const loaded = chat.loaded.value;
   const empty = loaded && chat.ids.value.length === 0 && chat.pending.value.length === 0;
 
-  const menu = (e: MouseEvent): void =>
+  const menu = (e: JSX.TargetedMouseEvent<HTMLButtonElement>): void =>
     openMenu(
-      e.currentTarget as Element,
+      e.currentTarget,
       [
         {
           items: [

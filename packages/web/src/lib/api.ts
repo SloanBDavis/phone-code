@@ -1,4 +1,5 @@
 import type { HandoffResponse, PairRequest, PairResponse } from '@phone-code/protocol';
+import { isRecord, isString, parseJson } from './guards';
 
 export class ApiError extends Error {
   constructor(
@@ -9,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-async function post<T>(path: string, body: unknown, token?: string): Promise<T> {
+async function post<T>(path: string, body: unknown, check: (v: unknown) => v is T, token?: string): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (token) headers.authorization = `Bearer ${token}`;
   let res: Response;
@@ -20,12 +21,8 @@ async function post<T>(path: string, body: unknown, token?: string): Promise<T> 
   }
   if (!res.ok) {
     let msg = '';
-    try {
-      const j = (await res.json()) as { error?: string; message?: string };
-      msg = j.error ?? j.message ?? '';
-    } catch {
-      // not JSON
-    }
+    const j = parseJson(await res.text().catch(() => ''));
+    if (isRecord(j)) msg = isString(j.error) ? j.error : isString(j.message) ? j.message : '';
     if (!msg)
       msg =
         res.status === 401 || res.status === 403 || res.status === 404 || res.status === 410
@@ -33,7 +30,17 @@ async function post<T>(path: string, body: unknown, token?: string): Promise<T> 
           : `Request failed (${res.status})`;
     throw new ApiError(msg, res.status);
   }
-  return (await res.json()) as T;
+  const data = parseJson(await res.text());
+  if (!check(data)) throw new ApiError('Unexpected answer from your computer. Update phone-code?', res.status);
+  return data;
+}
+
+function isPairResponse(v: unknown): v is PairResponse {
+  return isRecord(v) && isString(v.token) && isString(v.deviceId) && isRecord(v.host) && isString(v.host.name);
+}
+
+function isHandoff(v: unknown): v is HandoffResponse {
+  return isRecord(v) && isString(v.code) && typeof v.expiresAt === 'number';
 }
 
 export function deviceName(): string {
@@ -46,11 +53,11 @@ export function deviceName(): string {
 }
 
 export function pair(code: string): Promise<PairResponse> {
-  return post<PairResponse>('/api/pair', { code, deviceName: deviceName() } satisfies PairRequest);
+  return post('/api/pair', { code, deviceName: deviceName() } satisfies PairRequest, isPairResponse);
 }
 
 export function handoff(token: string): Promise<HandoffResponse> {
-  return post<HandoffResponse>('/api/handoff', {}, token);
+  return post('/api/handoff', {}, isHandoff, token);
 }
 
 /** Accepts a full pairing URL (from the QR or a pasted link) or a bare code. */

@@ -29,11 +29,11 @@ interface Style {
 }
 
 function applySgr(style: Style, params: number[]): Style {
-  const s = { ...style };
+  let s: Style = { ...style };
   for (let i = 0; i < params.length; i++) {
     const p = params[i] ?? 0;
     if (p === 0) {
-      for (const k of Object.keys(s) as Array<keyof Style>) delete s[k];
+      s = {};
     } else if (p === 1) s.bold = true;
     else if (p === 2) s.dim = true;
     else if (p === 3) s.italic = true;

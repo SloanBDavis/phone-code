@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ComponentChildren, HTMLAttributes, JSX, Ref } from 'preact';
+import type { ButtonHTMLAttributes, ComponentChildren, HTMLAttributes, JSX } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { attachRefraction } from '../lib/glass';
 import { haptic } from '../lib/util';
@@ -28,25 +28,19 @@ export function GlassSurface({
   class: cls = '',
   variant = 'regular',
   refract = true,
-  elRef,
   ...rest
 }: {
   children?: ComponentChildren;
   class?: string;
   variant?: Variant;
   refract?: boolean;
-  elRef?: Ref<HTMLDivElement>;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ref'>): JSX.Element {
-  const local = useRef<HTMLDivElement>(null);
-  useRefraction(local, refract);
+  const localRef = useRef<HTMLDivElement>(null);
+  useRefraction(localRef, refract);
   return (
     <div
       {...rest}
-      ref={(el) => {
-        local.current = el;
-        if (typeof elRef === 'function') elRef(el);
-        else if (elRef) elRef.current = el;
-      }}
+      ref={localRef}
       class={`glass glass-${variant} ${cls}`}
     >
       {children}
@@ -71,20 +65,20 @@ export function GlassButton({
   /** Accessible name when the button shows only an icon. */
   label?: string;
   children?: ComponentChildren;
-  onClick?: (e: MouseEvent) => void;
+  onClick?: (e: JSX.TargetedMouseEvent<HTMLButtonElement>) => void;
   variant?: Variant;
   class?: string;
   title?: string;
   disabled?: boolean;
   testid?: string;
   iconSize?: number;
-} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'class' | 'icon' | 'label'>): JSX.Element {
-  const ref = useRef<HTMLButtonElement>(null);
-  useRefraction(ref);
+} & Omit<ButtonHTMLAttributes, 'onClick' | 'class' | 'icon' | 'label'>): JSX.Element {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  useRefraction(btnRef);
   return (
     <button
       {...rest}
-      ref={ref}
+      ref={btnRef}
       type="button"
       class={`glass glass-${variant} glass-btn ${children ? 'glass-capsule' : 'glass-circle'} ${cls}`}
       aria-label={label}

@@ -1,5 +1,11 @@
 import { PROTOCOL_VERSION, type ClientMessage, type ServerMessage } from '@phone-code/protocol';
+import { isRecord, isString, parseJson } from './guards';
 import type { Transport, TransportEvents } from './transport';
+
+/** Shape check at the wire boundary; the protocol package defines the members. */
+function isServerMessage(v: unknown): v is ServerMessage {
+  return isRecord(v) && isString(v.t);
+}
 
 const PING_EVERY = 15_000;
 const DEAD_AFTER = 40_000;
@@ -84,19 +90,15 @@ export class WsTransport implements Transport {
       return;
     }
     this.ws = ws;
-    ws.onopen = () => {
+    ws.addEventListener('open', () => {
       ws.send(JSON.stringify({ t: 'hello', v: PROTOCOL_VERSION, token: this.token } satisfies ClientMessage));
       this.lastSeen = Date.now();
-    };
-    ws.onmessage = (ev: MessageEvent<string>) => {
+    });
+    ws.addEventListener('message', (ev: MessageEvent<unknown>) => {
       if (ws !== this.ws) return;
       this.lastSeen = Date.now();
-      let msg: ServerMessage;
-      try {
-        msg = JSON.parse(ev.data) as ServerMessage;
-      } catch {
-        return;
-      }
+      const msg = typeof ev.data === 'string' ? parseJson(ev.data) : undefined;
+      if (!isServerMessage(msg)) return;
       if (msg.t === 'pong') return;
       if (msg.t === 'ready') {
         this.ready = true;
@@ -110,14 +112,14 @@ export class WsTransport implements Transport {
         this.events?.status('unauthorized', msg.message);
       }
       this.events?.message(msg);
-    };
-    ws.onclose = () => {
+    });
+    ws.addEventListener('close', () => {
       if (ws !== this.ws) return;
       this.ready = false;
       clearInterval(this.pingTimer);
       if (!this.stopped) this.scheduleRetry();
-    };
-    ws.onerror = () => ws.close();
+    });
+    ws.addEventListener('error', () => ws.close());
   }
 
   private startPing(): void {

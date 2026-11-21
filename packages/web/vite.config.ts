@@ -2,9 +2,11 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 
-const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')) as {
-  version: string;
-};
+const pkg: unknown = JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8'));
+const version =
+  typeof pkg === 'object' && pkg !== null && 'version' in pkg && typeof pkg.version === 'string'
+    ? pkg.version
+    : '0.0.0';
 
 /**
  * Builds the service worker from src/sw.js: injects the list of emitted files
@@ -21,17 +23,17 @@ function serviceWorker(): Plugin {
     closeBundle() {
       const src = readFileSync(resolve(import.meta.dirname, 'src/sw.js'), 'utf8');
       const shell = ['/', ...files.map((f) => `/${f}`), '/icons/icon-192.png', '/apple-touch-icon.png'];
-      const id = `${pkg.version}-${Date.now().toString(36)}`;
+      const id = `${version}-${Date.now().toString(36)}`;
       const out = src
-        .replace('self.__SHELL__', JSON.stringify(shell))
-        .replace('self.__BUILD__', JSON.stringify(id));
+        .replaceAll('SHELL_PLACEHOLDER', JSON.stringify(shell))
+        .replaceAll('BUILD_PLACEHOLDER', JSON.stringify(id));
       writeFileSync(resolve(import.meta.dirname, 'dist/sw.js'), out);
     },
   };
 }
 
 export default defineConfig({
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { 'import.meta.env.APP_VERSION': JSON.stringify(version) },
   esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
   plugins: [serviceWorker()],
   build: {

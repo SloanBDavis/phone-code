@@ -42,7 +42,9 @@ async function status(timeoutMs = 1500): Promise<TailscaleInfo | undefined> {
     const self = isRecord(st['Self']) ? st['Self'] : {};
     const tailnet = isRecord(st['CurrentTailnet']) ? st['CurrentTailnet'] : {};
     const certs: unknown = st['CertDomains'];
-    const certDomain = Array.isArray(certs) ? certs.find((d): d is string => typeof d === 'string') : undefined;
+    const certDomain = Array.isArray(certs)
+      ? certs.find((d): d is string => typeof d === 'string')
+      : undefined;
     const dns = typeof self['DNSName'] === 'string' ? self['DNSName'].replace(/\.$/, '') : '';
     const ips: unknown = self['TailscaleIPs'];
     const ip = Array.isArray(ips)
@@ -70,6 +72,12 @@ export async function startTailscaleServe(port: number, timeoutMs = 15_000): Pro
   });
   const domain = info.certDomain.replaceAll('.', '\\.');
   // Foreground serve removes its config on interrupt, like pressing Ctrl+C.
-  const tunnel = await waitForUrl('tailscale serve', proc, new RegExp(`https://${domain}`), timeoutMs, 'SIGINT');
+  const tunnel = await waitForUrl(
+    'tailscale serve',
+    proc,
+    new RegExp(`https://${domain}`),
+    timeoutMs,
+    'SIGINT',
+  );
   return { ...tunnel, url: `https://${info.certDomain}` };
 }

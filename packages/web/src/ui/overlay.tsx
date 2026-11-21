@@ -95,7 +95,7 @@ function Sheet({
   closing: boolean;
   opts: SheetOptions;
 }): JSX.Element {
-  const ref = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDialogElement>(null);
   const [entered, setEntered] = useState(false);
   const dragRef = useRef<{
     y0: number;
@@ -119,7 +119,7 @@ function Sheet({
   }, [close]);
 
   const setY = (y: number, animate: boolean): void => {
-    const el = ref.current;
+    const el = sheetRef.current;
     if (!el) return;
     el.style.transition = animate ? '' : 'none';
     el.style.transform = y ? `translate3d(0, ${y}px, 0)` : '';
@@ -127,12 +127,12 @@ function Sheet({
 
   const onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return;
-    const target = e.target as HTMLElement;
-    if (target.closest('input, textarea, select, [data-nodrag]')) return;
+    const target = e.target;
+    if (!(target instanceof Element) || target.closest('input, textarea, select, [data-nodrag]')) return;
     const scroller = target.closest<HTMLElement>('.sheet-scroll');
     dragRef.current = { y0: e.clientY, t0: performance.now(), dy: 0, active: false, scroller };
   };
-  const onPointerMove = (e: PointerEvent): void => {
+  const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDialogElement>): void => {
     const d = dragRef.current;
     if (!d) return;
     const dy = e.clientY - d.y0;
@@ -144,7 +144,7 @@ function Sheet({
         return;
       }
       d.active = true;
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      e.currentTarget.setPointerCapture(e.pointerId);
     }
     d.dy = dy;
     setY(dy > 0 ? dy : dy / 4, false);
@@ -165,10 +165,10 @@ function Sheet({
   return (
     <div class={`sheet-layer ${state}`}>
       <div class="sheet-backdrop" onClick={close} aria-hidden="true" />
-      <div
-        ref={ref}
+      <dialog
+        open
+        ref={sheetRef}
         class={`sheet glass glass-regular ${opts.large ? 'sheet-large' : ''}`}
-        role="dialog"
         aria-modal="true"
         aria-label={opts.label}
         data-testid={opts.testid}
@@ -179,7 +179,7 @@ function Sheet({
       >
         <div class="sheet-grabber" aria-hidden="true" />
         {children}
-      </div>
+      </dialog>
     </div>
   );
 }
@@ -225,12 +225,12 @@ function Menu({
   closing: boolean;
   testid?: string;
 }): JSX.Element {
-  const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number; ox: string; oy: string } | null>(null);
   const [entered, setEntered] = useState(false);
 
   useLayoutEffect(() => {
-    const el = ref.current;
+    const el = menuRef.current;
     if (!el) return undefined;
     const root = document.querySelector<HTMLElement>('.app');
     const app = root?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
@@ -278,7 +278,7 @@ function Menu({
         aria-hidden="true"
       />
       <div
-        ref={ref}
+        ref={menuRef}
         class="menu glass glass-regular"
         role="menu"
         data-testid={testid}
@@ -288,8 +288,8 @@ function Menu({
             : { visibility: 'hidden' }
         }
       >
-        {sections.map((s, si) => (
-          <div class="menu-section" key={si}>
+        {sections.map((s) => (
+          <div class="menu-section" key={s.title ?? s.items[0]?.label}>
             {s.title && <div class="menu-title">{s.title}</div>}
             {s.items.map((it) => (
               <button
@@ -439,9 +439,9 @@ function ToastHost(): JSX.Element | null {
   const t = toastMsg.value;
   if (!t) return null;
   return (
-    <div class="toast glass glass-regular" role="status" key={t.n} data-testid="toast">
+    <output class="toast glass glass-regular" key={t.n} data-testid="toast">
       {t.icon && <Icon name={t.icon} size={17} stroke={2.2} />}
       {t.text}
-    </div>
+    </output>
   );
 }

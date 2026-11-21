@@ -17,6 +17,13 @@ const openRow = signal<string | null>(null);
 
 const ACTION_W = 76;
 
+function place(content: HTMLElement | null, wrap: HTMLElement | null, x: number, animate: boolean, width: number): void {
+  if (!content) return;
+  content.style.transition = animate ? 'transform 420ms var(--spring)' : 'none';
+  content.style.transform = x ? `translate3d(${x}px,0,0)` : '';
+  wrap?.style.setProperty('--reveal', String(Math.min(1, -x / width)));
+}
+
 /**
  * A list row that reveals actions when swiped left. Vertical scrolling stays
  * native (touch-action: pan-y); we only take over once the gesture is
@@ -46,16 +53,10 @@ export function SwipeRow({
   const pastFullRef = useRef(false);
   const suppressClickRef = useRef(false);
 
-  const set = (x: number, animate: boolean): void => {
-    const el = contentRef.current;
-    if (!el) return;
-    el.style.transition = animate ? 'transform 420ms var(--spring)' : 'none';
-    el.style.transform = x ? `translate3d(${x}px,0,0)` : '';
-    wrapRef.current?.style.setProperty('--reveal', String(Math.min(1, -x / width)));
-  };
+  const set = (x: number, animate: boolean): void => place(contentRef.current, wrapRef.current, x, animate, width);
 
   useEffect(() => {
-    if (!gestureRef.current) set(isOpen ? -width : 0, true);
+    if (!gestureRef.current) place(contentRef.current, wrapRef.current, isOpen ? -width : 0, true, width);
   }, [isOpen, width]);
 
   const onDown = (e: PointerEvent): void => {
@@ -69,7 +70,7 @@ export function SwipeRow({
       t0: performance.now(),
     };
   };
-  const onMove = (e: PointerEvent): void => {
+  const onMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
     const s = gestureRef.current;
     if (!s) return;
     const dx = e.clientX - s.x0;
@@ -78,7 +79,7 @@ export function SwipeRow({
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       s.mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
       if (s.mode === 'h') {
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        e.currentTarget.setPointerCapture(e.pointerId);
         if (openRow.value !== id) openRow.value = null;
       }
     }

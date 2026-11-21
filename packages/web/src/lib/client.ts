@@ -7,6 +7,7 @@ import {
   deviceId,
   host,
   isDemo,
+  type PendingSend,
   resetChat,
   sessions,
   sessionsLoaded,
@@ -25,12 +26,17 @@ export interface TermListener {
 }
 
 interface PendingRpc {
-  resolve(v: unknown): void;
+  /** Receives the daemon's result, typed by the protocol's RpcResults for that call. */
+  resolve(v: never): void;
   reject(e: Error): void;
   timer: number;
 }
 
 const RPC_TIMEOUT = 20_000;
+
+type Batched = Extract<ServerMessage, { t: 'sessions' | 'chat.snapshot' | 'chat.item' | 'chat.delta' }>;
+
+const withPatch = (p: PendingSend, patch: Partial<PendingSend>): PendingSend => ({ ...p, ...patch });
 
 let counter = 0;
 export const uid = (prefix = 'c'): string =>
@@ -48,7 +54,7 @@ class Client {
   private readonly subs = new Map<string, number>();
   private readonly seqs = new Map<string, number>();
   private readonly term = new Map<string, Set<TermListener>>();
-  private inbox: ServerMessage[] = [];
+  private inbox: Batched[] = [];
   private flushScheduled = false;
 
   start(transport: Transport): void {
@@ -100,8 +106,8 @@ class Client {
         this.outbox = this.outbox.filter((m) => !('id' in m) || m.id !== id);
         reject(new Error('The host did not answer in time'));
       }, RPC_TIMEOUT);
-      this.rpcs.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
-      this.send({ ...req, id } as ClientMessage);
+      this.rpcs.set(id, { resolve, reject, timer });
+      this.send({ ...req, id });
     });
   }
 
@@ -157,13 +163,9 @@ class Client {
       });
       if (c.items.has(res.itemId)) c.pending.value = c.pending.value.filter((p) => p.localId !== localId);
       else
-        c.pending.value = c.pending.value.map((p) =>
-          p.localId === localId ? { ...p, awaitId: res.itemId } : p,
-        );
+        c.pending.value = c.pending.value.map((p) => (p.localId === localId ? withPatch(p, { awaitId: res.itemId }) : p));
     } catch {
-      c.pending.value = c.pending.value.map((p) =>
-        p.localId === localId ? { ...p, status: 'failed' as const } : p,
-      );
+      c.pending.value = c.pending.value.map((p) => (p.localId === localId ? withPatch(p, { status: 'failed' }) : p));
     }
   }
 
@@ -204,7 +206,7 @@ class Client {
         if (!p) return;
         this.rpcs.delete(m.id);
         clearTimeout(p.timer);
-        if (m.ok) p.resolve(m.data);
+        if (m.ok) p.resolve(m.data as never);
         else p.reject(new Error(m.error));
         return;
       }
@@ -272,8 +274,10 @@ class Client {
           case 'chat.delta':
             if (this.fresh(m.sessionId, m.seq)) appendDelta(m.sessionId, m.itemId, m.text);
             break;
-          default:
-            break;
+          default: {
+            const never: never = m;
+            void never;
+          }
         }
       }
     });

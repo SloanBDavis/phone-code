@@ -6,11 +6,11 @@
  * - /api and /ws are never cached or intercepted.
  * - Web Push: shows the daemon's notification; tapping it opens the session.
  *
- * The build replaces self.__SHELL__ and self.__BUILD__ (see vite.config.ts).
+ * The build fills in the shell file list and a build id (see vite.config.ts).
  */
 
-const SHELL = self.__SHELL__;
-const BUILD = self.__BUILD__;
+const SHELL = SHELL_PLACEHOLDER;
+const BUILD = BUILD_PLACEHOLDER;
 const CACHE = `phone-code-${BUILD}`;
 
 self.addEventListener('install', (event) => {
@@ -120,7 +120,7 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       const client = list.find((c) => new URL(c.url).origin === self.location.origin);
       if (client) {
-        if (sessionId) client.postMessage({ type: 'open-session', sessionId });
+        if (sessionId) client.postMessage({ type: 'open-session', sessionId }, []);
         return client.focus();
       }
       return self.clients.openWindow(target);

@@ -133,7 +133,7 @@ export function SettingsScreen(): JSX.Element {
                 <Icon name="moon" size={17} stroke={2.1} />
               </span>
               <span class="cell-main cell-title">Theme</span>
-              <div class="segmented theme-seg" role="group" aria-label="Theme">
+              <fieldset class="segmented theme-seg" aria-label="Theme">
                 {(['system', 'dark', 'light'] as ThemePref[]).map((t) => (
                   <button
                     key={t}
@@ -148,14 +148,14 @@ export function SettingsScreen(): JSX.Element {
                     {t === 'system' ? 'Auto' : t === 'dark' ? 'Dark' : 'Light'}
                   </button>
                 ))}
-              </div>
+              </fieldset>
             </div>
             <div class="cell static">
               <span class="cell-icon" style={{ background: '#30b0c7' }}>
                 <Icon name="textSize" size={18} stroke={2} />
               </span>
               <span class="cell-main cell-title">Terminal text</span>
-              <div class="stepper" role="group" aria-label="Terminal font size">
+              <fieldset class="stepper" aria-label="Terminal font size">
                 <button
                   type="button"
                   aria-label="Smaller"
@@ -177,7 +177,7 @@ export function SettingsScreen(): JSX.Element {
                 >
                   <Icon name="plus" size={16} stroke={2.6} />
                 </button>
-              </div>
+              </fieldset>
             </div>
           </div>
         </section>

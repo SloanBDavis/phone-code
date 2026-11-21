@@ -26,6 +26,10 @@ export interface DemoSession {
   items: ChatItem[];
 }
 
+function s(info: Omit<SessionInfo, 'createdAt'> & { createdAt?: number }, items: ChatItem[] = []): DemoSession {
+  return { info: { createdAt: info.updatedAt - 20 * MIN, ...info }, items };
+}
+
 export function buildDemo(now = Date.now()): DemoSession[] {
   const ago = (m: number): number => now - m * MIN;
 
@@ -455,11 +459,6 @@ export function buildDemo(now = Date.now()): DemoSession[] {
     },
     { id: id('turn'), ts: ago(2899), kind: 'turn', outcome: 'completed', durationMs: 41_000, costUsd: 0.06 },
   ];
-
-  const s = (
-    info: Omit<SessionInfo, 'createdAt'> & { createdAt?: number },
-    items: ChatItem[] = [],
-  ): DemoSession => ({ info: { createdAt: info.updatedAt - 20 * MIN, ...info }, items });
 
   return [
     s(

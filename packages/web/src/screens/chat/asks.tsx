@@ -43,7 +43,7 @@ function preview(p: PermissionItem): JSX.Element | null {
     try {
       s = JSON.stringify(p.input, null, 2);
     } catch {
-      s = String(p.input);
+      s = '(input could not be displayed)';
     }
     return (
       <div class="tool-output">
@@ -230,7 +230,7 @@ export function QuestionCard({
         const multi = !!x.multiSelect;
         const cur = picked[qi] ?? [];
         return (
-          <div key={x.question} class="q-block" role="group" aria-labelledby={`q-${q.id}-${qi}`}>
+          <fieldset key={x.question} class="q-block" aria-labelledby={`q-${q.id}-${qi}`}>
             {x.header && <span class="q-header">{x.header}</span>}
             <div class="q-question" id={`q-${q.id}-${qi}`}>
               {x.question}
@@ -285,7 +285,7 @@ export function QuestionCard({
                 />
               )}
             </div>
-          </div>
+          </fieldset>
         );
       })}
       <button

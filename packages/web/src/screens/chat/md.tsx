@@ -59,18 +59,14 @@ export function Markdown({ text, streaming }: { text: string; streaming?: boolea
   const html = useMemo(() => (md ? md.renderMarkdown(text) : null), [md, text]);
 
   useEffect(() => {
-    if (!md || streaming || !ref.current) return;
+    if (!md || streaming || !ref.current) return undefined;
     void md.highlightIn(ref.current);
   }, [md, html, streaming]);
 
   if (html === null)
     return (
       <div class={`md ${streaming ? 'streaming' : ''}`} data-plain>
-        {text.split(/\n{2,}/).map((p, i) => (
-          // Paragraph order is stable while streaming; text is not a unique key.
-          // oxlint-disable-next-line react/no-array-index-key -- positional paragraphs of one text
-          <p key={i}>{p}</p>
-        ))}
+        <p class="md-plain">{text}</p>
       </div>
     );
   return (

@@ -2,21 +2,23 @@
 /**
  * phonecode CLI.
  *
- *   phonecode [--port 7777] [--host 0.0.0.0] [--url https://…] [--tunnel] [--no-qr]
+ *   phonecode [--port 7777] [--url https://…] [--tunnel] [--local] [--insecure [--host addr]] [--no-qr]
  *   phonecode pair | devices | revoke <id>
  *
- * Security note: by default the daemon binds 0.0.0.0 so your phone can reach
- * it over the LAN / Tailscale. Nothing is usable without pairing (single-use
- * codes, 256-bit device tokens), but use `--host 127.0.0.1` together with
- * `--url` when you front it with your own HTTPS reverse proxy.
+ * Security: the daemon refuses unencrypted transport by default. It binds
+ * 127.0.0.1 and only advertises an https URL (tailscale serve, a cloudflared
+ * quick tunnel, or --url) or a loopback one. Plain http to the network
+ * requires --insecure, because anyone on the network could read the token
+ * and the terminal.
  */
 import { parseArgs } from 'node:util';
 import { DeviceStore } from './auth/devices.ts';
-import { banner, bold, dim, pairingBlock } from './banner.ts';
+import { banner, bold, dim, pairingBlock, secureUrlHelp } from './banner.ts';
 import { DAEMON_VERSION, DEFAULT_PORT, envFlag, stateDir, statePaths } from './config.ts';
 import { ControlClient } from './control-client.ts';
 import { startDaemon, type DaemonOptions } from './daemon.ts';
 import { log } from './log.ts';
+import { isLoopbackHost, isLoopbackUrl, isSecureUrl } from './net/transport.ts';
 
 const HELP = `${bold('phonecode')} ${dim(`v${DAEMON_VERSION}`)}: your terminal, Claude Code and Codex on your phone
 
@@ -28,11 +30,17 @@ Usage
 
 Options
   --port <n>     port to listen on (default ${DEFAULT_PORT}, moves up if busy)
-  --host <addr>  bind address (default 0.0.0.0: reachable from your network,
-                 every device still has to pair; use 127.0.0.1 behind a proxy)
-  --url <url>    public URL to put in the QR code (e.g. your https proxy)
+  --url <url>    public https URL of your own reverse proxy to this port
   --tunnel       expose through a Cloudflare quick tunnel (needs cloudflared)
+  --local        this computer only: no tailscale serve / cloudflared auto-setup
+  --insecure     serve plain http to your network (anyone on it can read your
+                 token and terminal); binds 0.0.0.0 unless --host is given
+  --host <addr>  bind address (default 127.0.0.1; others need --insecure)
   --no-qr        do not print the QR code
+
+  With no --url/--tunnel, phonecode uses \`tailscale serve\` (Tailscale with
+  HTTPS enabled), else a cloudflared quick tunnel if installed, else it only
+  listens on this computer and explains how to get an https URL.
   -v, --version  print the version
   -h, --help     show this help
 
@@ -52,7 +60,14 @@ async function pairCommand(home: string, noQr: boolean): Promise<number> {
     process.stderr.write('phonecode is not running. Start it with `phonecode`.\n');
     return 1;
   }
-  process.stdout.write(`\n${await pairingBlock(await client.pair(), !noQr)}\n\n`);
+  const pair = await client.pair();
+  if (isLoopbackUrl(pair.pairUrl)) {
+    // A QR code for a loopback URL is useless on a phone.
+    const port = Number(new URL(pair.pairUrl).port);
+    process.stdout.write(`\n${secureUrlHelp(port)}\n\n  On this computer you can open ${pair.pairUrl}\n\n`);
+    return 0;
+  }
+  process.stdout.write(`\n${await pairingBlock(pair, !noQr)}\n\n`);
   return 0;
 }
 
@@ -110,17 +125,36 @@ async function serve(values: Record<string, string | boolean | undefined>): Prom
     process.stderr.write('--port must be a number between 1 and 65535\n');
     return 1;
   }
+  const insecure = values['insecure'] === true;
   const url = typeof values['url'] === 'string' ? values['url'] : undefined;
   if (url !== undefined && !/^https?:\/\/[^/\s]+/.test(url)) {
     process.stderr.write('--url must be an http(s) URL\n');
     return 1;
   }
+  if (url !== undefined && !insecure && !isSecureUrl(url)) {
+    process.stderr.write(
+      '--url must be https:// (or http://localhost). Plain http would let anyone on the network\n' +
+        'read your pairing code, device token and terminal. Put an HTTPS proxy in front, or pass --insecure.\n',
+    );
+    return 1;
+  }
+  const host = typeof values['host'] === 'string' ? values['host'] : undefined;
+  if (host !== undefined && !insecure && !isLoopbackHost(host)) {
+    process.stderr.write(
+      `--host ${host} would serve plain http to the network, where anyone could read your token and\n` +
+        'terminal. phone-code listens on 127.0.0.1 and reaches your phone through https instead.\n' +
+        'Pass --insecure as well if you really want this.\n',
+    );
+    return 1;
+  }
   const daemon = await startDaemon({
     adapters: await loadAdapters(),
     ...(portArg === undefined ? {} : { port: portArg }),
-    ...(typeof values['host'] === 'string' ? { hostname: values['host'] } : {}),
+    ...(host === undefined ? {} : { hostname: host }),
     ...(url === undefined ? {} : { publicUrl: url }),
     tunnel: values['tunnel'] === true,
+    insecure,
+    autoTunnel: values['local'] !== true,
   });
   const json = envFlag('PHONECODE_JSON');
   const showQr = values['no-qr'] !== true;
@@ -140,6 +174,7 @@ async function serve(values: Record<string, string | boolean | undefined>): Prom
   if (interactive) {
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', () => {
+      if (!daemon.phoneReachable) return;
       void pairingBlock(daemon.newPairCode(), showQr).then((block) => process.stdout.write(`\n${block}\n\n`));
     });
   }
@@ -178,6 +213,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         host: { type: 'string' },
         url: { type: 'string' },
         tunnel: { type: 'boolean' },
+        insecure: { type: 'boolean' },
+        local: { type: 'boolean' },
         'no-qr': { type: 'boolean' },
         version: { type: 'boolean', short: 'v' },
         help: { type: 'boolean', short: 'h' },

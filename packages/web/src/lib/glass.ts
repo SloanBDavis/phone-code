@@ -160,7 +160,7 @@ export function startGlassHighlights(): void {
     target.style.setProperty('--ly', `${(((y - r.top) / r.height) * 100).toFixed(1)}%`);
   };
   const onMove = (e: PointerEvent): void => {
-    const el = (e.target as Element | null)?.closest<HTMLElement>('.glass');
+    const el = e.target instanceof Element ? e.target.closest<HTMLElement>('.glass') : null;
     if (target && target !== el) {
       target.style.removeProperty('--lx');
       target.style.removeProperty('--ly');

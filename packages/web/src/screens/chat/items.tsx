@@ -12,8 +12,8 @@ function Images({ urls }: { urls: string[] }): JSX.Element | null {
   if (!urls.length) return null;
   return (
     <div class="bubble-images">
-      {urls.map((u, i) => (
-        <img key={i} src={u} alt="Attached" loading="lazy" decoding="async" />
+      {urls.map((u) => (
+        <img key={u} src={u} alt="Attached" loading="lazy" decoding="async" />
       ))}
     </div>
   );

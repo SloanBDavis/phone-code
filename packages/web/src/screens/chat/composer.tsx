@@ -41,8 +41,10 @@ export const MODES: Array<{
   },
 ];
 
+const DEFAULT_MODE = { mode: 'default', label: 'Ask before acting', short: 'Ask', icon: 'shield', hint: 'Approve edits and commands' } as const;
+
 export function modeInfo(m: PermissionMode | undefined): (typeof MODES)[number] {
-  return MODES.find((x) => x.mode === m) ?? (MODES[0] as (typeof MODES)[number]);
+  return MODES.find((x) => x.mode === m) ?? DEFAULT_MODE;
 }
 
 const MAX_ROWS_PX = 168;
@@ -113,7 +115,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
       {atts.length > 0 && (
         <div class="composer-atts">
           {atts.map((a, i) => (
-            <div class="att" key={i}>
+            <div class="att" key={a.data.slice(-32)}>
               <img src={`data:${a.mediaType};base64,${a.data}`} alt={a.name ?? 'Attached photo'} />
               <button
                 type="button"

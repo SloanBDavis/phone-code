@@ -87,7 +87,8 @@ export async function resolvePublicUrl(opts: ResolveOptions): Promise<PublicUrl>
   }
   if (opts.tunnel) {
     const helper = await tryHelper('cloudflared tunnel', () => startQuickTunnel(opts.port));
-    if (helper !== undefined) return { url: helper.url, source: 'tunnel', phoneReachable: true, secure: true, helper };
+    if (helper !== undefined)
+      return { url: helper.url, source: 'tunnel', phoneReachable: true, secure: true, helper };
   }
   if (opts.insecure) {
     const specific = opts.bindHost !== '0.0.0.0' && opts.bindHost !== '::' ? opts.bindHost : undefined;
@@ -98,10 +99,12 @@ export async function resolvePublicUrl(opts: ResolveOptions): Promise<PublicUrl>
   }
   if (opts.auto) {
     const ts = await tryHelper('tailscale serve', () => startTailscaleServe(opts.port));
-    if (ts !== undefined) return { url: ts.url, source: 'tailscale', phoneReachable: true, secure: true, helper: ts };
+    if (ts !== undefined)
+      return { url: ts.url, source: 'tailscale', phoneReachable: true, secure: true, helper: ts };
     if (hasCloudflared()) {
       const cf = await tryHelper('cloudflared tunnel', () => startQuickTunnel(opts.port));
-      if (cf !== undefined) return { url: cf.url, source: 'tunnel', phoneReachable: true, secure: true, helper: cf };
+      if (cf !== undefined)
+        return { url: cf.url, source: 'tunnel', phoneReachable: true, secure: true, helper: cf };
     }
   }
   return local;

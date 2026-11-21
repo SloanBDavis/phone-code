@@ -56,7 +56,6 @@ export class DemoTransport implements Transport {
   private order: string[] = [];
   private replyN = 0;
   private live = false;
-  private billingTimer: number | undefined;
 
   start(events: TransportEvents): void {
     this.events = events;
@@ -77,7 +76,6 @@ export class DemoTransport implements Transport {
 
   stop(): void {
     this.live = false;
-    clearTimeout(this.billingTimer);
     for (const s of this.sims.values()) {
       s.abort?.();
       s.shell?.dispose();
@@ -114,7 +112,7 @@ export class DemoTransport implements Transport {
     const list = this.order
       .map((id) => this.sims.get(id)?.info)
       .filter((s): s is SessionInfo => !!s)
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      .toSorted((a, b) => b.updatedAt - a.updatedAt);
     this.emit({ t: 'sessions', sessions: list });
   }
 
@@ -146,13 +144,21 @@ export class DemoTransport implements Transport {
     sig: AbortSignal,
   ): Promise<void> {
     this.put(sim, { ...item, text: '', streaming: true });
-    let i = 0;
-    while (i < text.length) {
+    const chunks: string[] = [];
+    for (let i = 0; i < text.length; ) {
       const n = 2 + Math.floor(Math.random() * 6);
-      this.delta(sim, item.id, text.slice(i, i + n));
+      chunks.push(text.slice(i, i + n));
       i += n;
-      await sleep(18 + Math.random() * 30, sig);
     }
+    // Chunks must arrive in order with a pause between them, like a real stream.
+    await chunks.reduce<Promise<void>>(
+      (prev, chunk) =>
+        prev.then(() => {
+          this.delta(sim, item.id, chunk);
+          return sleep(18 + Math.random() * 30, sig);
+        }),
+      Promise.resolve(),
+    );
     const final = sim.items.find((x) => x.id === item.id);
     if (final && (final.kind === 'text' || final.kind === 'thinking'))
       this.put(sim, { ...final, streaming: false });
@@ -171,9 +177,16 @@ export class DemoTransport implements Transport {
     sim.abort = () => ctrl.abort();
     const started = Date.now();
     this.touch(sim, { status: 'running' });
-    fn(ctrl.signal)
-      .then(() => {
-        this.put(sim, {
+    const run = async (): Promise<void> => {
+      try {
+        await fn(ctrl.signal);
+      } catch {
+        this.interrupted(sim, started);
+        return;
+      } finally {
+        if (sim.abort) sim.abort = undefined;
+      }
+      this.put(sim, {
           id: this.nid('turn'),
           ts: Date.now(),
           kind: 'turn',
@@ -181,25 +194,23 @@ export class DemoTransport implements Transport {
           durationMs: Date.now() - started,
           costUsd: Math.round(Math.random() * 8 + 2) / 100,
         });
-        this.touch(sim, { status: 'idle' });
-      })
-      .catch(() => {
-        for (const it of sim.items)
-          if ((it.kind === 'text' || it.kind === 'thinking') && it.streaming)
-            this.put(sim, { ...it, streaming: false });
-          else if (it.kind === 'tool' && it.status === 'running') this.put(sim, { ...it, status: 'error' });
-        this.put(sim, {
-          id: this.nid('turn'),
-          ts: Date.now(),
-          kind: 'turn',
-          outcome: 'interrupted',
-          durationMs: Date.now() - started,
-        });
-        this.touch(sim, { status: 'idle' });
-      })
-      .finally(() => {
-        if (sim.abort) sim.abort = undefined;
-      });
+      this.touch(sim, { status: 'idle' });
+    };
+    void run();
+  }
+
+  private interrupted(sim: Sim, started: number): void {
+    for (const it of sim.items)
+      if ((it.kind === 'text' || it.kind === 'thinking') && it.streaming) this.put(sim, { ...it, streaming: false });
+      else if (it.kind === 'tool' && it.status === 'running') this.put(sim, { ...it, status: 'error' });
+    this.put(sim, {
+      id: this.nid('turn'),
+      ts: Date.now(),
+      kind: 'turn',
+      outcome: 'interrupted',
+      durationMs: Date.now() - started,
+    });
+    this.touch(sim, { status: 'idle' });
   }
 
   private async tool(sim: Sim, tool: ToolItem, ms: number, sig: AbortSignal): Promise<void> {
@@ -379,10 +390,9 @@ export class DemoTransport implements Transport {
           ...todo,
           detail: {
             type: 'todos',
-            todos: todo.detail.todos.map((t, i) => ({
-              ...t,
-              status: i < 3 ? 'completed' : i === 3 ? 'in_progress' : 'pending',
-            })),
+            todos: todo.detail.todos.map((t, i) =>
+              Object.assign({}, t, { status: i < 3 ? 'completed' : i === 3 ? 'in_progress' : 'pending' } as const),
+            ),
           },
         });
       }
@@ -407,16 +417,27 @@ export class DemoTransport implements Transport {
         'Typecheck is clean. Wiring up the re-exports in `billing/index.ts` now.',
         sig,
       );
-      await sleep(8000, sig);
+      await sleep(20_000, sig);
     };
-    const loop = (): void => {
-      script()
-        .then(() => {
-          if (this.live && !sig.aborted) this.billingTimer = window.setTimeout(loop, 4000);
-        })
-        .catch(() => undefined);
+    const started = Date.now();
+    const run = async (): Promise<void> => {
+      try {
+        await script();
+      } catch {
+        return; // interrupted by the user
+      }
+      if (sim.abort) sim.abort = undefined;
+      this.put(sim, {
+        id: this.nid('turn'),
+        ts: Date.now(),
+        kind: 'turn',
+        outcome: 'completed',
+        durationMs: Date.now() - started + 14 * 60_000,
+        costUsd: 0.37,
+      });
+      this.touch(sim, { status: 'idle', preview: 'Billing module split into tax.ts and render.ts.' });
     };
-    loop();
+    void run();
   }
 
   // ---------------------------------------------------------------- handlers
@@ -566,8 +587,7 @@ export class DemoTransport implements Transport {
       }
       case 'chat.interrupt': {
         const sim = this.sims.get(msg.sessionId);
-        clearTimeout(this.billingTimer);
-        sim?.abort?.();
+            sim?.abort?.();
         return;
       }
       case 'chat.permission': {
