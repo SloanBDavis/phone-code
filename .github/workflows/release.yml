@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # "Run workflow" on main: releases the version in packages/daemon/package.json
+  # and creates its tag at the commit that was built.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,6 +19,8 @@ jobs:
     name: Build release artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -24,6 +29,14 @@ jobs:
       - run: bun install --frozen-lockfile
         env:
           CI: 'true'
+      - name: Work out the release tag
+        id: tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$(bun -e 'console.log(require("./packages/daemon/package.json").version)')" >> "$GITHUB_OUTPUT"
+          fi
       # Cross-compiles every target; fails if the tag does not match packages/daemon/package.json.
       - run: bun run release
       - uses: actions/upload-artifact@v4
@@ -72,7 +85,7 @@ jobs:
 
   publish:
     name: Create GitHub release
-    needs: smoke
+    needs: [build, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -85,9 +98,11 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.build.outputs.tag }}
         run: |
           prerelease=""
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          # On a tag push the tag must already exist; on a manual run it is created here.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then tagflag="--verify-tag"; else tagflag="--target $GITHUB_SHA"; fi
           gh release create "$TAG" release/*.tar.gz release/SHA256SUMS \
-            --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --verify-tag $prerelease
+            --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes $tagflag $prerelease
