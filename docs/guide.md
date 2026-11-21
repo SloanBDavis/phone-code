@@ -1,0 +1,157 @@
+# phone-code guide
+
+Everything beyond the three steps in the [README](../README.md).
+
+## Commands
+
+```
+phonecode                  start and show a pairing QR code
+phonecode setup            check your connection options and say what to do next
+phonecode pair             show a fresh pairing QR code (phonecode must be running)
+phonecode devices          list paired phones
+phonecode revoke <id>      remove a paired phone
+```
+
+Options: `--port <n>` (default 7777), `--url <https url>`, `--tunnel`, `--local`, `--insecure`, `--host <addr>`, `--no-qr`. Run `phonecode --help` for details. State (paired devices, chats, images, push keys) lives in `~/.phonecode`, or `$PHONECODE_HOME`.
+
+Pairing codes expire after 5 minutes and work once. Press Enter in the `phonecode` window for a fresh one.
+
+## Install options
+
+The install script picks the binary for your OS and CPU, checks it against the release's `SHA256SUMS`, and installs `phonecode` to `~/.local/bin` (set `PHONECODE_INSTALL` to change that, `PHONECODE_VERSION=v0.1.0` to pin a version). Read it first if you like: [install.sh](../install.sh).
+
+The binary is large (about 90 to 110 MB) because it contains the Bun runtime and the whole phone app. Nothing else is needed at runtime.
+
+### Build from source
+
+Needs [Bun](https://bun.sh) 1.4 or newer.
+
+```sh
+git clone https://github.com/SloanBDavis/phone-code && cd phone-code
+bun install
+bun run build                 # -> packages/daemon/dist/phonecode
+./packages/daemon/dist/phonecode
+```
+
+## How the connection works
+
+`phonecode` listens on `127.0.0.1` only. It never serves plain HTTP to the network unless you pass `--insecure`, because the pairing code, your device token and everything in your terminal would cross the network readable by anyone on it. To reach your phone it puts an HTTPS proxy in front of that loopback port, chosen in this order:
+
+| How                       | When                                                                                                                                                                                      | Who can reach it                                                                                                               |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `--url https://your.host` | You run your own reverse proxy (Caddy, nginx, ...) to `localhost:<port>`.                                                                                                                 | Whoever can reach your proxy.                                                                                                  |
+| `--tunnel`                | Opt in only. Starts a [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) (needs `cloudflared`). | **Anyone on the internet** who has the random `*.trycloudflare.com` URL. Cloudflare terminates TLS, so it can see the traffic. |
+| Tailscale (automatic)     | Tailscale is running and HTTPS is enabled for your tailnet. phonecode runs `tailscale serve` for you and removes it on exit.                                                              | Only devices in your tailnet. A real certificate for `<machine>.<tailnet>.ts.net`; TLS ends on your computer.                  |
+| Nothing found             | Default fallback.                                                                                                                                                                         | This computer only. phonecode prints the options above instead of a QR code.                                                   |
+
+`--local` skips the Tailscale step. `--insecure` serves plain HTTP on your LAN (binding `0.0.0.0` unless `--host` says otherwise) and prints a large warning; use it only on a network you trust completely, and prefer one of the HTTPS options.
+
+In every mode the HTTPS address only gets you to the pairing screen. Using the app needs a device token, which you only get by redeeming a pairing code from the QR.
+
+The Tailscale integration follows Tailscale's documented `serve` command but has not been tested against a real tailnet yet. Please [open an issue](https://github.com/SloanBDavis/phone-code/issues) if it does not work for you.
+
+## Add to Home Screen
+
+The app is a PWA. Installed, it runs full screen, keeps you signed in, and can receive notifications.
+
+- **iPhone and iPad (Safari):** after pairing, the app shows how: Share, then "Add to Home Screen". iOS gives Home Screen apps storage separate from Safari, so phone-code passes a short-lived, single-use handoff code to the installed app and you do not have to scan again.
+- **Android (Chrome):** menu, then "Install app" or "Add to Home screen".
+
+Notifications (Settings, Notifications) tell you when an agent finishes a turn or needs your approval. On iPhone they work only in the Home Screen app (iOS 16.4 or newer).
+
+## Features
+
+- **One chat screen.** Pick the agent, model, mode and folder on the bar and send. The chat is created when you send.
+- **Sidebar of chats** with "Needs you" first. Swipe to archive (it only leaves the sidebar); long-press to rename or delete.
+- **Search all chats** from every agent, including ones you started at the computer and archived ones. Opening one brings it back to the sidebar.
+- **Agent chat:** streaming Markdown with highlighted code, thinking, and tool calls shown natively (commands with output, file edits as diffs, reads, searches, todo lists, sub-agents).
+- **Approvals and questions:** allow, always allow, or deny with feedback; multiple-choice questions as tappable options.
+- **Slash commands:** type `/` to see what the agent offers.
+- **Images:** send photos from the library, camera or clipboard; view images the agent reads or produces, full screen with zoom.
+- **Terminal:** a real login shell, with a key bar (esc, tab, sticky ctrl and alt, arrows) and adjustable text size.
+- **Reconnects cleanly:** missed output is replayed after a dropped connection; chats survive a restart of `phonecode` (running terminals do not).
+- **Several phones** can pair; list and remove them with `phonecode devices` / `phonecode revoke`, or unpair from the phone.
+- **Light and dark** themes, built for one-handed use.
+
+## Agent support
+
+| Agent                                                          | Status       | Notes                                                                                                                                                                                                                        |
+| -------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code (`claude`)                                         | Works        | Verified against the real CLI. phone-code speaks the CLI's stream-json control protocol directly (the same one the Agent SDK uses), so permissions, modes, models, interrupts and resume map one to one.                     |
+| Codex (`codex`)                                                | Experimental | Implemented against the `codex app-server` JSON-RPC schema. Exercised against the real binary only up to login; full model turns have not been run yet, so expect rough edges and please report them.                        |
+| Antigravity (`agy`)                                            | Experimental | Runs through Antigravity's own ACP server (`agy acp`). Exercised against the real CLI 1.5.13 with a scripted model endpoint; no real Google model turn or login has been run.                                                |
+| Gemini CLI, OpenCode, Qwen Code (ACP)                          | Experimental | Generic [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol) adapter. Handshake, login path, modes and models checked against the real CLIs; full model turns only against a scripted fake. |
+| Goose, Kimi, Copilot, Cursor, Auggie, Cline, Qoder, Vibe (ACP) | Untested     | Presets taken from the ACP registry; never run.                                                                                                                                                                              |
+| Any other ACP agent                                            | Experimental | Add it to `agents.json` in the state directory: `{"agents":[{"id":"my-agent","name":"My Agent","command":"my-agent","args":["acp"]}]}`. Read at daemon start.                                                                |
+
+The terminal works with anything, so you can always run an agent's own TUI there.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Phone
+    App["phone app (Preact PWA)"]
+  end
+  subgraph Computer["Your computer: phonecode (one Bun executable)"]
+    HTTP["HTTP + WebSocket server<br/>127.0.0.1:7777"]
+    Sessions["session manager<br/>event logs, transcripts"]
+    PTY["terminals (pty)"]
+    Worker["screen worker<br/>(headless xterm snapshots)"]
+    Adapters["agent adapters"]
+  end
+  Proxy["HTTPS: tailscale serve,<br/>cloudflared or your proxy"]
+  App -- "https + wss" --> Proxy --> HTTP
+  HTTP --> Sessions
+  Sessions --> PTY --> Worker
+  Sessions --> Adapters
+  Adapters -- "stdio JSON" --> Claude["claude CLI"]
+  Adapters -- "stdio JSON-RPC" --> Codex["codex app-server"]
+```
+
+- **`packages/daemon`**: the `phonecode` CLI and daemon. Bun-native: `Bun.serve` for HTTP and WebSockets, `Bun.spawn` with a pty for terminals, a worker thread running headless xterm.js to produce terminal snapshots. Built with `bun build --compile` into one executable with the web app embedded (brotli-precompressed).
+- **`packages/web`**: the phone app. Preact with signals, Vite, xterm.js, marked and highlight.js loaded on demand. About 53 kB gzipped for the first screen.
+- **`packages/protocol`**: TypeScript types for the WebSocket protocol, shared by both sides. See [docs/protocol.md](protocol.md).
+- **`e2e`**: Playwright tests that drive the real daemon with scripted fake `claude` and `codex` binaries.
+- **`formal`**: TLA+ models of the chat sync and pairing protocols, checked with TLC, and a Tamarin model of pairing and authentication against a network attacker.
+
+## Security
+
+Pairing a phone gives it a shell on your computer as your user, and agents that can run commands. Treat a paired phone like an unlocked laptop.
+
+- The daemon binds loopback and refuses unencrypted connections from the network unless you pass `--insecure`.
+- Pairing codes are single use and expire after 5 minutes. The QR link carries a 128-bit secret; the 10-character code you can type instead (about 49 bits) is rate limited, and that limit cannot block the QR link.
+- Revoking a device also revokes the devices paired through it, such as its Home Screen app.
+- Each device gets a random 256-bit token. The daemon stores only its SHA-256 hash; revoke a device any time.
+- On the phone the token is stored in the app's local storage. Anyone who can open the app on your unlocked phone can use your computer.
+- `--tunnel` makes the pairing screen reachable from the whole internet and lets Cloudflare see your traffic.
+- Session transcripts are stored unencrypted in `~/.phonecode` (directory mode 0700, files 0600).
+
+Read [SECURITY.md](../SECURITY.md) for the full model, its limits, and how to report a vulnerability.
+
+## Development
+
+```sh
+bun install            # also installs git hooks (lefthook), except in CI
+bun run dev            # daemon from source on :7777, serving the last web build
+bun run --filter @phone-code/web dev   # Vite on :5173; open /?demo=1 (no daemon behind it)
+bun run check          # format check, oxlint (type-aware), typecheck, knip, protocol doc
+bun run build          # web app + packages/daemon/dist/phonecode
+bun run e2e            # Playwright end-to-end suite
+bash formal/check.sh   # TLA+ model checking (needs Java)
+bun run release        # cross-compile all targets into release/
+bun run screenshots    # regenerate docs/screenshots from the demo
+```
+
+`PHONECODE_ECHO_AGENT=1` replaces the real agents with a built-in fake, handy when working on the UI. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the rest.
+
+## Roadmap
+
+- A native iOS app with real Liquid Glass components, using the same daemon and protocol.
+- Codex verified end to end against real model turns.
+- More agents through the Agent Client Protocol.
+- A first tagged release with binaries and the npm package.
+
+## License
+
+[MIT](../LICENSE)
