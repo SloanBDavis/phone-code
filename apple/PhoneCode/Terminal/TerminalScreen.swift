@@ -44,7 +44,7 @@ struct TerminalScreen: View {
       .navigationTitle(session.title)
       .navigationBarTitleDisplayMode(.inline)
     #endif
-    .accessibilityIdentifier("screen-terminal")
+    .axContainer("screen-terminal")
   }
 }
 
@@ -154,7 +154,7 @@ final class TerminalDelegateProxy: NSObject, TerminalViewDelegate {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
       }
-      .accessibilityIdentifier("key-bar")
+      .axContainer("key-bar")
     }
   }
 #else

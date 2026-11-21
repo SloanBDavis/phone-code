@@ -84,7 +84,7 @@ struct SidebarView: View {
             Label("Needs you", systemImage: "bell.badge.fill")
               .foregroundStyle(.orange)
           }
-          .accessibilityIdentifier("section-needs-you")
+          .axContainer("section-needs-you")
         }
         Section {
           ForEach(groups.chats) { row($0) }
@@ -100,7 +100,7 @@ struct SidebarView: View {
           ProgressView()
         }
       }
-      .accessibilityIdentifier("sidebar")
+      .axContainer("sidebar")
     }
   }
 
@@ -310,7 +310,7 @@ struct SearchResultsView: View {
       }
       loading = false
     }
-    .accessibilityIdentifier("search-results")
+    .axContainer("search-results")
   }
 }
 

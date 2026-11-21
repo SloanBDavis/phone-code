@@ -60,7 +60,7 @@ struct NewChatView: View {
       .navigationTitle("New chat")
       .navigationBarTitleDisplayMode(.inline)
     #endif
-    .accessibilityIdentifier("screen-new-chat")
+    .axContainer("screen-new-chat")
   }
 
   @ViewBuilder
@@ -115,7 +115,7 @@ struct NewChatView: View {
       }
     }
     .frame(maxWidth: 520)
-    .accessibilityIdentifier("new-chat-empty")
+    .axContainer("new-chat-empty")
   }
 }
 
@@ -150,7 +150,7 @@ struct ChatView: View {
         ToolbarItem(placement: .topBarTrailing) { titleMenu }
       }
     #endif
-    .accessibilityIdentifier("screen-chat")
+    .axContainer("screen-chat")
   }
 
   private var titleMenu: some View {
@@ -211,7 +211,7 @@ struct TranscriptView: View {
         ProgressView()
       }
     }
-    .accessibilityIdentifier("transcript")
+    .axContainer("transcript")
   }
 }
 
@@ -222,6 +222,6 @@ struct WorkingIndicator: View {
       Text("Working…").font(.footnote).foregroundStyle(.secondary)
     }
     .padding(.vertical, 4)
-    .accessibilityIdentifier("working")
+    .axContainer("working")
   }
 }

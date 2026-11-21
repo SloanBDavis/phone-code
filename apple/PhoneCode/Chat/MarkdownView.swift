@@ -95,7 +95,7 @@ struct MarkdownTable: View {
       .padding(12)
     }
     .background(.fill.quaternary, in: .rect(cornerRadius: 10))
-    .accessibilityIdentifier("markdown-table")
+    .axContainer("markdown-table")
   }
 
   private func alignment(_ i: Int) -> HorizontalAlignment {
@@ -143,7 +143,7 @@ struct CodeBlock: View {
       }
     }
     .background(.fill.quaternary, in: .rect(cornerRadius: 12))
-    .accessibilityIdentifier("code-block")
+    .axContainer("code-block")
   }
 }
 

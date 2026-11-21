@@ -49,7 +49,7 @@ struct ComputerView: View {
             Image(systemName: a.available && a.setupHint == nil ? "checkmark.circle.fill" : "exclamationmark.circle")
               .foregroundStyle(a.available && a.setupHint == nil ? Color.green : Color.orange)
           }
-          .accessibilityIdentifier("computer-agent")
+          .axContainer("computer-agent")
         }
       }
       Section {
@@ -86,7 +86,7 @@ struct ComputerView: View {
     } message: {
       Text("Your computer forgets this device. Pair again by scanning its QR code.")
     }
-    .accessibilityIdentifier("computer-sheet")
+    .axContainer("computer-sheet")
   }
 
   private var statusText: String {

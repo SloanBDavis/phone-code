@@ -58,6 +58,11 @@ final class PhoneCodeUITests: XCTestCase {
   private func type(_ id: String, _ text: String) {
     let e = wait(id)
     press(e)
+    #if os(iOS)
+      // The keyboard can take a moment; tap again if the field did not take focus.
+      if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { press(e) }
+      _ = app.keyboards.firstMatch.waitForExistence(timeout: 5)
+    #endif
     e.typeText(text)
   }
 

@@ -105,7 +105,7 @@
 
     var body: some View {
       NodeView(node: store.layout.root, store: store)
-        .accessibilityIdentifier("workspace")
+        .axContainer("workspace")
     }
   }
 
@@ -240,7 +240,7 @@
           .padding(8)
           .glassEffect()
       }
-      .accessibilityIdentifier("tile-title")
+      .axContainer("tile-title")
     }
 
     @ViewBuilder

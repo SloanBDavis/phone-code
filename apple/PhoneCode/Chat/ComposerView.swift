@@ -373,7 +373,7 @@ struct SlashPalette: View {
     }
     .frame(maxHeight: 240)
     .glassEffect(.regular, in: .rect(cornerRadius: 20))
-    .accessibilityIdentifier("slash-palette")
+    .axContainer("slash-palette")
   }
 }
 

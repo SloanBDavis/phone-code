@@ -117,6 +117,7 @@ struct PairingView: View {
           .keyboardType(.URL)
           .textInputAutocapitalization(.never)
         #endif
+        .textFieldStyle(.plain)
         .focused($focus, equals: .address)
         .submitLabel(.next)
         .onSubmit { focus = .code }
@@ -128,6 +129,7 @@ struct PairingView: View {
         #if os(iOS)
           .textInputAutocapitalization(.characters)
         #endif
+        .textFieldStyle(.plain)
         .focused($focus, equals: .code)
         .submitLabel(.go)
         .onSubmit { Task { await submit() } }

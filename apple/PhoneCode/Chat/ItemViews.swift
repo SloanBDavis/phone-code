@@ -45,7 +45,7 @@ struct UserBubble: View {
     }
     .frame(maxWidth: .infinity, alignment: .trailing)
     .padding(.leading, 48)
-    .accessibilityIdentifier("chat-item-user")
+    .axContainer("chat-item-user")
   }
 }
 
@@ -74,7 +74,7 @@ struct PendingBubble: View {
     }
     .frame(maxWidth: .infinity, alignment: .trailing)
     .padding(.leading, 48)
-    .accessibilityIdentifier("pending-send")
+    .axContainer("pending-send")
   }
 }
 
@@ -93,7 +93,7 @@ struct AssistantText: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .accessibilityIdentifier("chat-item-text")
+    .axContainer("chat-item-text")
   }
 }
 
@@ -116,7 +116,7 @@ struct ThinkingRow: View {
       .font(.callout)
       .foregroundStyle(.secondary)
     }
-    .accessibilityIdentifier("chat-item-thinking")
+    .axContainer("chat-item-thinking")
   }
 }
 
@@ -234,7 +234,7 @@ struct ToolCard: View {
     }
     .background(.fill.quinary, in: .rect(cornerRadius: 14))
     .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
-    .accessibilityIdentifier("chat-item-tool")
+    .axContainer("chat-item-tool")
   }
 
   static func symbol(_ name: String) -> String {
@@ -379,7 +379,7 @@ struct DiffView: View {
     }
     .background(.fill.tertiary, in: .rect(cornerRadius: 8))
     .clipShape(.rect(cornerRadius: 8))
-    .accessibilityIdentifier("diff-view")
+    .axContainer("diff-view")
   }
 
   private func prefix(_ k: DiffLine.Kind) -> String {

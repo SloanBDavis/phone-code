@@ -16,10 +16,20 @@ public actor ImageLoader {
   private var bytes = 0
   private var inflight: [String: Task<Data, Error>] = [:]
 
-  public init(credentials: HostCredentials, session: URLSession = .shared, cacheBytes: Int = 48 * 1024 * 1024) {
+  /// `session` defaults to one without a URL cache: this loader keeps its own
+  /// cache per paired device, and the daemon marks images `immutable`, so a
+  /// shared URLCache would keep serving them after the device is unpaired.
+  public init(credentials: HostCredentials, session: URLSession? = nil, cacheBytes: Int = 48 * 1024 * 1024) {
     self.creds = credentials
-    self.session = session
+    self.session = session ?? ImageLoader.uncachedSession()
     self.limit = cacheBytes
+  }
+
+  static func uncachedSession() -> URLSession {
+    let c = URLSessionConfiguration.ephemeral
+    c.urlCache = nil
+    c.requestCachePolicy = .reloadIgnoringLocalCacheData
+    return URLSession(configuration: c)
   }
 
   public nonisolated func url(sessionId: String, imageId: String, width: Int? = nil) -> URL {

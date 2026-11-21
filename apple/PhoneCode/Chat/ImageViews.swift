@@ -148,6 +148,6 @@ struct ImageViewer: View {
     .task {
       data = try? await model.images?.data(sessionId: sessionId, imageId: ref.id)
     }
-    .accessibilityIdentifier("image-viewer")
+    .axContainer("image-viewer")
   }
 }

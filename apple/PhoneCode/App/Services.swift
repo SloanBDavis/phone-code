@@ -157,3 +157,11 @@ func tildePath(_ path: String, home: String?) -> String {
   guard let home, !home.isEmpty, path.hasPrefix(home) else { return path }
   return "~" + path.dropFirst(home.count)
 }
+
+extension View {
+  /// An identifier for UI tests on a view that contains other elements. Without
+  /// `.contain`, SwiftUI gives the identifier to every child and hides theirs.
+  func axContainer(_ id: String) -> some View {
+    accessibilityElement(children: .contain).accessibilityIdentifier(id)
+  }
+}

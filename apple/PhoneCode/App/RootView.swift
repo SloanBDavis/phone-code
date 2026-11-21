@@ -65,7 +65,7 @@ struct ToastView: View {
       .glassEffect(.regular, in: .capsule)
       .padding(.bottom, 90)
       .transition(.move(edge: .bottom).combined(with: .opacity))
-      .accessibilityIdentifier("toast")
+      .axContainer("toast")
     }
   }
 }

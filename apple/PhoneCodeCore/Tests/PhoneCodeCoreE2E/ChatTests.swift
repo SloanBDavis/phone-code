@@ -218,8 +218,9 @@ struct ChatTests {
       #expect(await loader.cachedCount() == 1)
       let thumb = try await loader.data(sessionId: s.id, imageId: ref.id, width: 64)
       #expect(!thumb.isEmpty)
-      // Without the token: refused.
-      let (_, res) = try await URLSession.shared.data(from: loader.url(sessionId: s.id, imageId: ref.id))
+      // Without the token: refused. (A fresh ephemeral session: URLSession.shared
+      // would answer from its cache, since the daemon marks images immutable.)
+      let (_, res) = try await URLSession(configuration: .ephemeral).data(from: loader.url(sessionId: s.id, imageId: ref.id))
       #expect((res as? HTTPURLResponse)?.statusCode == 401)
 
       // An agent tool result with an image (a Read of a screenshot).
