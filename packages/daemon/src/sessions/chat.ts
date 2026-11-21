@@ -399,7 +399,9 @@ export class ChatSession implements LiveSession {
   private async deliver(text: string, attachments: Attachment[] | undefined): Promise<void> {
     const agent = await this.ensureAgent();
     if (agent === undefined) return;
-    this.setStatus('running');
+    // A pending permission / question keeps the session `waiting`: the adapter only
+    // reports status changes, so it would not correct an overwrite here.
+    if (this.info.status !== 'waiting') this.setStatus('running');
     try {
       await agent.send(text, attachments);
     } catch (err) {

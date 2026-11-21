@@ -84,6 +84,7 @@ export class Daemon {
       CLAUDE_CONFIG_DIR: join(this.userHome, '.claude'),
       CODEX_HOME: join(this.userHome, '.codex'),
       FAKE_SPEED: '2',
+      FAKE_ACP_HOME: join(this.root, 'fake-acp'),
       ...(process.env['E2E_WEB_DIR'] === undefined ? {} : { PHONECODE_WEB_DIR: process.env['E2E_WEB_DIR'] }),
       ...this.opts.env,
     };

@@ -2,7 +2,8 @@
 import { expect, type Locator } from '@playwright/test';
 import type { Phone } from './fixtures.ts';
 
-export type Kind = 'claude' | 'codex' | 'terminal';
+/** `claude`, `codex`, `terminal` or an ACP agent id such as `gemini`. */
+export type Kind = string;
 
 /**
  * Opens the new-session sheet, picks `kind`, navigates the folder picker from

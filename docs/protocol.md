@@ -310,6 +310,11 @@ export interface PermissionItem extends ItemBase {
   status: 'pending' | 'allowed' | 'denied' | 'cancelled';
   /** Whether "always allow" is offered for this request. */
   canAllowAlways?: boolean;
+  /**
+   * False when the agent cannot receive a reason with a denial (ACP agents),
+   * so "deny with feedback" is not offered. Absent means it can.
+   */
+  canDenyWithMessage?: boolean;
 }
 
 /** The agent asks the user a multiple-choice question. */

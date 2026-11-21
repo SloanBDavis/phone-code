@@ -362,6 +362,9 @@ Fairness ==
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
+(* Item ids are interchangeable (used for safety-only runs). *)
+Symmetry == Permutations(Items)
+
 ------------------------------------------------------------------------------
 (* ---------------- properties -------------------------------------------- *)
 
