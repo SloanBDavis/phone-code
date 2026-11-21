@@ -14,7 +14,7 @@ import type { PushService } from './push.ts';
 import { ChatSession } from './sessions/chat.ts';
 import type { SessionManager } from './sessions/manager.ts';
 import { TerminalSession } from './sessions/terminal.ts';
-import type { Subscriber } from './sessions/types.ts';
+import type { LiveSession, Subscriber } from './sessions/types.ts';
 import { UserError } from './util/errors.ts';
 import { parseClientFrame, parsePushSubscription } from './validate.ts';
 
@@ -110,9 +110,18 @@ export class Connection implements Subscriber {
       this.stale.delete(id);
       const s = this.ctx.manager.get(id);
       if (s !== undefined && this.subs.has(id)) {
-        s.subscribe(this).catch((err: unknown) => log.warn('resubscribe failed', err));
+        this.attach(s, id).catch((err: unknown) => log.warn('resubscribe failed', err));
       }
     }
+  }
+
+  /**
+   * `subscribe` may first wait for a restored transcript to load. If the client
+   * unsubscribed or the socket closed meanwhile, undo the subscription it added.
+   */
+  private async attach(s: LiveSession, sessionId: string, afterSeq?: number): Promise<void> {
+    await s.subscribe(this, afterSeq);
+    if (this.closed || !this.subs.has(sessionId)) s.unsubscribe(this);
   }
 
   private error(code: ErrorCode, message: string): void {
@@ -286,7 +295,7 @@ export class Connection implements Subscriber {
         s.unsubscribe(this);
         this.subs.add(msg.sessionId);
         this.stale.delete(msg.sessionId);
-        s.subscribe(this, msg.afterSeq).catch((err: unknown) => {
+        this.attach(s, msg.sessionId, msg.afterSeq).catch((err: unknown) => {
           log.error('subscribe failed', err);
           this.error('internal', 'subscribe failed');
         });
