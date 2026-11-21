@@ -41,7 +41,11 @@ test('Bash permission: allow, deny, deny with feedback, always allow', async ({ 
   await perm.nth(2).getByTestId('permission-deny-send').click();
   await waitTurn(phone, 3);
   await expect(perm.nth(2)).toHaveAttribute('data-status', 'denied');
-  await expect(phone.testId('transcript')).toContainText('use bun test instead');
+  // The feedback reaches the agent as the tool's result.
+  const denied = phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]').nth(2);
+  await expect(denied).toHaveAttribute('data-status', 'denied');
+  await denied.locator('.tool-head').click();
+  await expect(denied).toContainText('use bun test instead');
 
   await send(phone, 'run tests, always');
   await expect(perm.nth(3)).toHaveAttribute('data-status', 'pending');

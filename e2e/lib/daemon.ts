@@ -191,6 +191,12 @@ export class Daemon {
     });
   }
 
+  /** Creates `HOME/<name>` (a fresh project folder for one test) and returns `name`. */
+  folder(name: string): string {
+    mkdirSync(join(this.userHome, name), { recursive: true });
+    return name;
+  }
+
   /** Is the daemon process still alive? */
   get alive(): boolean {
     return this.proc !== undefined && this.proc.exitCode === null && this.proc.signalCode === null;
