@@ -1,10 +1,11 @@
 /* Design tokens. Dark is the primary theme; light is equally finished. */
 
 :root {
-  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', Inter, system-ui, 'Segoe UI', Roboto,
+  --font:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', Inter, system-ui, 'Segoe UI', Roboto,
     sans-serif;
-  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter Display', Inter, system-ui,
-    sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter Display', Inter, system-ui, sans-serif;
   --mono: ui-monospace, 'SF Mono', SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
 
   --safe-top: env(safe-area-inset-top, 0px);
@@ -25,11 +26,44 @@
 
   /* Motion. A critically damped-ish spring for presses and menus, and the
      iOS navigation curve for pushes and sheets. */
-  --spring: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%,
-      0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001 85.2%, 1);
-  --spring-bouncy: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.077,
-      1.121 24%, 1.149 26.3%, 1.159 28.8%, 1.15 31.5%, 1.114 35.8%, 1.035 45%, 1.004 50.9%, 0.984 57.2%,
-      0.981 63.1%, 0.998 81%, 1);
+  --spring: linear(
+    0,
+    0.006,
+    0.025 2.8%,
+    0.101 6.1%,
+    0.539 18.9%,
+    0.721 25.3%,
+    0.849 31.5%,
+    0.937 38.1%,
+    0.968 41.8%,
+    0.991 45.7%,
+    1.006 50.1%,
+    1.015 55%,
+    1.017 63.9%,
+    1.001 85.2%,
+    1
+  );
+  --spring-bouncy: linear(
+    0,
+    0.009,
+    0.035 2.1%,
+    0.141 4.4%,
+    0.723 12.9%,
+    0.938 16.7%,
+    1.017 19.4%,
+    1.077,
+    1.121 24%,
+    1.149 26.3%,
+    1.159 28.8%,
+    1.15 31.5%,
+    1.114 35.8%,
+    1.035 45%,
+    1.004 50.9%,
+    0.984 57.2%,
+    0.981 63.1%,
+    0.998 81%,
+    1
+  );
   --ease-nav: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --t-press: 380ms;

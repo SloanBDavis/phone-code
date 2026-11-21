@@ -29,7 +29,7 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
   const scrollRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
-  const api = useRef<ScrollApi>(null);
+  const apiRef = useRef<ScrollApi>(null);
   const jump = useSignal(false);
 
   useEffect(() => client.subscribe(sessionId), [sessionId]);
@@ -56,7 +56,12 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
         {
           items: [
             { label: 'Rename', icon: 'pencil', onSelect: () => void renameSession(s), testid: 'menu-rename' },
-            { label: 'Copy last response', icon: 'copy', onSelect: () => void copyLastResponse(s.id), testid: 'menu-copy' },
+            {
+              label: 'Copy last response',
+              icon: 'copy',
+              onSelect: () => void copyLastResponse(s.id),
+              testid: 'menu-copy',
+            },
             {
               label: 'Copy folder path',
               icon: 'folder',
@@ -66,7 +71,15 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
           ],
         },
         {
-          items: [{ label: 'Delete session', icon: 'trash', destructive: true, onSelect: () => void deleteSession(s), testid: 'menu-delete' }],
+          items: [
+            {
+              label: 'Delete session',
+              icon: 'trash',
+              destructive: true,
+              onSelect: () => void deleteSession(s),
+              testid: 'menu-delete',
+            },
+          ],
         },
       ],
       { testid: 'chat-menu' },
@@ -86,10 +99,19 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
             <p>
               in <code class="cmd">{tildify(s.cwd, host.value?.home)}</code>
             </p>
-            <p class="chat-empty-hint">Ask for a change, a review, or an explanation. It runs on your computer.</p>
+            <p class="chat-empty-hint">
+              Ask for a change, a review, or an explanation. It runs on your computer.
+            </p>
           </div>
         ) : (
-          <Transcript chat={chat} sessionId={sessionId} agent={agent} apiRef={api} scrollRef={scrollRef} jump={jump} />
+          <Transcript
+            chat={chat}
+            sessionId={sessionId}
+            agent={agent}
+            apiRef={apiRef}
+            scrollRef={scrollRef}
+            jump={jump}
+          />
         )}
       </div>
       <TopBar
@@ -99,17 +121,29 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
           <GlassButton class="title-capsule" onClick={menu} testid="chat-title">
             <span class="title-main">{s.title}</span>
             <span class={`title-sub st-${s.status}`}>
-              {s.status === 'running' ? <span class="dot ok pulse" /> : s.status === 'waiting' ? <span class="dot warn" /> : null}
+              {s.status === 'running' ? (
+                <span class="dot ok pulse" />
+              ) : s.status === 'waiting' ? (
+                <span class="dot warn" />
+              ) : null}
               {STATUS_LABEL[s.status]} · {s.model ?? agent}
             </span>
           </GlassButton>
         }
-        right={<GlassButton icon="ellipsis" iconSize={22} label="Session menu" onClick={menu} testid="chat-menu-btn" />}
+        right={
+          <GlassButton
+            icon="ellipsis"
+            iconSize={22}
+            label="Session menu"
+            onClick={menu}
+            testid="chat-menu-btn"
+          />
+        }
       />
       <button
         type="button"
         class={`jump glass glass-regular ${jump.value ? 'show' : ''}`}
-        onClick={() => api.current?.toBottom(true)}
+        onClick={() => apiRef.current?.toBottom(true)}
         aria-label="Jump to latest"
         tabIndex={jump.value ? 0 : -1}
         data-testid="jump-latest"
@@ -121,7 +155,7 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
         <Composer
           key={sessionId}
           session={s}
-          onSent={() => requestAnimationFrame(() => api.current?.toBottom(true))}
+          onSent={() => requestAnimationFrame(() => apiRef.current?.toBottom(true))}
         />
       </div>
     </div>

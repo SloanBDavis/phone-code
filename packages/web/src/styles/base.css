@@ -245,8 +245,8 @@ textarea {
   background: linear-gradient(
     to bottom,
     var(--edge-bg, var(--bg)) 0%,
-    color-mix(in srgb, var(--edge-bg, var(--bg)) 86%, transparent) 38%,
-    color-mix(in srgb, var(--edge-bg, var(--bg)) 40%, transparent) 72%,
+    var(--edge-bg, var(--bg)) calc(var(--safe-top) + 30px),
+    color-mix(in srgb, var(--edge-bg, var(--bg)) 70%, transparent) 72%,
     transparent 100%
   );
   opacity: 0;
@@ -376,6 +376,11 @@ textarea {
 .cell-main {
   flex: 1;
   min-width: 0;
+}
+
+.cell-main > .cell-title,
+.cell-main > .cell-sub {
+  display: block;
 }
 
 .cell-title {
@@ -542,7 +547,9 @@ textarea {
   font: 500 14px/1 var(--font);
   color: var(--label);
   cursor: pointer;
-  transition: background-color 200ms, box-shadow 200ms;
+  transition:
+    background-color 200ms,
+    box-shadow 200ms;
 }
 
 .segmented button[aria-pressed='true'] {

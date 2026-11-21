@@ -44,24 +44,25 @@ let hljs: Promise<Hljs> | null = null;
 
 function loadHljs(): Promise<Hljs> {
   hljs ??= (async () => {
-    const [core, ts, js, bash, json, py, css, xml, diff, yaml, go, rust, scss, md, sql, swift] = await Promise.all([
-      import('highlight.js/lib/core'),
-      import('highlight.js/lib/languages/typescript'),
-      import('highlight.js/lib/languages/javascript'),
-      import('highlight.js/lib/languages/bash'),
-      import('highlight.js/lib/languages/json'),
-      import('highlight.js/lib/languages/python'),
-      import('highlight.js/lib/languages/css'),
-      import('highlight.js/lib/languages/xml'),
-      import('highlight.js/lib/languages/diff'),
-      import('highlight.js/lib/languages/yaml'),
-      import('highlight.js/lib/languages/go'),
-      import('highlight.js/lib/languages/rust'),
-      import('highlight.js/lib/languages/scss'),
-      import('highlight.js/lib/languages/markdown'),
-      import('highlight.js/lib/languages/sql'),
-      import('highlight.js/lib/languages/swift'),
-    ]);
+    const [core, ts, js, bash, json, py, css, xml, diff, yaml, go, rust, scss, md, sql, swift] =
+      await Promise.all([
+        import('highlight.js/lib/core'),
+        import('highlight.js/lib/languages/typescript'),
+        import('highlight.js/lib/languages/javascript'),
+        import('highlight.js/lib/languages/bash'),
+        import('highlight.js/lib/languages/json'),
+        import('highlight.js/lib/languages/python'),
+        import('highlight.js/lib/languages/css'),
+        import('highlight.js/lib/languages/xml'),
+        import('highlight.js/lib/languages/diff'),
+        import('highlight.js/lib/languages/yaml'),
+        import('highlight.js/lib/languages/go'),
+        import('highlight.js/lib/languages/rust'),
+        import('highlight.js/lib/languages/scss'),
+        import('highlight.js/lib/languages/markdown'),
+        import('highlight.js/lib/languages/sql'),
+        import('highlight.js/lib/languages/swift'),
+      ]);
     const h = core.default;
     const reg = (names: string[], lang: { default: Parameters<Hljs['registerLanguage']>[1] }): void => {
       const [first, ...aliases] = names;

@@ -1,6 +1,12 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import type { AgentKind, CreateSessionParams, FsListResult, PermissionMode, ResumableSession } from '@phone-code/protocol';
+import type {
+  AgentKind,
+  CreateSessionParams,
+  FsListResult,
+  PermissionMode,
+  ResumableSession,
+} from '@phone-code/protocol';
 import '../styles/new-session.css';
 import '../styles/settings.css';
 import { client } from '../lib/client';
@@ -20,7 +26,15 @@ function termSize(): { cols: number; rows: number } {
   const app = document.querySelector('.app');
   const w = app?.clientWidth ?? innerWidth;
   const h = app?.clientHeight ?? innerHeight;
-  return { cols: Math.max(40, Math.floor((w - 12) / (fs * 0.6))), rows: Math.max(12, Math.floor((h - 160) / (fs * 1.25))) };
+  return {
+    cols: Math.max(40, Math.floor((w - 12) / (fs * 0.6))),
+    rows: Math.max(12, Math.floor((h - 160) / (fs * 1.25))),
+  };
+}
+
+/** Keeps the end of a long path, which is the part that matters. */
+function shortPath(p: string, max = 38): string {
+  return p.length <= max ? p : `…${p.slice(p.length - max + 1)}`;
 }
 
 function FolderPicker({
@@ -68,13 +82,18 @@ function FolderPicker({
       </div>
       <div class="crumb" title={shown}>
         <Icon name="folder" size={15} />
-        <span>{tildify(shown, home)}</span>
+        <span>{shortPath(tildify(shown, home))}</span>
       </div>
       <div class="sheet-scroll">
         <div class="section">
           <div class="list">
             {res?.parent && (
-              <button type="button" class="cell" onClick={() => res.parent && setPath(res.parent)} data-testid="folder-up">
+              <button
+                type="button"
+                class="cell"
+                onClick={() => res.parent && setPath(res.parent)}
+                data-testid="folder-up"
+              >
                 <span class="cell-icon folder-ic up">
                   <Icon name="up" size={17} stroke={2.4} />
                 </span>
@@ -108,7 +127,12 @@ function FolderPicker({
         </div>
       </div>
       <div class="ns-foot">
-        <button type="button" class="btn btn-primary btn-block" onClick={() => onPick(shown)} data-testid="folder-choose">
+        <button
+          type="button"
+          class="btn btn-primary btn-block"
+          onClick={() => onPick(shown)}
+          data-testid="folder-choose"
+        >
           Use “{basename(shown) || '/'}”
         </button>
       </div>
@@ -215,7 +239,13 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                 <Glyph kind={k} size={44} />
                 <span class="kind-name">{agentName(k)}</span>
                 <span class="kind-sub">
-                  {off ? 'Not installed' : k === 'terminal' ? (h?.shell.split('/').pop() ?? 'shell') : info?.version ? `v${info.version}` : 'Ready'}
+                  {off
+                    ? 'Not installed'
+                    : k === 'terminal'
+                      ? (h?.shell.split('/').pop() ?? 'shell')
+                      : info?.version
+                        ? `v${info.version}`
+                        : 'Ready'}
                 </span>
               </button>
             );
@@ -247,7 +277,11 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                         title: 'Model',
                         items: [
                           { label: 'Default', checked: !model, onSelect: () => setModel(undefined) },
-                          ...models.map((m) => ({ label: m, checked: m === model, onSelect: () => setModel(m) })),
+                          ...models.map((m) => ({
+                            label: m,
+                            checked: m === model,
+                            onSelect: () => setModel(m),
+                          })),
                         ],
                       },
                     ])
@@ -280,7 +314,10 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                     ])
                   }
                 >
-                  <span class="cell-icon" style={{ background: perm === 'bypassPermissions' ? '#ff5a4f' : '#ff9f0a' }}>
+                  <span
+                    class="cell-icon"
+                    style={{ background: perm === 'bypassPermissions' ? '#ff5a4f' : '#ff9f0a' }}
+                  >
                     <Icon name={modeInfo(perm).icon} size={16} stroke={2.1} />
                   </span>
                   <span class="cell-main cell-title">Permissions</span>
@@ -309,7 +346,13 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
         </div>
 
         <div class="ns-start">
-          <button type="button" class="btn btn-primary btn-block" disabled={busy} onClick={start} data-testid="new-start">
+          <button
+            type="button"
+            class="btn btn-primary btn-block"
+            disabled={busy}
+            onClick={start}
+            data-testid="new-start"
+          >
             {busy ? <Spinner size={18} /> : null}
             Start {agentName(kind)}
           </button>
@@ -324,7 +367,9 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                   <Spinner size={18} />
                 </div>
               )}
-              {history?.length === 0 && <div class="cell static cell-sub">No past {agentName(kind)} sessions found.</div>}
+              {history?.length === 0 && (
+                <div class="cell static cell-sub">No past {agentName(kind)} sessions found.</div>
+              )}
               {history?.map((r) => (
                 <button
                   key={r.resumeId}
@@ -332,7 +377,14 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                   class="cell resume-cell"
                   disabled={busy}
                   onClick={() =>
-                    void create({ kind: 'agent', agent: r.agent, cwd: r.cwd, resumeId: r.resumeId, title: r.title, permissionMode: perm })
+                    void create({
+                      kind: 'agent',
+                      agent: r.agent,
+                      cwd: r.cwd,
+                      resumeId: r.resumeId,
+                      title: r.title,
+                      permissionMode: perm,
+                    })
                   }
                   data-testid="resume-row"
                 >

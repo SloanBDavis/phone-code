@@ -22,7 +22,7 @@ export default function Scanner({
   onResult: (text: string) => void;
   close: () => void;
 }): JSX.Element {
-  const video = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const resultRef = useRef(onResult);
   resultRef.current = onResult;
@@ -48,7 +48,7 @@ export default function Scanner({
         setError('Camera access was not allowed. You can enable it in Settings, or paste the link instead.');
         return;
       }
-      const v = video.current;
+      const v = videoRef.current;
       if (!v || stopped) return;
       v.srcObject = stream;
       await v.play().catch(() => undefined);
@@ -110,7 +110,7 @@ export default function Scanner({
       </div>
       <div class="scanner-view">
         {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- live camera preview has no audio */}
-        <video ref={video} playsInline muted autoplay />
+        <video ref={videoRef} playsInline muted autoplay />
         <div class="scanner-frame" aria-hidden="true">
           <span />
           <span />
@@ -124,7 +124,9 @@ export default function Scanner({
           </div>
         )}
       </div>
-      <p class="scanner-hint">Point at the QR code shown by <code class="cmd">npx phone-code</code></p>
+      <p class="scanner-hint">
+        Point at the QR code shown by <code class="cmd">npx phone-code</code>
+      </p>
     </div>
   );
 }

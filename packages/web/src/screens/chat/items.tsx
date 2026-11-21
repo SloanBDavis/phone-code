@@ -67,7 +67,10 @@ export function ThinkingBlock({ item }: { item: Signal<ChatItem> }): JSX.Element
   if (t.kind !== 'thinking') return null;
   const last = t.text.trim().split('\n').pop() ?? '';
   return (
-    <div class={`thinking ${open ? 'open' : ''} ${t.streaming ? 'live' : ''}`} data-testid="chat-item-thinking">
+    <div
+      class={`thinking ${open ? 'open' : ''} ${t.streaming ? 'live' : ''}`}
+      data-testid="chat-item-thinking"
+    >
       <button type="button" class="thinking-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name="sparkle" size={14} stroke={2.1} />
         <span class="thinking-label">{t.streaming ? 'Thinking' : 'Thought process'}</span>
@@ -105,7 +108,11 @@ export function TurnFooter({ item }: { item: Signal<ChatItem> }): JSX.Element | 
     <div class={`turn turn-${t.outcome}`} data-testid="chat-item-turn" data-outcome={t.outcome}>
       <span class="turn-line" />
       <span class="turn-text">
-        {t.outcome === 'interrupted' ? 'Stopped' : t.outcome === 'error' ? (t.error ?? 'Turn failed') : 'Done'}
+        {t.outcome === 'interrupted'
+          ? 'Stopped'
+          : t.outcome === 'error'
+            ? (t.error ?? 'Turn failed')
+            : 'Done'}
         {parts.length > 0 && <span class="turn-meta"> · {parts.join(' · ')}</span>}
       </span>
       <span class="turn-line" />

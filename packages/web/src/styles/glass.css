@@ -161,7 +161,9 @@
   background: none;
   color: var(--label);
   cursor: pointer;
-  transition: transform var(--t-press) var(--spring-bouncy), background-color 160ms;
+  transition:
+    transform var(--t-press) var(--spring-bouncy),
+    background-color 160ms;
 }
 
 .glass-group > button:active {

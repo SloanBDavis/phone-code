@@ -43,9 +43,12 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => undefined);
   });
-  navigator.serviceWorker.addEventListener('message', (e: MessageEvent<{ type?: string; sessionId?: string }>) => {
-    if (e.data.type === 'open-session' && e.data.sessionId) push({ name: 'session', id: e.data.sessionId });
-  });
+  navigator.serviceWorker.addEventListener(
+    'message',
+    (e: MessageEvent<{ type?: string; sessionId?: string }>) => {
+      if (e.data.type === 'open-session' && e.data.sessionId) push({ name: 'session', id: e.data.sessionId });
+    },
+  );
 }
 
 // Warm the chunks the user is likely to open next once the first paint is done.

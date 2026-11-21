@@ -1,6 +1,10 @@
 .pair-screen {
   background:
-    radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    radial-gradient(
+      120% 60% at 50% -10%,
+      color-mix(in srgb, var(--accent) 14%, transparent),
+      transparent 60%
+    ),
     var(--bg-grouped);
 }
 

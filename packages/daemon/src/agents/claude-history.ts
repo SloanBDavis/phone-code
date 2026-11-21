@@ -75,12 +75,10 @@ async function summarize(file: string, size: number, mtime: number): Promise<Res
   const head = parseLines(await readSlice(file, 0, Math.min(size, HEAD_BYTES)), false, size > HEAD_BYTES);
   let cwd: string | undefined;
   let firstPrompt: string | undefined;
-  let sessionId: string | undefined;
   let sidechain = false;
   let count = 0;
   for (const e of head) {
     if (!cwd) cwd = str(e.cwd);
-    if (!sessionId) sessionId = str(e.sessionId);
     if ((e.type === 'user' || e.type === 'assistant') && e.isSidechain === true) sidechain = true;
     if (!firstPrompt) firstPrompt = userPromptText(e);
     if ((e.type === 'user' && userPromptText(e)) || e.type === 'assistant') count++;
@@ -107,7 +105,7 @@ async function summarize(file: string, size: number, mtime: number): Promise<Res
   if (!title || !cwd) return undefined; // nothing the user said: not worth resuming
   return {
     agent: 'claude',
-    resumeId: sessionId ?? path.basename(file, '.jsonl'),
+    resumeId: path.basename(file, '.jsonl'), // what `claude --resume` looks up
     cwd,
     title: oneLine(title, 100),
     updatedAt: mtime,
@@ -257,7 +255,12 @@ export async function loadClaudeTranscript(file: string, cwd: string, maxItems =
           : arr(content).some((b) => (str(rec(b).text) ?? '').startsWith('[Request interrupted'))
       ) {
         // A history kind (not a notice), so a daemon restart can drop it like the rest of the replay.
-        sink.upsert({ kind: 'turn', id: `turn:h:${str(e.uuid) ?? order.length}`, ts: tsOf(e), outcome: 'interrupted' });
+        sink.upsert({
+          kind: 'turn',
+          id: `turn:h:${str(e.uuid) ?? order.length}`,
+          ts: tsOf(e),
+          outcome: 'interrupted',
+        });
       }
     }
     // compact_boundary entries are skipped: the summary that follows is not shown either.

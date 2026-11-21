@@ -15,15 +15,7 @@ import { ConnectionLabel } from './sessions';
 
 const PLATFORM: Record<string, string> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' };
 
-function Row({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value?: string;
-  mono?: boolean;
-}): JSX.Element {
+function Row({ label, value, mono }: { label: string; value?: string; mono?: boolean }): JSX.Element {
   return (
     <div class="cell static">
       <span class="cell-main cell-title">{label}</span>
@@ -36,17 +28,16 @@ function NotificationsRow(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const support = pushSupport();
   const on = settings.value.notifications && support === 'ok';
-  const note =
-    support === 'needs-install'
+  const note = isDemo.value
+    ? 'Not available in the demo.'
+    : support === 'needs-install'
       ? 'On iPhone, notifications work in the Home Screen app. Add phone-code to your Home Screen, open it from there, then turn this on.'
       : support === 'unsupported'
         ? 'This browser does not support web notifications.'
         : support === 'denied'
           ? 'Notifications are blocked for this app. Allow them in Settings > Notifications.'
           : support === 'no-key'
-            ? isDemo.value
-              ? 'Not available in the demo.'
-              : 'This host does not offer notifications yet. Update phone-code on your computer.'
+            ? 'This host does not offer notifications yet. Update phone-code on your computer.'
             : 'Get a notification when an agent finishes or needs your approval.';
   return (
     <>
@@ -102,7 +93,7 @@ export function SettingsScreen(): JSX.Element {
               <span class="cell-main">
                 <span class="cell-title host-name">{h?.name ?? c?.host.name ?? 'Not connected'}</span>
                 <span class="cell-sub">
-                  <ConnectionLabel />
+                  <ConnectionLabel showHost={false} />
                 </span>
               </span>
             </div>
@@ -195,7 +186,10 @@ export function SettingsScreen(): JSX.Element {
           <h2 class="section-head">This device</h2>
           <div class="list">
             <Row label="Device ID" value={(deviceId.value ?? c?.deviceId)?.slice(0, 12)} mono />
-            <Row label="Paired" value={c ? new Date(c.pairedAt).toLocaleDateString() : demo ? 'Demo' : undefined} />
+            <Row
+              label="Paired"
+              value={c ? new Date(c.pairedAt).toLocaleDateString() : demo ? 'Demo' : undefined}
+            />
             <Row label="Installed app" value={isStandalone() ? 'Yes' : 'No, running in the browser'} />
           </div>
         </section>
@@ -203,7 +197,12 @@ export function SettingsScreen(): JSX.Element {
         <section class="section">
           <div class="list">
             {demo ? (
-              <button type="button" class="cell destructive" onClick={exitDemo} data-testid="settings-exit-demo">
+              <button
+                type="button"
+                class="cell destructive"
+                onClick={exitDemo}
+                data-testid="settings-exit-demo"
+              >
                 <span class="cell-main cell-title">Exit demo</span>
               </button>
             ) : (

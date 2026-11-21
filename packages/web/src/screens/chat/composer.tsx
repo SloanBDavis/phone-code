@@ -10,11 +10,35 @@ import { GlassSurface } from '../../ui/glass';
 import { Icon, type IconName } from '../../ui/icons';
 import { openMenu, toast } from '../../ui/overlay';
 
-export const MODES: Array<{ mode: PermissionMode; label: string; short: string; icon: IconName; hint: string }> = [
-  { mode: 'default', label: 'Ask before acting', short: 'Ask', icon: 'shield', hint: 'Approve edits and commands' },
-  { mode: 'acceptEdits', label: 'Accept edits', short: 'Edits', icon: 'pencil', hint: 'Edits apply, commands still ask' },
+export const MODES: Array<{
+  mode: PermissionMode;
+  label: string;
+  short: string;
+  icon: IconName;
+  hint: string;
+}> = [
+  {
+    mode: 'default',
+    label: 'Ask before acting',
+    short: 'Ask',
+    icon: 'shield',
+    hint: 'Approve edits and commands',
+  },
+  {
+    mode: 'acceptEdits',
+    label: 'Accept edits',
+    short: 'Edits',
+    icon: 'pencil',
+    hint: 'Edits apply, commands still ask',
+  },
   { mode: 'plan', label: 'Plan only', short: 'Plan', icon: 'list', hint: 'Read and plan, change nothing' },
-  { mode: 'bypassPermissions', label: 'Bypass permissions', short: 'Bypass', icon: 'bolt', hint: 'Never ask. Use with care' },
+  {
+    mode: 'bypassPermissions',
+    label: 'Bypass permissions',
+    short: 'Bypass',
+    icon: 'bolt',
+    hint: 'Never ask. Use with care',
+  },
 ];
 
 export function modeInfo(m: PermissionMode | undefined): (typeof MODES)[number] {
@@ -27,15 +51,15 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
   const [text, setText] = useState(() => loadDraft(session.id));
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
-  const ta = useRef<HTMLTextAreaElement>(null);
-  const file = useRef<HTMLInputElement>(null);
-  const saveTimer = useRef<number | undefined>(undefined);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const saveTimerRef = useRef<number | undefined>(undefined);
   const running = session.status === 'running';
   const canSend = text.trim().length > 0 || atts.length > 0;
 
   // Auto-grow: measure once per change, one style write.
   useLayoutEffect(() => {
-    const el = ta.current;
+    const el = taRef.current;
     if (!el) return;
     el.style.height = '0px';
     const h = Math.min(MAX_ROWS_PX, el.scrollHeight);
@@ -43,12 +67,12 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
     el.style.overflowY = el.scrollHeight > MAX_ROWS_PX ? 'auto' : 'hidden';
   }, [text]);
 
-  useEffect(() => () => clearTimeout(saveTimer.current), []);
+  useEffect(() => () => clearTimeout(saveTimerRef.current), []);
 
   const onInput = (v: string): void => {
     setText(v);
-    clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => saveDraft(session.id, v), 300);
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => saveDraft(session.id, v), 300);
   };
 
   const send = (): void => {
@@ -77,7 +101,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
       toast('Could not read that image', 'warn');
     } finally {
       setBusy(false);
-      if (file.current) file.current.value = '';
+      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
@@ -104,11 +128,13 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
         </div>
       )}
       <textarea
-        ref={ta}
+        ref={taRef}
         class="composer-input"
         rows={1}
         value={text}
-        placeholder={running ? 'Add to the queue…' : `Message ${session.agent === 'codex' ? 'Codex' : 'Claude'}`}
+        placeholder={
+          running ? 'Add to the queue…' : `Message ${session.agent === 'codex' ? 'Codex' : 'Claude'}`
+        }
         aria-label="Message"
         enterkeyhint="send"
         autocapitalize="sentences"
@@ -127,14 +153,14 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
           type="button"
           class="c-btn"
           aria-label="Attach photo"
-          onClick={() => file.current?.click()}
+          onClick={() => fileRef.current?.click()}
           disabled={busy}
           data-testid="composer-attach"
         >
           <Icon name={busy ? 'refresh' : 'photo'} size={21} stroke={1.9} />
         </button>
         <input
-          ref={file}
+          ref={fileRef}
           type="file"
           accept="image/*"
           multiple
@@ -159,7 +185,8 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
                     checked: m.mode === (session.permissionMode ?? 'default'),
                     destructive: m.mode === 'bypassPermissions',
                     testid: `mode-${m.mode}`,
-                    onSelect: () => client.send({ t: 'chat.setMode', sessionId: session.id, permissionMode: m.mode }),
+                    onSelect: () =>
+                      client.send({ t: 'chat.setMode', sessionId: session.id, permissionMode: m.mode }),
                   })),
                 },
               ],
@@ -199,7 +226,13 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
         )}
         <span class="composer-spacer" />
         {running && !canSend ? (
-          <button type="button" class="send-btn stop" aria-label="Stop" onClick={stop} data-testid="composer-stop">
+          <button
+            type="button"
+            class="send-btn stop"
+            aria-label="Stop"
+            onClick={stop}
+            data-testid="composer-stop"
+          >
             <span class="stop-square" />
           </button>
         ) : (

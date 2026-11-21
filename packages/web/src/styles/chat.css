@@ -272,7 +272,9 @@
 }
 
 /* Streaming caret at the end of the last block. */
-.md.streaming > :last-child::after {
+.md.streaming > :is(p, h1, h2, h3, h4, blockquote):last-child::after,
+.md.streaming > :is(ul, ol):last-child > li:last-child::after,
+.md[data-plain].streaming > :last-child::after {
   content: '';
   display: inline-block;
   width: 0.55em;
@@ -282,11 +284,6 @@
   border-radius: 3px;
   background: var(--accent);
   animation: caret 1s steps(1) infinite;
-}
-
-.md.streaming > .code-block:last-child::after,
-.md.streaming > .table-wrap:last-child::after {
-  display: none;
 }
 
 @keyframes caret {
@@ -327,7 +324,9 @@
   color: var(--label-2);
   font: 600 12.5px/1 var(--font);
   cursor: pointer;
-  transition: background-color 160ms, color 160ms;
+  transition:
+    background-color 160ms,
+    color 160ms;
 }
 
 .code-copy:active,
@@ -462,12 +461,7 @@
 }
 
 .thinking.live .thinking-label {
-  background: linear-gradient(
-    90deg,
-    var(--label-3) 0%,
-    var(--label) 40%,
-    var(--label-3) 80%
-  );
+  background: linear-gradient(90deg, var(--label-3) 0%, var(--label) 40%, var(--label-3) 80%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -944,7 +938,9 @@
   border-radius: 50%;
   box-shadow: inset 0 0 0 1.5px var(--label-3);
   color: var(--on-accent);
-  transition: background-color 300ms, box-shadow 300ms;
+  transition:
+    background-color 300ms,
+    box-shadow 300ms;
 }
 
 .todo-completed .todo-box {
@@ -1045,9 +1041,7 @@
   border-radius: 22px;
   padding: 16px;
   background: color-mix(in srgb, var(--attention) 9%, var(--card));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--attention) 38%, transparent),
-    0 10px 30px -18px color-mix(in srgb, var(--attention) 60%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--attention) 38%, transparent);
   animation: pop-in 520ms var(--spring-bouncy);
 }
 
@@ -1177,7 +1171,7 @@
 }
 
 .q-header {
-  display: inline-block;
+  display: table;
   margin-bottom: 6px;
   padding: 3px 8px;
   border-radius: 999px;
@@ -1374,6 +1368,7 @@
 }
 
 .composer {
+  --glass-tint: color-mix(in srgb, var(--glass-tint-strong) 82%, transparent);
   border-radius: 26px;
   padding: 4px 6px 6px;
 }
@@ -1419,7 +1414,9 @@
   background: none;
   color: var(--label-2);
   cursor: pointer;
-  transition: transform 300ms var(--spring-bouncy), background-color 140ms;
+  transition:
+    transform 300ms var(--spring-bouncy),
+    background-color 140ms;
 }
 
 .c-btn:active {

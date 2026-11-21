@@ -72,7 +72,23 @@ function ctrlChar(ch: string): string | null {
   if (ch.length !== 1) return null;
   const c = ch.toLowerCase();
   if (c >= 'a' && c <= 'z') return String.fromCharCode(c.charCodeAt(0) - 96);
-  const map: Record<string, number> = { '@': 0, ' ': 0, '[': 27, '\\': 28, ']': 29, '^': 30, _: 31, '?': 127, '2': 0, '3': 27, '4': 28, '5': 29, '6': 30, '7': 31, '8': 127 };
+  const map: Record<string, number> = {
+    '@': 0,
+    ' ': 0,
+    '[': 27,
+    '\\': 28,
+    ']': 29,
+    '^': 30,
+    _: 31,
+    '?': 127,
+    '2': 0,
+    '3': 27,
+    '4': 28,
+    '5': 29,
+    '6': 30,
+    '7': 31,
+    '8': 127,
+  };
   const v = map[ch];
   return v === undefined ? null : String.fromCharCode(v);
 }
@@ -108,9 +124,15 @@ function Key({
   );
 }
 
-export default function TerminalScreen({ sessionId, top }: { sessionId: string; top: boolean }): JSX.Element | null {
+export default function TerminalScreen({
+  sessionId,
+  top,
+}: {
+  sessionId: string;
+  top: boolean;
+}): JSX.Element | null {
   const s = sessionById(sessionId);
-  const box = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const ctrl = useSignal<Mod>('off');
   const alt = useSignal<Mod>('off');
@@ -118,7 +140,7 @@ export default function TerminalScreen({ sessionId, top }: { sessionId: string; 
   const ready = useSignal(false);
 
   useEffect(() => {
-    const el = box.current;
+    const el = boxRef.current;
     if (!el) return;
     const term = new Terminal({
       fontFamily: "ui-monospace, 'SF Mono', SFMono-Regular, 'JetBrains Mono', Menlo, monospace",
@@ -266,14 +288,22 @@ export default function TerminalScreen({ sessionId, top }: { sessionId: string; 
           { label: 'Clear screen', icon: 'refresh', onSelect: () => termRef.current?.clear() },
         ],
       },
-      { items: [{ label: 'Close terminal', icon: 'trash', destructive: true, onSelect: () => void deleteSession(s) }] },
+      {
+        items: [
+          {
+            label: 'Close terminal',
+            icon: 'trash',
+            destructive: true,
+            onSelect: () => void deleteSession(s),
+          },
+        ],
+      },
     ]);
-
 
   return (
     <div class="screen term-screen" data-testid="screen-terminal" data-session-id={sessionId}>
       <div class="term-wrap">
-        <div class="term-box" ref={box} data-testid="terminal" />
+        <div class="term-box" ref={boxRef} data-testid="terminal" />
       </div>
       <TopBar
         fade
@@ -289,10 +319,20 @@ export default function TerminalScreen({ sessionId, top }: { sessionId: string; 
         }
         right={
           <GlassSurface class="glass-group" role="group" aria-label="Text size">
-            <button type="button" aria-label="Smaller text" onClick={() => fontBy(-1)} data-testid="term-font-smaller">
+            <button
+              type="button"
+              aria-label="Smaller text"
+              onClick={() => fontBy(-1)}
+              data-testid="term-font-smaller"
+            >
               <Icon name="minus" size={17} stroke={2.4} />
             </button>
-            <button type="button" aria-label="Larger text" onClick={() => fontBy(1)} data-testid="term-font-larger">
+            <button
+              type="button"
+              aria-label="Larger text"
+              onClick={() => fontBy(1)}
+              data-testid="term-font-larger"
+            >
               <Icon name="plus" size={17} stroke={2.4} />
             </button>
           </GlassSurface>
@@ -327,16 +367,44 @@ export default function TerminalScreen({ sessionId, top }: { sessionId: string; 
         </div>
         <div class="keys-scroll">
           <div class="arrows">
-            <button type="button" class="key icon-key" aria-label="Left" onPointerDown={keep} onClick={() => arrow('D')} data-testid="key-left">
+            <button
+              type="button"
+              class="key icon-key"
+              aria-label="Left"
+              onPointerDown={keep}
+              onClick={() => arrow('D')}
+              data-testid="key-left"
+            >
               <Icon name="back" size={16} stroke={2.6} />
             </button>
-            <button type="button" class="key icon-key" aria-label="Up" onPointerDown={keep} onClick={() => arrow('A')} data-testid="key-up">
+            <button
+              type="button"
+              class="key icon-key"
+              aria-label="Up"
+              onPointerDown={keep}
+              onClick={() => arrow('A')}
+              data-testid="key-up"
+            >
               <Icon name="up" size={16} stroke={2.6} />
             </button>
-            <button type="button" class="key icon-key" aria-label="Down" onPointerDown={keep} onClick={() => arrow('B')} data-testid="key-down">
+            <button
+              type="button"
+              class="key icon-key"
+              aria-label="Down"
+              onPointerDown={keep}
+              onClick={() => arrow('B')}
+              data-testid="key-down"
+            >
               <Icon name="down" size={16} stroke={2.6} />
             </button>
-            <button type="button" class="key icon-key" aria-label="Right" onPointerDown={keep} onClick={() => arrow('C')} data-testid="key-right">
+            <button
+              type="button"
+              class="key icon-key"
+              aria-label="Right"
+              onPointerDown={keep}
+              onClick={() => arrow('C')}
+              data-testid="key-right"
+            >
               <Icon name="forward" size={16} stroke={2.6} />
             </button>
           </div>
@@ -344,7 +412,14 @@ export default function TerminalScreen({ sessionId, top }: { sessionId: string; 
           <Key label="/" data="/" aria="Slash" onKey={sendKey} />
           <Key label="~" data="~" aria="Tilde" onKey={sendKey} />
           <Key label="-" data="-" aria="Dash" onKey={sendKey} />
-          <button type="button" class="key icon-key" aria-label="Paste" onPointerDown={keep} onClick={() => void paste()} data-testid="key-paste">
+          <button
+            type="button"
+            class="key icon-key"
+            aria-label="Paste"
+            onPointerDown={keep}
+            onClick={() => void paste()}
+            data-testid="key-paste"
+          >
             <Icon name="clipboard" size={16} stroke={2.2} />
           </button>
           <span class="key-sep" />
@@ -357,7 +432,29 @@ export default function TerminalScreen({ sessionId, top }: { sessionId: string; 
           <Key label="end" data={'\x1b[F'} wide aria="End" onKey={sendKey} />
           <Key label="pgup" data={'\x1b[5~'} wide aria="Page up" onKey={sendKey} />
           <Key label="pgdn" data={'\x1b[6~'} wide aria="Page down" onKey={sendKey} />
-          {['_', '=', '*', '&', '$', '>', '<', '`', "'", '"', '{', '}', '[', ']', '(', ')', '#', '!', '\\', ':', ';'].map((c) => (
+          {[
+            '_',
+            '=',
+            '*',
+            '&',
+            '$',
+            '>',
+            '<',
+            '`',
+            "'",
+            '"',
+            '{',
+            '}',
+            '[',
+            ']',
+            '(',
+            ')',
+            '#',
+            '!',
+            '\\',
+            ':',
+            ';',
+          ].map((c) => (
             <Key key={c} label={c} data={c} onKey={sendKey} />
           ))}
         </div>

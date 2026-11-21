@@ -39,10 +39,10 @@ async function handleInput(input: string, setError: (e: string | null) => void):
 
 function AutoPair({ code }: { code: string }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
-  const started = useRef(false);
+  const startedRef = useRef(false);
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+    if (startedRef.current) return;
+    startedRef.current = true;
     void handleInput(code, setError);
   }, [code]);
 
@@ -200,7 +200,9 @@ export function InstallCoach(): JSX.Element {
           <Icon name="check" size={34} stroke={3} />
         </span>
         <h1 class="pair-title">Paired with {name}</h1>
-        <p class="pair-text">Add phone-code to your Home Screen for full screen, notifications and instant launch.</p>
+        <p class="pair-text">
+          Add phone-code to your Home Screen for full screen, notifications and instant launch.
+        </p>
       </div>
       <ol class="coach">
         <li>

@@ -215,7 +215,7 @@ export function buildDemo(now = Date.now()): DemoSession[] {
           '-  return lines.reduce((sum, l) => sum + l.amount * rate, 0);',
           '-}',
           '-',
-          "-const RATES = loadRates();",
+          '-const RATES = loadRates();',
           "+export { computeTax } from './tax';",
           ' ',
           ' export function totals(inv: Invoice) {',
@@ -280,7 +280,10 @@ export function buildDemo(now = Date.now()): DemoSession[] {
       name: 'Task',
       title: 'Audit plugins for Vite 6 compatibility',
       status: 'done',
-      input: { description: 'Audit plugins', prompt: 'Check every Vite plugin in package.json for Vite 6 support.' },
+      input: {
+        description: 'Audit plugins',
+        prompt: 'Check every Vite plugin in package.json for Vite 6 support.',
+      },
       output:
         'All four plugins support Vite 6. `vite-plugin-svgr` needs ^4.3. `@vitejs/plugin-legacy` can be removed: the browserslist no longer includes legacy targets.',
     },
@@ -323,7 +326,8 @@ export function buildDemo(now = Date.now()): DemoSession[] {
       title: 'npm install vite@6 vite-plugin-svgr@^4.3',
       status: 'done',
       detail: { type: 'command', command: 'npm install vite@6 vite-plugin-svgr@^4.3', exitCode: 0 },
-      output: '\nadded 3 packages, changed 11 packages in 4s\n\n\x1b[1m42\x1b[22m packages are looking for funding\n',
+      output:
+        '\nadded 3 packages, changed 11 packages in 4s\n\n\x1b[1m42\x1b[22m packages are looking for funding\n',
     },
     {
       id: id('tool'),

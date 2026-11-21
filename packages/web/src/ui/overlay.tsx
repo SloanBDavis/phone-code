@@ -58,7 +58,6 @@ function LayerCtx({ layer }: { layer: Layer }): JSX.Element {
   return <>{layer.render(() => closeLayer(layer.id), layer.closing)}</>;
 }
 
-
 // ------------------------------------------------------------------ sheet
 
 export interface SheetOptions {
@@ -71,7 +70,10 @@ export interface SheetOptions {
 }
 
 /** Opens a bottom sheet. `render` receives a `close` callback. */
-export function openSheet(render: (close: () => void) => ComponentChildren, opts: SheetOptions = {}): () => void {
+export function openSheet(
+  render: (close: () => void) => ComponentChildren,
+  opts: SheetOptions = {},
+): () => void {
   return addLayer(
     (c, closing) => (
       <Sheet close={c} closing={closing} opts={opts}>
@@ -95,7 +97,13 @@ function Sheet({
 }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const [entered, setEntered] = useState(false);
-  const drag = useRef<{ y0: number; t0: number; dy: number; active: boolean; scroller: HTMLElement | null } | null>(null);
+  const dragRef = useRef<{
+    y0: number;
+    t0: number;
+    dy: number;
+    active: boolean;
+    scroller: HTMLElement | null;
+  } | null>(null);
 
   useLayoutEffect(() => {
     const r = requestAnimationFrame(() => setEntered(true));
@@ -122,17 +130,17 @@ function Sheet({
     const target = e.target as HTMLElement;
     if (target.closest('input, textarea, select, [data-nodrag]')) return;
     const scroller = target.closest<HTMLElement>('.sheet-scroll');
-    drag.current = { y0: e.clientY, t0: performance.now(), dy: 0, active: false, scroller };
+    dragRef.current = { y0: e.clientY, t0: performance.now(), dy: 0, active: false, scroller };
   };
   const onPointerMove = (e: PointerEvent): void => {
-    const d = drag.current;
+    const d = dragRef.current;
     if (!d) return;
     const dy = e.clientY - d.y0;
     if (!d.active) {
       if (Math.abs(dy) < 6) return;
       // Only pull the sheet when the inner list is at its top.
       if (dy < 0 || (d.scroller && d.scroller.scrollTop > 0)) {
-        drag.current = null;
+        dragRef.current = null;
         return;
       }
       d.active = true;
@@ -142,8 +150,8 @@ function Sheet({
     setY(dy > 0 ? dy : dy / 4, false);
   };
   const onPointerUp = (): void => {
-    const d = drag.current;
-    drag.current = null;
+    const d = dragRef.current;
+    dragRef.current = null;
     if (!d?.active) return;
     const v = d.dy / Math.max(1, performance.now() - d.t0);
     if (d.dy > 140 || v > 0.7) {
@@ -228,7 +236,12 @@ function Menu({
     const app = root?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
     const vw = app.width;
     const vh = app.height;
-    const a = { left: rect.left - app.left, right: rect.right - app.left, top: rect.top - app.top, bottom: rect.bottom - app.top };
+    const a = {
+      left: rect.left - app.left,
+      right: rect.right - app.left,
+      top: rect.top - app.top,
+      bottom: rect.bottom - app.top,
+    };
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     const margin = 10;
@@ -258,7 +271,12 @@ function Menu({
   const state = closing ? 'out' : entered ? 'in' : 'pre';
   return (
     <div class={`menu-layer ${state}`}>
-      <div class="menu-backdrop" onClick={close} onContextMenu={(e) => e.preventDefault()} aria-hidden="true" />
+      <div
+        class="menu-backdrop"
+        onClick={close}
+        onContextMenu={(e) => e.preventDefault()}
+        aria-hidden="true"
+      />
       <div
         ref={ref}
         class="menu glass glass-regular"
@@ -362,7 +380,12 @@ function Alert({
   return (
     <div class={`alert-layer ${closing ? 'out' : entered ? 'in' : 'pre'}`}>
       <div class="alert-backdrop" aria-hidden="true" onClick={cancel} />
-      <div class="alert glass glass-regular" role="alertdialog" aria-label={opts.title} data-testid={opts.testid}>
+      <div
+        class="alert glass glass-regular"
+        role="alertdialog"
+        aria-label={opts.title}
+        data-testid={opts.testid}
+      >
         <div class="alert-body">
           <h2>{opts.title}</h2>
           {opts.message && <p>{opts.message}</p>}

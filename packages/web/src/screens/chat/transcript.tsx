@@ -20,8 +20,8 @@ export interface ScrollApi {
  * The transcript. Only the newest PAGE blocks are mounted (more are added as
  * the user scrolls up, keeping their reading position), each block opts into
  * `content-visibility: auto`, and every item subscribes to its own signal, so
- * streaming touches one node. Autoscroll follows new content only while the
- * reader is at the bottom and not touching the screen.
+ * streaming touches one node. Autoscroll follows new contentRef only while the
+ * reader is at the bottom and not touchingRef the screen.
  */
 export function Transcript({
   chat,
@@ -36,7 +36,7 @@ export function Transcript({
   agent: string;
   apiRef: RefObject<ScrollApi | null>;
   scrollRef: RefObject<HTMLDivElement | null>;
-  /** Whether new content arrived below while the reader is scrolled up. */
+  /** Whether new contentRef arrived below while the reader is scrolled up. */
   jump: Signal<boolean>;
 }): JSX.Element {
   const blocks = useComputed<Block[]>(() => {
@@ -45,7 +45,8 @@ export function Transcript({
     for (const id of chat.ids.value) {
       const kind = chat.kinds.get(id);
       const item = chat.items.get(id)?.peek();
-      const groupable = kind === 'tool' && item?.kind === 'tool' && item.name !== 'Todo' && item.name !== 'Task';
+      const groupable =
+        kind === 'tool' && item?.kind === 'tool' && item.name !== 'Todo' && item.name !== 'Task';
       if (groupable) {
         if (!run) {
           run = [];
@@ -60,13 +61,13 @@ export function Transcript({
     return out;
   });
   const [limit, setLimit] = useState(PAGE);
-  const content = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
-  const touching = useRef(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+  const touchingRef = useRef(false);
   const setShowJump = (v: boolean): void => {
     if (jump.peek() !== v) jump.value = v;
   };
-  const anchor = useRef<{ h: number; top: number } | null>(null);
+  const anchorRef = useRef<{ h: number; top: number } | null>(null);
 
   const all = blocks.value;
   const hidden = Math.max(0, all.length - limit);
@@ -76,23 +77,23 @@ export function Transcript({
   const toBottom = (smooth = false): void => {
     const el = scrollRef.current;
     if (!el) return;
-    stick.current = true;
+    stickRef.current = true;
     setShowJump(false);
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
   };
   apiRef.current = { toBottom };
 
-  // Follow content growth while stuck to the bottom.
+  // Follow contentRef growth while stuck to the bottom.
   useEffect(() => {
     const el = scrollRef.current;
-    const inner = content.current;
+    const inner = contentRef.current;
     if (!el || !inner) return;
     let last = inner.offsetHeight;
     const ro = new ResizeObserver(() => {
       const h = inner.offsetHeight;
       const grew = h > last;
       last = h;
-      if (stick.current && !touching.current) el.scrollTop = el.scrollHeight;
+      if (stickRef.current && !touchingRef.current) el.scrollTop = el.scrollHeight;
       else if (grew) setShowJump(true);
     });
     ro.observe(inner);
@@ -103,20 +104,20 @@ export function Transcript({
       frame = requestAnimationFrame(() => {
         frame = 0;
         const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-        stick.current = dist < STICK_PX;
-        if (stick.current) setShowJump(false);
+        stickRef.current = dist < STICK_PX;
+        if (stickRef.current) setShowJump(false);
         if (el.scrollTop < 600) setLimit((l) => (l < blocks.peek().length ? growFrom(el, l) : l));
       });
     };
     const growFrom = (sc: HTMLElement, l: number): number => {
-      anchor.current = { h: sc.scrollHeight, top: sc.scrollTop };
+      anchorRef.current = { h: sc.scrollHeight, top: sc.scrollTop };
       return l + PAGE;
     };
     const down = (): void => {
-      touching.current = true;
+      touchingRef.current = true;
     };
     const up = (): void => {
-      touching.current = false;
+      touchingRef.current = false;
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     el.addEventListener('touchstart', down, { passive: true });
@@ -135,10 +136,10 @@ export function Transcript({
 
   // Keep the reading position when older blocks are mounted above.
   useLayoutEffect(() => {
-    const a = anchor.current;
+    const a = anchorRef.current;
     const el = scrollRef.current;
     if (!a || !el) return;
-    anchor.current = null;
+    anchorRef.current = null;
     el.scrollTop = a.top + (el.scrollHeight - a.h);
   }, [limit, scrollRef]);
 
@@ -151,7 +152,7 @@ export function Transcript({
 
   return (
     <>
-      <div class="transcript" ref={content} data-testid="transcript">
+      <div class="transcript" ref={contentRef} data-testid="transcript">
         {hidden > 0 && (
           <div class="transcript-more">
             <Spinner size={16} />

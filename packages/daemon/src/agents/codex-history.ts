@@ -26,7 +26,11 @@ function eatLines(text: string, visit: (entry: Rec) => boolean): [boolean, strin
     rest = rest.slice(nl + 1);
     nl = rest.indexOf('\n');
     // Cheap prefilter: only parse lines that can matter (the meta line and user messages).
-    if (!line.includes('"session_meta"') && !line.includes('"role":"user"') && !line.includes('"user_message"'))
+    if (
+      !line.includes('"session_meta"') &&
+      !line.includes('"role":"user"') &&
+      !line.includes('"user_message"')
+    )
       continue;
     try {
       const v: unknown = JSON.parse(line);
@@ -123,7 +127,9 @@ export async function listCodexResumable(
   const years = await listDirDesc(root, (n) => /^\d{4}$/.test(n));
   const months = (
     await Promise.all(
-      years.map(async (y) => (await listDirDesc(path.join(root, y), isNum2)).map((m) => path.join(root, y, m))),
+      years.map(async (y) =>
+        (await listDirDesc(path.join(root, y), isNum2)).map((m) => path.join(root, y, m)),
+      ),
     )
   ).flat();
   const days = (

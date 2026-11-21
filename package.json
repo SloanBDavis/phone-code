@@ -2,14 +2,11 @@
   "name": "phone-code-monorepo",
   "private": true,
   "license": "MIT",
-  "type": "module",
   "workspaces": [
     "packages/*",
     "e2e"
   ],
-  "engines": {
-    "bun": ">=1.4"
-  },
+  "type": "module",
   "scripts": {
     "build": "bun run --filter @phone-code/web build && bun run --filter phone-code build",
     "typecheck": "bun run --filter '*' typecheck",
@@ -21,10 +18,13 @@
     "e2e": "bun run --filter e2e test",
     "dev": "bun run --filter phone-code dev"
   },
-  "packageManager": "bun@1.4.4",
   "devDependencies": {
+    "oxfmt": "^0.79.0",
     "oxlint": "^1.94.0",
-    "oxlint-tsgolint": "latest",
-    "oxfmt": "^0.79.0"
-  }
+    "oxlint-tsgolint": "latest"
+  },
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "packageManager": "bun@1.4.4"
 }

@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
 import type { ChatItem, PermissionDecision, PermissionItem } from '@phone-code/protocol';
 import { client } from '../../lib/client';
@@ -9,7 +9,12 @@ import { GlassSurface } from '../../ui/glass';
 import { Icon } from '../../ui/icons';
 import { CommandBox, DiffView } from './tools';
 
-function decide(sessionId: string, item: PermissionItem, decision: PermissionDecision, message?: string): void {
+function decide(
+  sessionId: string,
+  item: PermissionItem,
+  decision: PermissionDecision,
+  message?: string,
+): void {
   haptic(decision === 'deny' ? 'warning' : 'success');
   // Optimistic: resolve locally right away; the daemon's chat.item confirms it.
   const s = chatOf(sessionId).items.get(item.id);
@@ -84,7 +89,12 @@ export function PermissionCard({
         </span>
         <div>
           <div class="perm-title">
-            {agent} wants to {p.toolName === 'Bash' ? 'run a command' : p.toolName === 'Edit' || p.toolName === 'Write' ? 'edit a file' : `use ${p.toolName}`}
+            {agent} wants to{' '}
+            {p.toolName === 'Bash'
+              ? 'run a command'
+              : p.toolName === 'Edit' || p.toolName === 'Write'
+                ? 'edit a file'
+                : `use ${p.toolName}`}
           </div>
           <div class="perm-sub">{p.title}</div>
         </div>
@@ -145,7 +155,12 @@ export function PermissionCard({
               Allow
             </button>
           </div>
-          <button type="button" class="perm-feedback" onClick={() => setDenying(true)} data-testid="permission-deny-feedback">
+          <button
+            type="button"
+            class="perm-feedback"
+            onClick={() => setDenying(true)}
+            data-testid="permission-deny-feedback"
+          >
             Deny with feedback…
           </button>
         </>
@@ -154,7 +169,13 @@ export function PermissionCard({
   );
 }
 
-export function QuestionCard({ sessionId, item }: { sessionId: string; item: Signal<ChatItem> }): JSX.Element | null {
+export function QuestionCard({
+  sessionId,
+  item,
+}: {
+  sessionId: string;
+  item: Signal<ChatItem>;
+}): JSX.Element | null {
   const q = item.value;
   const [picked, setPicked] = useState<Record<number, string[]>>({});
   const [other, setOther] = useState<Record<number, string>>({});
@@ -209,9 +230,11 @@ export function QuestionCard({ sessionId, item }: { sessionId: string; item: Sig
         const multi = !!x.multiSelect;
         const cur = picked[qi] ?? [];
         return (
-          <fieldset key={x.question} class="q-block">
+          <div key={x.question} class="q-block" role="group" aria-labelledby={`q-${q.id}-${qi}`}>
             {x.header && <span class="q-header">{x.header}</span>}
-            <legend class="q-question">{x.question}</legend>
+            <div class="q-question" id={`q-${q.id}-${qi}`}>
+              {x.question}
+            </div>
             {multi && <div class="q-hint">Choose any</div>}
             <div class="q-options" role={multi ? 'group' : 'radiogroup'}>
               {x.options.map((o) => {
@@ -262,7 +285,7 @@ export function QuestionCard({ sessionId, item }: { sessionId: string; item: Sig
                 />
               )}
             </div>
-          </fieldset>
+          </div>
         );
       })}
       <button
@@ -279,12 +302,47 @@ export function QuestionCard({ sessionId, item }: { sessionId: string; item: Sig
 }
 
 /** Sticky, always one tap away: the oldest pending ask in this session. */
+function useCardVisible(id: string | undefined): boolean {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    setVisible(false);
+    if (!id) return;
+    let io: IntersectionObserver | null = null;
+    let tries = 0;
+    let timer = 0;
+    const attach = (): void => {
+      const el = document.getElementById(`ask-${id}`);
+      if (!el) {
+        if (tries++ < 20) timer = window.setTimeout(attach, 150);
+        return;
+      }
+      const root = el.closest<HTMLElement>('.scroll');
+      const dock = root?.parentElement?.querySelector<HTMLElement>('.dock');
+      const bottom = dock ? dock.offsetHeight + 16 : 120;
+      io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) setVisible(e.isIntersecting);
+        },
+        { root, rootMargin: `-60px 0px -${bottom}px 0px`, threshold: 0.35 },
+      );
+      io.observe(el);
+    };
+    attach();
+    return () => {
+      clearTimeout(timer);
+      io?.disconnect();
+    };
+  }, [id]);
+  return visible;
+}
+
 export function AskBar({ sessionId, agent }: { sessionId: string; agent: string }): JSX.Element | null {
   const c = chatOf(sessionId);
   const asks = c.asks.value;
   const first = asks[0];
   const item = first ? c.items.get(first)?.value : undefined;
-  if (!item || (item.kind !== 'permission' && item.kind !== 'question')) return null;
+  const cardVisible = useCardVisible(first);
+  if (!item || (item.kind !== 'permission' && item.kind !== 'question') || cardVisible) return null;
   const reveal = (): void => {
     document.getElementById(`ask-${item.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };

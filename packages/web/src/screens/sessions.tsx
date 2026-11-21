@@ -21,10 +21,14 @@ const NewSessionSheet = lazy(() => import('./new-session'));
 
 export function openNewSession(): void {
   void NewSessionSheet.preload();
-  openSheet((close) => <NewSessionSheet close={close} />, { testid: 'new-session-sheet', label: 'New session', large: true });
+  openSheet((close) => <NewSessionSheet close={close} />, {
+    testid: 'new-session-sheet',
+    label: 'New session',
+    large: true,
+  });
 }
 
-export function ConnectionLabel(): JSX.Element {
+export function ConnectionLabel({ showHost = true }: { showHost?: boolean }): JSX.Element {
   const c = conn.value;
   const name = host.value?.name ?? creds.value?.host.name ?? 'your computer';
   const [dot, label] =
@@ -38,8 +42,12 @@ export function ConnectionLabel(): JSX.Element {
   return (
     <span class="conn-label" data-testid="conn-state" data-status={c.status}>
       <span class={`dot ${dot}`} />
-      <span class="conn-host">{name}</span>
-      <span class="conn-sep">·</span>
+      {showHost && (
+        <>
+          <span class="conn-host">{name}</span>
+          <span class="conn-sep">·</span>
+        </>
+      )}
       <span>{label}</span>
     </span>
   );
@@ -70,13 +78,26 @@ function StatusBadge({ s }: { s: SessionInfo }): JSX.Element | null {
 
 function SessionRow({ s }: { s: SessionInfo }): JSX.Element {
   const home = host.value?.home;
-  const waitingLabel = s.status === 'waiting' ? (s.preview?.startsWith('Wants') ? 'Approval' : 'Question') : null;
+  const waitingLabel =
+    s.status === 'waiting' ? (s.preview?.startsWith('Wants') ? 'Approval' : 'Question') : null;
   return (
     <SwipeRow
       id={s.id}
       actions={[
-        { label: 'Rename', icon: 'pencil', tone: 'neutral', onAction: () => void renameSession(s), testid: 'session-rename' },
-        { label: 'Delete', icon: 'trash', tone: 'danger', onAction: () => void deleteSession(s), testid: 'session-delete' },
+        {
+          label: 'Rename',
+          icon: 'pencil',
+          tone: 'neutral',
+          onAction: () => void renameSession(s),
+          testid: 'session-rename',
+        },
+        {
+          label: 'Delete',
+          icon: 'trash',
+          tone: 'danger',
+          onAction: () => void deleteSession(s),
+          testid: 'session-delete',
+        },
       ]}
     >
       <button
@@ -151,8 +172,8 @@ function EmptyState(): JSX.Element {
       </div>
       <h2>Nothing running yet</h2>
       <p>
-        Start Claude Code, Codex or a terminal on <strong>{host.value?.name ?? 'your computer'}</strong>. It keeps
-        running when you lock your phone.
+        Start Claude Code, Codex or a terminal on <strong>{host.value?.name ?? 'your computer'}</strong>. It
+        keeps running when you lock your phone.
       </p>
       <button type="button" class="btn btn-primary" onClick={openNewSession} data-testid="empty-new">
         <Icon name="plus" size={20} stroke={2.4} />

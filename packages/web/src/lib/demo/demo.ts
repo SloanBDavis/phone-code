@@ -98,7 +98,8 @@ export class DemoTransport implements Transport {
   // ---------------------------------------------------------------- plumbing
 
   private emit(m: ServerMessage): void {
-    if (this.live) this.events?.message(m);
+    // Clone like a real network hop, so the client never shares objects with the simulator.
+    if (this.live) this.events?.message(structuredClone(m));
   }
 
   private ok(id: string, data?: unknown): void {
@@ -138,7 +139,12 @@ export class DemoTransport implements Transport {
     if (sim.subscribed) this.emit({ t: 'chat.delta', sessionId: sim.info.id, seq: sim.seq, itemId, text });
   }
 
-  private async stream(sim: Sim, item: TextItem | ThinkingItem, text: string, sig: AbortSignal): Promise<void> {
+  private async stream(
+    sim: Sim,
+    item: TextItem | ThinkingItem,
+    text: string,
+    sig: AbortSignal,
+  ): Promise<void> {
     this.put(sim, { ...item, text: '', streaming: true });
     let i = 0;
     while (i < text.length) {
@@ -148,8 +154,10 @@ export class DemoTransport implements Transport {
       await sleep(18 + Math.random() * 30, sig);
     }
     const final = sim.items.find((x) => x.id === item.id);
-    if (final && (final.kind === 'text' || final.kind === 'thinking')) this.put(sim, { ...final, streaming: false });
-    if (item.kind === 'text') this.touch(sim, { preview: text.split('\n')[0]?.replace(/[*`#]/g, '').slice(0, 90) });
+    if (final && (final.kind === 'text' || final.kind === 'thinking'))
+      this.put(sim, { ...final, streaming: false });
+    if (item.kind === 'text')
+      this.touch(sim, { preview: text.split('\n')[0]?.replace(/[*`#]/g, '').slice(0, 90) });
   }
 
   private nid(p: string): string {
@@ -177,7 +185,8 @@ export class DemoTransport implements Transport {
       })
       .catch(() => {
         for (const it of sim.items)
-          if ((it.kind === 'text' || it.kind === 'thinking') && it.streaming) this.put(sim, { ...it, streaming: false });
+          if ((it.kind === 'text' || it.kind === 'thinking') && it.streaming)
+            this.put(sim, { ...it, streaming: false });
           else if (it.kind === 'tool' && it.status === 'running') this.put(sim, { ...it, status: 'error' });
         this.put(sim, {
           id: this.nid('turn'),
@@ -207,7 +216,12 @@ export class DemoTransport implements Transport {
     if (!r) return;
     this.activity(sim, async (sig) => {
       await sleep(500, sig);
-      await this.stream(sim, { id: this.nid('th'), ts: Date.now(), kind: 'thinking', text: '', streaming: true }, r.thinking, sig);
+      await this.stream(
+        sim,
+        { id: this.nid('th'), ts: Date.now(), kind: 'thinking', text: '', streaming: true },
+        r.thinking,
+        sig,
+      );
       await this.tool(
         sim,
         {
@@ -223,7 +237,12 @@ export class DemoTransport implements Transport {
         900,
         sig,
       );
-      await this.stream(sim, { id: this.nid('t'), ts: Date.now(), kind: 'text', text: '', streaming: true }, r.text, sig);
+      await this.stream(
+        sim,
+        { id: this.nid('t'), ts: Date.now(), kind: 'text', text: '', streaming: true },
+        r.text,
+        sig,
+      );
     });
   }
 
@@ -243,7 +262,8 @@ export class DemoTransport implements Transport {
       }
       const lines = Array.from(
         { length: 20 },
-        (_, i) => `\x1b[32m✓\x1b[0m auth/refresh.test.ts \x1b[2m(run ${i + 1}/20)\x1b[22m \x1b[2m${180 + ((i * 37) % 90)}ms\x1b[0m`,
+        (_, i) =>
+          `\x1b[32m✓\x1b[0m auth/refresh.test.ts \x1b[2m(run ${i + 1}/20)\x1b[22m \x1b[2m${180 + ((i * 37) % 90)}ms\x1b[0m`,
       );
       await this.tool(
         sim,
@@ -412,7 +432,11 @@ export class DemoTransport implements Transport {
         const cwd = (p.cwd ?? HOME).replace(/^~/, HOME);
         const title =
           p.title ??
-          (p.kind === 'terminal' ? 'zsh' : p.resumeId ? (history().find((h) => h.resumeId === p.resumeId)?.title ?? 'Resumed session') : 'New session');
+          (p.kind === 'terminal'
+            ? 'zsh'
+            : p.resumeId
+              ? (history().find((h) => h.resumeId === p.resumeId)?.title ?? 'Resumed session')
+              : 'New session');
         const info: SessionInfo = {
           id,
           kind: p.kind,
@@ -423,11 +447,22 @@ export class DemoTransport implements Transport {
           updatedAt: Date.now(),
           status: 'idle',
           ...(p.kind === 'agent'
-            ? { model: p.model ?? demoHost.agents.find((a) => a.kind === p.agent)?.models?.[0], permissionMode: p.permissionMode ?? 'default' }
+            ? {
+                model: p.model ?? demoHost.agents.find((a) => a.kind === p.agent)?.models?.[0],
+                permissionMode: p.permissionMode ?? 'default',
+              }
             : {}),
         };
         const items: ChatItem[] = p.resumeId
-          ? [{ id: this.nid('n'), ts: Date.now(), kind: 'notice', level: 'info', text: 'Resumed from your computer. Earlier messages are summarized by the agent.' }]
+          ? [
+              {
+                id: this.nid('n'),
+                ts: Date.now(),
+                kind: 'notice',
+                level: 'info',
+                text: 'Resumed from your computer. Earlier messages are summarized by the agent.',
+              },
+            ]
           : [];
         this.sims.set(id, { info, items, seq: items.length, subscribed: false });
         this.order.unshift(id);
@@ -480,12 +515,23 @@ export class DemoTransport implements Transport {
             sim.info.status === 'exited',
           );
           setTimeout(() => {
-            this.emit({ t: 'term.snapshot', sessionId: sim.info.id, seq: sim.seq, cols: 80, rows: 24, data: sim.shell?.snapshot() ?? '' });
-            if (sim.info.status === 'exited') this.emit({ t: 'term.exit', sessionId: sim.info.id, exitCode: 0 });
+            this.emit({
+              t: 'term.snapshot',
+              sessionId: sim.info.id,
+              seq: sim.seq,
+              cols: 80,
+              rows: 24,
+              data: sim.shell?.snapshot() ?? '',
+            });
+            if (sim.info.status === 'exited')
+              this.emit({ t: 'term.exit', sessionId: sim.info.id, exitCode: 0 });
           }, 80);
           return;
         }
-        setTimeout(() => this.emit({ t: 'chat.snapshot', sessionId: sim.info.id, seq: sim.seq, items: sim.items }), 90);
+        setTimeout(
+          () => this.emit({ t: 'chat.snapshot', sessionId: sim.info.id, seq: sim.seq, items: sim.items }),
+          90,
+        );
         return;
       }
       case 'unsub': {
@@ -503,7 +549,13 @@ export class DemoTransport implements Transport {
           kind: 'user',
           text: msg.text,
           ...(msg.attachments?.length
-            ? { attachments: msg.attachments.map((a) => ({ mediaType: a.mediaType, name: a.name, data: a.data })) }
+            ? {
+                attachments: msg.attachments.map((a) => ({
+                  mediaType: a.mediaType,
+                  name: a.name,
+                  data: a.data,
+                })),
+              }
             : {}),
         });
         this.touch(sim, { preview: msg.text.slice(0, 90) });

@@ -2,5 +2,7 @@
   "name": "e2e",
   "private": true,
   "type": "module",
-  "scripts": { "test": "playwright test --trace off" }
+  "scripts": {
+    "test": "playwright test --trace off"
+  }
 }

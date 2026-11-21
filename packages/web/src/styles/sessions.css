@@ -199,7 +199,7 @@
   align-items: flex-start;
   gap: 14px;
   width: 100%;
-  padding: 13px 14px 13px 16px;
+  padding: 13px 14px 13px 18px;
   border: 0;
   background: none;
   color: var(--label);
@@ -215,7 +215,7 @@
 
 .unread-dot {
   position: absolute;
-  left: 5px;
+  left: 6px;
   top: 50%;
   width: 8px;
   height: 8px;

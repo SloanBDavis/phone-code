@@ -31,34 +31,46 @@ export function SwipeRow({
   actions: SwipeAction[];
   children: ComponentChildren;
 }): JSX.Element {
-  const content = useRef<HTMLDivElement>(null);
-  const wrap = useRef<HTMLDivElement>(null);
-  const g = useRef<{ x0: number; y0: number; base: number; x: number; mode: 'idle' | 'h' | 'v'; t0: number } | null>(
-    null,
-  );
+  const contentRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const gestureRef = useRef<{
+    x0: number;
+    y0: number;
+    base: number;
+    x: number;
+    mode: 'idle' | 'h' | 'v';
+    t0: number;
+  } | null>(null);
   const width = ACTION_W * actions.length;
   const isOpen = openRow.value === id;
-  const pastFull = useRef(false);
-  const suppressClick = useRef(false);
+  const pastFullRef = useRef(false);
+  const suppressClickRef = useRef(false);
 
   const set = (x: number, animate: boolean): void => {
-    const el = content.current;
+    const el = contentRef.current;
     if (!el) return;
     el.style.transition = animate ? 'transform 420ms var(--spring)' : 'none';
     el.style.transform = x ? `translate3d(${x}px,0,0)` : '';
-    wrap.current?.style.setProperty('--reveal', String(Math.min(1, -x / width)));
+    wrapRef.current?.style.setProperty('--reveal', String(Math.min(1, -x / width)));
   };
 
   useEffect(() => {
-    if (!g.current) set(isOpen ? -width : 0, true);
+    if (!gestureRef.current) set(isOpen ? -width : 0, true);
   }, [isOpen, width]);
 
   const onDown = (e: PointerEvent): void => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    g.current = { x0: e.clientX, y0: e.clientY, base: isOpen ? -width : 0, x: 0, mode: 'idle', t0: performance.now() };
+    gestureRef.current = {
+      x0: e.clientX,
+      y0: e.clientY,
+      base: isOpen ? -width : 0,
+      x: 0,
+      mode: 'idle',
+      t0: performance.now(),
+    };
   };
   const onMove = (e: PointerEvent): void => {
-    const s = g.current;
+    const s = gestureRef.current;
     if (!s) return;
     const dx = e.clientX - s.x0;
     const dy = e.clientY - s.y0;
@@ -73,29 +85,29 @@ export function SwipeRow({
     if (s.mode !== 'h') return;
     let x = s.base + dx;
     if (x > 0) x = x / 4; // rubber band to the right
-    const full = wrap.current ? -wrap.current.offsetWidth * 0.62 : -9999;
+    const full = wrapRef.current ? -wrapRef.current.offsetWidth * 0.62 : -9999;
     if (x < -width) x = -width + (x + width) * (x < full ? 1 : 0.55);
     const past = x < full;
-    if (past !== pastFull.current) {
-      pastFull.current = past;
+    if (past !== pastFullRef.current) {
+      pastFullRef.current = past;
       haptic('medium');
-      wrap.current?.classList.toggle('full', past);
+      wrapRef.current?.classList.toggle('full', past);
     }
     s.x = x;
     set(x, false);
   };
   const onUp = (): void => {
-    const s = g.current;
-    g.current = null;
+    const s = gestureRef.current;
+    gestureRef.current = null;
     if (!s || s.mode !== 'h') return;
-    suppressClick.current = true;
+    suppressClickRef.current = true;
     setTimeout(() => {
-      suppressClick.current = false;
+      suppressClickRef.current = false;
     }, 50);
     const v = (s.x - s.base) / Math.max(1, performance.now() - s.t0);
-    if (pastFull.current) {
-      pastFull.current = false;
-      wrap.current?.classList.remove('full');
+    if (pastFullRef.current) {
+      pastFullRef.current = false;
+      wrapRef.current?.classList.remove('full');
       openRow.value = null;
       set(0, true);
       actions[actions.length - 1]?.onAction();
@@ -107,7 +119,7 @@ export function SwipeRow({
   };
 
   return (
-    <div class="swipe" ref={wrap} data-open={isOpen}>
+    <div class="swipe" ref={wrapRef} data-open={isOpen}>
       <div class="swipe-actions" style={{ width: `${width}px` }}>
         {actions.map((a, i) => (
           <button
@@ -131,13 +143,13 @@ export function SwipeRow({
       </div>
       <div
         class="swipe-content"
-        ref={content}
+        ref={contentRef}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onClickCapture={(e) => {
-          if (suppressClick.current || openRow.value === id) {
+          if (suppressClickRef.current || openRow.value === id) {
             e.stopPropagation();
             e.preventDefault();
             openRow.value = null;

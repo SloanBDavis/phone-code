@@ -13,33 +13,37 @@ const DIM = 0.22;
  * left edge. Screens below the top stay mounted (scroll positions and state
  * survive) but are hidden from paint until a transition reveals them.
  */
-export function Stack({ render }: { render: (route: Route, top: boolean) => ComponentChildren }): JSX.Element {
+export function Stack({
+  render,
+}: {
+  render: (route: Route, top: boolean) => ComponentChildren;
+}): JSX.Element {
   const entries = stack.value;
-  const els = useRef(new Map<number, HTMLDivElement>());
-  const prev = useRef<Entry[]>(entries);
-  const leaving = useRef<Entry | null>(null);
+  const elsRef = useRef(new Map<number, HTMLDivElement>());
+  const prevRef = useRef<Entry[]>(entries);
+  const leavingRef = useRef<Entry | null>(null);
   const [, force] = useReducer((n: number) => n + 1, 0);
 
   // Decide synchronously (during render) whether a popped screen must stay
   // mounted for its exit animation, so it never flashes away for a frame.
-  if (entries !== prev.current) {
-    const old = prev.current;
+  if (entries !== prevRef.current) {
+    const old = prevRef.current;
     const popped = old.length > entries.length ? old[old.length - 1] : undefined;
-    leaving.current = popped && lastAnim.value === 'pop' && !reducedMotion() ? popped : null;
+    leavingRef.current = popped && lastAnim.value === 'pop' && !reducedMotion() ? popped : null;
   }
 
   useLayoutEffect(() => {
-    const old = prev.current;
-    prev.current = entries;
+    const old = prevRef.current;
+    prevRef.current = entries;
     const anim = lastAnim.value;
     const top = entries[entries.length - 1];
     const under = entries[entries.length - 2];
-    const topEl = top ? els.current.get(top.key) : undefined;
-    const underEl = under ? els.current.get(under.key) : undefined;
+    const topEl = top ? elsRef.current.get(top.key) : undefined;
+    const underEl = under ? elsRef.current.get(under.key) : undefined;
 
     const settle = (): void => {
       entries.forEach((e, i) => {
-        const el = els.current.get(e.key);
+        const el = elsRef.current.get(e.key);
         if (!el) return;
         el.style.transform = '';
         el.style.visibility = i === entries.length - 1 ? '' : 'hidden';
@@ -67,8 +71,8 @@ export function Stack({ render }: { render: (route: Route, top: boolean) => Comp
       return;
     }
 
-    const leavingEntry = leaving.current;
-    const leaveEl = leavingEntry ? els.current.get(leavingEntry.key) : undefined;
+    const leavingEntry = leavingRef.current;
+    const leaveEl = leavingEntry ? elsRef.current.get(leavingEntry.key) : undefined;
     if (anim === 'pop' && leaveEl && topEl && motion) {
       topEl.style.visibility = '';
       leaveEl.classList.add('moving');
@@ -81,19 +85,22 @@ export function Stack({ render }: { render: (route: Route, top: boolean) => Comp
         duration: DUR * 0.85,
         easing: EASE,
       });
-      const dim = dimOf(topEl).animate([{ opacity: DIM }, { opacity: 0 }], { duration: DUR * 0.85, easing: EASE });
+      const dim = dimOf(topEl).animate([{ opacity: DIM }, { opacity: 0 }], {
+        duration: DUR * 0.85,
+        easing: EASE,
+      });
       dim.onfinish = () => {
-        leaving.current = null;
+        leavingRef.current = null;
         settle();
         force(0);
       };
       return;
     }
-    leaving.current = null;
+    leavingRef.current = null;
     settle();
   }, [entries]);
 
-  const shown = leaving.current ? [...entries, leaving.current] : entries;
+  const shown = leavingRef.current ? [...entries, leavingRef.current] : entries;
   const topKey = entries[entries.length - 1]?.key;
 
   return (
@@ -105,14 +112,14 @@ export function Stack({ render }: { render: (route: Route, top: boolean) => Comp
             key={e.key}
             class="screen-host"
             ref={(el) => {
-              if (el) els.current.set(e.key, el);
-              else els.current.delete(e.key);
+              if (el) elsRef.current.set(e.key, el);
+              else elsRef.current.delete(e.key);
             }}
             inert={!isTop}
           >
             {render(e.route, isTop)}
             <div class="screen-dim" />
-            {isTop && entries.length > 1 && <EdgeSwipe els={els.current} entries={entries} />}
+            {isTop && entries.length > 1 && <EdgeSwipe els={elsRef.current} entries={entries} />}
           </div>
         );
       })}
@@ -125,7 +132,7 @@ function dimOf(el: HTMLElement): HTMLElement {
 }
 
 function EdgeSwipe({ els, entries }: { els: Map<number, HTMLDivElement>; entries: Entry[] }): JSX.Element {
-  const st = useRef<{ x0: number; t0: number; dx: number; w: number; id: number } | null>(null);
+  const stRef = useRef<{ x0: number; t0: number; dx: number; w: number; id: number } | null>(null);
 
   const parts = (): { top?: HTMLDivElement; under?: HTMLDivElement } => {
     const top = entries[entries.length - 1];
@@ -135,7 +142,7 @@ function EdgeSwipe({ els, entries }: { els: Map<number, HTMLDivElement>; entries
 
   const move = (dx: number): void => {
     const { top, under } = parts();
-    const w = st.current?.w ?? innerWidth;
+    const w = stRef.current?.w ?? innerWidth;
     const p = Math.max(0, Math.min(1, dx / w));
     if (top) top.style.transform = `translate3d(${p * 100}%,0,0)`;
     if (under) {
@@ -147,18 +154,28 @@ function EdgeSwipe({ els, entries }: { els: Map<number, HTMLDivElement>; entries
 
   const finish = (commit: boolean, velocity: number): void => {
     const { top, under } = parts();
-    const w = st.current?.w ?? innerWidth;
-    const dx = st.current?.dx ?? 0;
+    const w = stRef.current?.w ?? innerWidth;
+    const dx = stRef.current?.dx ?? 0;
     const p = Math.max(0, Math.min(1, dx / w));
-    const ms = Math.max(160, Math.min(380, (commit ? 1 - p : p) * DUR / Math.max(1, Math.abs(velocity) * 1.4)));
-    const opts: KeyframeAnimationOptions = { duration: ms, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' };
+    const ms = Math.max(
+      160,
+      Math.min(380, ((commit ? 1 - p : p) * DUR) / Math.max(1, Math.abs(velocity) * 1.4)),
+    );
+    const opts: KeyframeAnimationOptions = {
+      duration: ms,
+      easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+      fill: 'forwards',
+    };
     if (!top || !under) return;
     const a = top.animate(
       [{ transform: `translate3d(${p * 100}%,0,0)` }, { transform: `translate3d(${commit ? 100 : 0}%,0,0)` }],
       opts,
     );
     under.animate(
-      [{ transform: `translate3d(${UNDER * (1 - p)}%,0,0)` }, { transform: `translate3d(${commit ? 0 : UNDER}%,0,0)` }],
+      [
+        { transform: `translate3d(${UNDER * (1 - p)}%,0,0)` },
+        { transform: `translate3d(${commit ? 0 : UNDER}%,0,0)` },
+      ],
       opts,
     );
     dimOf(under).animate([{ opacity: DIM * (1 - p) }, { opacity: commit ? 0 : DIM }], opts);
@@ -191,28 +208,34 @@ function EdgeSwipe({ els, entries }: { els: Map<number, HTMLDivElement>; entries
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         const host = (e.currentTarget as HTMLElement).parentElement;
-        st.current = { x0: e.clientX, t0: performance.now(), dx: 0, w: host?.offsetWidth ?? innerWidth, id: e.pointerId };
+        stRef.current = {
+          x0: e.clientX,
+          t0: performance.now(),
+          dx: 0,
+          w: host?.offsetWidth ?? innerWidth,
+          id: e.pointerId,
+        };
         parts().top?.classList.add('moving');
       }}
       onPointerMove={(e) => {
-        const s = st.current;
+        const s = stRef.current;
         if (!s || s.id !== e.pointerId) return;
         s.dx = Math.max(0, e.clientX - s.x0);
         move(s.dx);
       }}
       onPointerUp={(e) => {
-        const s = st.current;
+        const s = stRef.current;
         if (!s) return;
         const v = s.dx / Math.max(1, performance.now() - s.t0);
         const commit = s.dx > s.w * 0.35 || (v > 0.45 && s.dx > 30);
         if (commit) haptic('light');
         finish(commit, v);
-        st.current = null;
+        stRef.current = null;
         void e;
       }}
       onPointerCancel={() => {
         finish(false, 0);
-        st.current = null;
+        stRef.current = null;
       }}
     />
   );

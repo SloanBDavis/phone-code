@@ -39,7 +39,8 @@ function renderRoute(route: Route, top: boolean): JSX.Element {
 export function App(): JSX.Element {
   const status = conn.value.status;
   useEffect(() => {
-    if (status === 'unauthorized') unpair('This device was unpaired from the host. Pair it again to continue.');
+    if (status === 'unauthorized')
+      unpair('This device was unpaired from the host. Pair it again to continue.');
   }, [status]);
 
   return (
@@ -49,4 +50,3 @@ export function App(): JSX.Element {
     </>
   );
 }
-

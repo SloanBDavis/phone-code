@@ -94,7 +94,15 @@ export function summarize(tools: ToolItem[]): string {
 
 // ------------------------------------------------------------ details
 
-function Output({ text, truncated, ansi = true }: { text: string; truncated?: boolean; ansi?: boolean }): JSX.Element {
+function Output({
+  text,
+  truncated,
+  ansi = true,
+}: {
+  text: string;
+  truncated?: boolean;
+  ansi?: boolean;
+}): JSX.Element {
   const [all, setAll] = useState(false);
   const lines = text.split('\n');
   const long = lines.length > 24;
@@ -125,7 +133,8 @@ function parsePatch(patch: string): DiffLine[] {
   let a = 0;
   let b = 0;
   for (const raw of patch.split('\n')) {
-    if (raw.startsWith('---') || raw.startsWith('+++') || raw.startsWith('diff ') || raw.startsWith('index ')) continue;
+    if (raw.startsWith('---') || raw.startsWith('+++') || raw.startsWith('diff ') || raw.startsWith('index '))
+      continue;
     const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(raw);
     if (m) {
       a = Number(m[1]);
@@ -241,7 +250,11 @@ export function DetailView({ detail }: { detail: ToolDetail }): JSX.Element {
   }
 }
 
-function TodoList({ todos }: { todos: Array<{ text: string; status: 'pending' | 'in_progress' | 'completed' }> }): JSX.Element {
+function TodoList({
+  todos,
+}: {
+  todos: Array<{ text: string; status: 'pending' | 'in_progress' | 'completed' }>;
+}): JSX.Element {
   return (
     <ul class="todos" data-testid="todo-list">
       {todos.map((t, i) => (
@@ -340,10 +353,14 @@ export function ToolRow({ item, nested }: { item: Signal<ChatItem>; nested?: boo
         <div class="tool-body">
           {t.detail && t.detail.type !== 'command' && <DetailView detail={t.detail} />}
           {t.detail?.type === 'command' && <CommandBox command={t.detail.command} cwd={t.detail.cwd} />}
-          {t.output !== undefined && t.output !== '' && (t.detail?.type !== 'diff' || t.status === 'error') && (
-            <Output text={t.output} truncated={t.outputTruncated} />
+          {t.output !== undefined &&
+            t.output !== '' &&
+            (t.detail?.type !== 'diff' || t.status === 'error') && (
+              <Output text={t.output} truncated={t.outputTruncated} />
+            )}
+          {t.output === '' && t.status === 'done' && t.name === 'Bash' && (
+            <div class="tool-note">No output</div>
           )}
-          {t.output === '' && t.status === 'done' && t.name === 'Bash' && <div class="tool-note">No output</div>}
           {!t.detail && t.output === undefined && t.input !== undefined && <Json value={t.input} />}
           {!t.detail && t.output !== undefined && t.input !== undefined && (
             <details class="tool-input">
@@ -421,7 +438,9 @@ export function TaskCard({ chat, item }: { chat: ChatState; item: Signal<ChatIte
   const [open, setOpen] = useState(false);
   if (t.kind !== 'tool') return null;
   const prompt =
-    t.input && typeof t.input === 'object' && 'prompt' in t.input ? String((t.input as { prompt: unknown }).prompt) : '';
+    t.input && typeof t.input === 'object' && 'prompt' in t.input
+      ? String((t.input as { prompt: unknown }).prompt)
+      : '';
   return (
     <div class={`task-card st-${t.status}`} data-testid="chat-item-task" data-status={t.status}>
       <button type="button" class="task-head" aria-expanded={open} onClick={() => setOpen(!open)}>

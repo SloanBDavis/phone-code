@@ -214,7 +214,13 @@ export type ClientMessage =
   // --- chat
   | { t: 'chat.send'; id: string; sessionId: string; text: string; attachments?: Attachment[] }
   | { t: 'chat.interrupt'; sessionId: string }
-  | { t: 'chat.permission'; sessionId: string; itemId: string; decision: PermissionDecision; message?: string }
+  | {
+      t: 'chat.permission';
+      sessionId: string;
+      itemId: string;
+      decision: PermissionDecision;
+      message?: string;
+    }
   | { t: 'chat.answer'; sessionId: string; itemId: string; answers: Record<string, string> }
   | { t: 'chat.setMode'; sessionId: string; permissionMode: PermissionMode }
   | { t: 'chat.setModel'; sessionId: string; model: string }
