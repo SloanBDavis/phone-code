@@ -111,14 +111,14 @@ export function SettingsScreen(): JSX.Element {
               {agentCatalog(h)
                 .filter((a) => a.impl === 'native' || a.available || a.source === 'config')
                 .map((a) => (
-                <div class="cell static" key={a.id} data-testid="settings-agent" data-agent={a.id}>
-                  <Glyph kind={agentGlyph(a.id)} size={30} />
-                  <span class="cell-main cell-title">{a.name}</span>
-                  <span class={`cell-value ${a.available ? '' : 'warn'}`}>
-                    {a.available ? (a.version ? `v${a.version}` : 'Installed') : 'Not installed'}
-                  </span>
-                </div>
-              ))}
+                  <div class="cell static" key={a.id} data-testid="settings-agent" data-agent={a.id}>
+                    <Glyph kind={agentGlyph(a.id)} size={30} />
+                    <span class="cell-main cell-title">{a.name}</span>
+                    <span class={`cell-value ${a.available ? '' : 'warn'}`}>
+                      {a.available ? (a.version ? `v${a.version}` : 'Installed') : 'Not installed'}
+                    </span>
+                  </div>
+                ))}
             </div>
           </section>
         )}

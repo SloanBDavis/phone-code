@@ -1,5 +1,11 @@
+import type { Locator } from '@playwright/test';
 import { expect, test, type Phone } from '../lib/fixtures.ts';
 import { back, createSession, lastText, row, send, shot, waitTurn } from '../lib/ui.ts';
+
+/** A session row with its swipe actions. */
+function swipeRow(phone: Phone, sessionId: string): Locator {
+  return phone.page.locator('.swipe', { has: row(phone, sessionId) });
+}
 
 /** Swipe a session row left with a real touch gesture to reveal its actions. */
 async function swipe(phone: Phone, sessionId: string): Promise<void> {
@@ -17,7 +23,7 @@ async function swipe(phone: Phone, sessionId: string): Promise<void> {
   for (let i = 1; i <= 8; i++) await touch('touchMove', x0 - i * 20);
   await touch('touchEnd', x0 - 160);
   await cdp.detach();
-  await expect(phone.page.locator('.swipe[data-open="true"]')).toHaveCount(1);
+  await expect(swipeRow(phone, sessionId)).toHaveAttribute('data-open', 'true');
 }
 
 test('creates Claude, Codex and terminal sessions with the folder picker', async ({ phone }) => {
@@ -45,7 +51,7 @@ test('rename and delete from the list', async ({ phone }) => {
   const id = await createSession(phone, 'terminal');
   await back(phone);
   await swipe(phone, id);
-  await phone.testId('session-rename').click();
+  await swipeRow(phone, id).getByTestId('session-rename').click();
   await phone.testId('rename-dialog-input').fill('My build shell');
   await phone.testId('rename-dialog-confirm').click();
   await expect(row(phone, id)).toContainText('My build shell');
@@ -54,7 +60,7 @@ test('rename and delete from the list', async ({ phone }) => {
   await expect(row(phone, id)).toContainText('My build shell');
 
   await swipe(phone, id);
-  await phone.testId('session-delete').click();
+  await swipeRow(phone, id).getByTestId('session-delete').click();
   await expect(phone.testId('delete-dialog')).toContainText('My build shell');
   await phone.testId('delete-dialog-confirm').click();
   await expect(row(phone, id)).toHaveCount(0);

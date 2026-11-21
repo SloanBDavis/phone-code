@@ -117,7 +117,9 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
   const mode = modeInfo(session.permissionMode);
   // ACP agents report their models per session; native ones up front in the host info.
   const models = session.models ?? findAgent(host.value, session.agent ?? 'claude')?.models ?? [];
-  const modes = session.permissionModes ? MODES.filter((m) => session.permissionModes?.includes(m.mode)) : MODES;
+  const modes = session.permissionModes
+    ? MODES.filter((m) => session.permissionModes?.includes(m.mode))
+    : MODES;
 
   return (
     <GlassSurface class="composer" data-testid="composer">
@@ -143,9 +145,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
         class="composer-input"
         rows={1}
         value={text}
-        placeholder={
-          running ? 'Add to the queue…' : `Message ${agentShortLabel(session, host.value)}`
-        }
+        placeholder={running ? 'Add to the queue…' : `Message ${agentShortLabel(session, host.value)}`}
         aria-label="Message"
         enterkeyhint="send"
         autocapitalize="sentences"

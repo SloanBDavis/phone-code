@@ -12,7 +12,12 @@ import type {
   SessionStatus,
   UserItem,
 } from '@phone-code/protocol';
-import { agentDisplayName, type AdapterRegistry, type AgentEvents, type AgentSession } from '../agents/types.ts';
+import {
+  agentDisplayName,
+  type AdapterRegistry,
+  type AgentEvents,
+  type AgentSession,
+} from '../agents/types.ts';
 import { log } from '../log.ts';
 import { randomId } from '../util/files.ts';
 import { EventLog } from './event-log.ts';
@@ -109,7 +114,10 @@ export class ChatSession implements LiveSession {
       kind: 'agent',
       agent,
       agentName: agentDisplayName(deps.adapters, agent),
-      title: title !== undefined && title !== '' ? title : `${shortName(deps.adapters, agent)} · ${basename(cwd) || cwd}`,
+      title:
+        title !== undefined && title !== ''
+          ? title
+          : `${shortName(deps.adapters, agent)} · ${basename(cwd) || cwd}`,
       cwd,
       createdAt: now,
       updatedAt: now,

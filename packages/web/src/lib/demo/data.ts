@@ -17,7 +17,14 @@ export const demoHost: HostInfo = {
     { kind: 'codex', available: true, version: '0.58.0', models: ['gpt-5-codex', 'gpt-5', 'gpt-5-mini'] },
   ],
   agentCatalog: [
-    { id: 'claude', name: 'Claude Code', impl: 'native', available: true, version: '2.1.4', models: ['opus', 'sonnet', 'haiku'] },
+    {
+      id: 'claude',
+      name: 'Claude Code',
+      impl: 'native',
+      available: true,
+      version: '2.1.4',
+      models: ['opus', 'sonnet', 'haiku'],
+    },
     {
       id: 'codex',
       name: 'Codex',
@@ -51,9 +58,9 @@ export function buildDemo(now = Date.now()): DemoSession[] {
   const ago = (m: number): number => now - m * MIN;
 
   const geminiItems: ChatItem[] = [
-    { id: id('u'), ts: ago(1910), kind: 'user', text: 'How does the uploader retry failed chunks?' },
+    { id: 'gem-1', ts: ago(1910), kind: 'user', text: 'How does the uploader retry failed chunks?' },
     {
-      id: id('t'),
+      id: 'gem-2',
       ts: ago(1909),
       kind: 'tool',
       name: 'Read',
@@ -62,7 +69,7 @@ export function buildDemo(now = Date.now()): DemoSession[] {
       detail: { type: 'file', path: 'src/upload/retry.ts' },
     },
     {
-      id: id('t'),
+      id: 'gem-3',
       ts: ago(1909),
       kind: 'tool',
       name: 'Grep',
@@ -72,13 +79,13 @@ export function buildDemo(now = Date.now()): DemoSession[] {
       output: 'src/upload/chunk.ts:42: return withRetry(() => put(part), { tries: 3 })',
     },
     {
-      id: id('x'),
+      id: 'gem-4',
       ts: ago(1908),
       kind: 'text',
       streaming: false,
       text: 'Uploads retry **3 times** with exponential backoff (250 ms, 500 ms, 1 s). Only `5xx` and network errors are retried; a `4xx` fails the chunk at once.',
     },
-    { id: id('d'), ts: ago(1900), kind: 'turn', outcome: 'completed', durationMs: 9_400 },
+    { id: 'gem-5', ts: ago(1900), kind: 'turn', outcome: 'completed', durationMs: 9_400 },
   ];
 
   const authItems: ChatItem[] = [

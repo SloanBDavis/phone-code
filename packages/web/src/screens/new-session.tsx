@@ -150,13 +150,13 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
   const agents = agentCatalog(h);
   const available = (k: Choice): boolean => agents.some((a) => a.id === k && a.available);
   // Claude Code and Codex always get a tile; ACP agents only when installed, or when the user configured them.
-  const agentTiles = agents.filter(
-    (a) => a.impl === 'native' || a.available || a.source === 'config',
-  );
+  const agentTiles = agents.filter((a) => a.impl === 'native' || a.available || a.source === 'config');
   const firstKind: Choice = agentTiles.find((a) => a.available)?.id ?? 'terminal';
   const [kind, setKind] = useState<Choice>(firstKind);
   const label = (k: Choice): string =>
-    k === 'terminal' ? agentName('terminal') : (agents.find((a) => a.id === k)?.name ?? agentName(agentGlyph(k)));
+    k === 'terminal'
+      ? agentName('terminal')
+      : (agents.find((a) => a.id === k)?.name ?? agentName(agentGlyph(k)));
   const recents = recentDirs();
   const [cwd, setCwd] = useState<string>(recents[0] ?? h?.home ?? '~');
   const [picking, setPicking] = useState(false);
