@@ -403,10 +403,15 @@ lemma token_secret:
 lemma pair_code_secret:
   "All c #i. Issued(c)@i ==> not (Ex #j. K(c)@j) | (Ex #k. QRLeaked(c)@k)"
 
+// Not defined under PLAIN (the code crosses the attacker's wire; the search
+// does not finish, and token_secret already falls there).
+#ifdef PLAIN
+#else
 // A handoff code minted for the owner's phone stays secret.
 lemma handoff_code_secret:
   "All h P ch s #i #j. HandoffMinted(h, P, ch)@i & PhoneHandoffReq(s, P)@j & (ch = 'ph' | ch = 'net') ==>
      not (Ex #k. K(h)@k) | (Ex #k. Compromised(P)@k)"
+#endif
 
 // The control secret never reaches the attacker.
 lemma control_secret:

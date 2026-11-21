@@ -21,7 +21,7 @@ TAMARIN_URL="https://github.com/tamarin-prover/tamarin-prover/releases/download/
 TAMARIN_SHA256="201be06f469e47cff554df6ca93db8366fc2c69d70c61fcbd1370a1074b469c6"
 MAUDE_URL="https://github.com/maude-lang/Maude/releases/download/Maude${MAUDE_VERSION}/Maude-${MAUDE_VERSION}-linux-x86_64.zip"
 MAUDE_SHA256="72ed1ca87e3b3d0dfc6ee1436baf154bf04c45ff97d521bec040c5e8dfc8f92c"
-LEMMA_TIMEOUT="${LEMMA_TIMEOUT:-600}"
+LEMMA_TIMEOUT="${LEMMA_TIMEOUT:-1200}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 2)}"
 # Heap per proof (GHC RTS -M): a runaway proof fails alone instead of the OOM killer taking a sibling.
 TAMARIN_HEAP="${TAMARIN_HEAP:-3500m}"
@@ -57,7 +57,7 @@ VARIANTS=(
   "old_handoff_forget|NOLEAK NO_HANDOFF_FORGET|no_handoff_after_revoke"
   # --insecure plain HTTP, or a tunnel operator that is the attacker (same rules):
   # everything on the wire is the attacker's (documented, expected).
-  "insecure|PLAIN NET_CLIENT|token_secret pair_code_secret handoff_code_secret sessions_only_owner_devices hello_injective_agreement codes_redeemed_only_by_owner"
+  "insecure|PLAIN NET_CLIENT|token_secret pair_code_secret sessions_only_owner_devices hello_injective_agreement codes_redeemed_only_by_owner"
 )
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }

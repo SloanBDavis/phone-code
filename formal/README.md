@@ -347,7 +347,33 @@ they are defined. The others:
 
 ### Results
 
-RESULTS_TABLE
+Every result matched its expectation. Per-lemma results with steps and
+seconds: [`tamarin/results.txt`](tamarin/results.txt). A full
+`tamarin/check.sh` takes about 35 minutes on 4 cores (262 proofs; the
+per-lemma timeout is 1200 s, the heap 3.5 GB per proof).
+
+| Variant                        | Lemmas | Verified | Falsified (attack found)                                                                                                                                        | Proof time (sum / slowest)                   |
+| ------------------------------ | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `tailscale`                    | 25     | 25       | none                                                                                                                                                            | 172 s / 27 s `exec_owner_revoke`             |
+| `public`                       | 25     | 25       | none                                                                                                                                                            | 245 s / 29 s `exec_owner_revoke`             |
+| `tailscale_qr_seen`            | 24     | 24       | none                                                                                                                                                            | 119 s / 17 s `exec_owner_revoke`             |
+| `tailscale_qr_seen_old_host`   | 24     | 21       | `codes_redeemed_only_by_owner` (5 s), `hello_injective_agreement` (9 s), `sessions_only_owner_devices` (11 s)                                                   | 206 s / 22 s `exec_owner_revoke`             |
+| `tailscale_qr_seen_old_origin` | 24     | 23       | `codes_redeemed_only_by_owner` (4 s)                                                                                                                            | 149 s / 19 s `exec_owner_revoke`             |
+| `public_qr_seen`               | 24     | 21       | `codes_redeemed_only_by_owner` (6 s), `hello_injective_agreement` (12 s), `sessions_only_owner_devices` (12 s)                                                  | 245 s / 24 s `exec_owner_revoke`             |
+| `public_handoff_leak`          | 24     | 20       | `codes_redeemed_only_by_owner` (81 s), `handoff_code_secret` (64 s), `hello_injective_agreement` (132 s), `sessions_only_owner_devices` (148 s)                 | 1320 s / 282 s `src_control_secret`          |
+| `stolen_token`                 | 26     | 23       | `codes_redeemed_only_by_owner` (49 s), `hello_injective_agreement` (129 s), `sessions_only_owner_devices` (228 s)                                               | 1370 s / 228 s `sessions_only_owner_devices` |
+| `stolen_token_old_nocascade`   | 25     | 21       | `codes_redeemed_only_by_owner` (32 s), `hello_injective_agreement` (84 s), `revoke_evicts_thief` (612 s), `sessions_only_owner_devices` (130 s)                 | 1354 s / 612 s `revoke_evicts_thief`         |
+| `old_handoff_forget`           | 25     | 24       | `no_handoff_after_revoke` (26 s)                                                                                                                                | 171 s / 26 s `exec_owner_revoke`             |
+| `insecure`                     | 15     | 10       | `codes_redeemed_only_by_owner` (5 s), `hello_injective_agreement` (23 s), `pair_code_secret` (5 s), `sessions_only_owner_devices` (46 s), `token_secret` (76 s) | 238 s / 76 s `token_secret`                  |
+
+Not every lemma is defined in every variant: the `[reuse]` source lemmas only
+where they hold, `revoke_evicts_thief` / `src_auth_thief` only with a stolen
+token, and under `PLAIN` the `exec_*` sanity lemmas, `handoff_code_secret`,
+`owner_first_excludes_others` and `race_loss_is_visible` are left out: there
+the attacker owns the wire and can forge the phone's answers, these say
+nothing, and their searches run out of memory or time (the falsified lemmas'
+attack traces already show the protocol running). `revoke_cascades` is left
+out under `NO_CASCADE`, where `revoke_evicts_thief` carries the counterexample.
 
 ### Findings
 
