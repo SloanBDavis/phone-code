@@ -90,3 +90,52 @@ export const isStandalone = (): boolean =>
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
 export const reducedMotion = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Runs `fn` once, on the next animation frame or after `ms` at the latest.
+ * WebKit pauses or throttles requestAnimationFrame (Low Power Mode, a page
+ * that is visible but not composited, a backgrounded Home Screen app), and UI
+ * state must never wait on a frame that may not come. Returns a canceller.
+ */
+export function soon(fn: () => void, ms = 60): () => void {
+  let done = false;
+  const run = (): void => {
+    if (done) return;
+    done = true;
+    cancelAnimationFrame(frame);
+    clearTimeout(timer);
+    fn();
+  };
+  const frame = requestAnimationFrame(run);
+  const timer = setTimeout(run, ms);
+  return () => {
+    done = true;
+    cancelAnimationFrame(frame);
+    clearTimeout(timer);
+  };
+}
+
+/**
+ * Runs `fn` once when the animation finishes, is cancelled, or `ms` passes,
+ * whichever comes first. A Web Animation's `finish` event is not guaranteed
+ * (cancelled when its element is removed or re-animated, delayed while the
+ * page is hidden), so state that waits for one needs this fallback.
+ */
+export function afterAnimation(anim: Animation | undefined, ms: number, fn: () => void): () => void {
+  let done = false;
+  const run = (): void => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    fn();
+  };
+  const timer = setTimeout(run, ms + 120);
+  if (anim) {
+    anim.addEventListener('finish', run, { once: true });
+    anim.addEventListener('cancel', run, { once: true });
+  }
+  return () => {
+    done = true;
+    clearTimeout(timer);
+  };
+}

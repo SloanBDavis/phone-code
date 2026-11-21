@@ -2,7 +2,7 @@ import type { ComponentChildren, JSX, TargetedPointerEvent } from 'preact';
 import { signal } from '@preact/signals';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { attachRefraction } from '../lib/glass';
-import { haptic, reducedMotion } from '../lib/util';
+import { haptic, reducedMotion, soon } from '../lib/util';
 import { Icon, type IconName } from './icons';
 
 /**
@@ -105,10 +105,8 @@ function Sheet({
     scroller: HTMLElement | null;
   } | null>(null);
 
-  useLayoutEffect(() => {
-    const r = requestAnimationFrame(() => setEntered(true));
-    return () => cancelAnimationFrame(r);
-  }, []);
+  // The slide-in is decoration: `entered` flips on the next frame or a timer, never on an animation event.
+  useLayoutEffect(() => soon(() => setEntered(true)), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -253,10 +251,10 @@ function Menu({
     y = Math.max(margin + 40, Math.min(vh - h - margin, y));
     setPos({ x, y, ox: alignRight ? 'right' : 'left', oy: openUp ? 'bottom' : 'top' });
     const off = attachRefraction(el);
-    const r = requestAnimationFrame(() => setEntered(true));
+    const cancel = soon(() => setEntered(true));
     return () => {
       off();
-      cancelAnimationFrame(r);
+      cancel();
     };
   }, [rect]);
 
@@ -368,12 +366,12 @@ function Alert({
   const [value, setValue] = useState(opts.input?.value ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
-    const r = requestAnimationFrame(() => setEntered(true));
+    const cancel = soon(() => setEntered(true));
     if (opts.input) {
       inputRef.current?.focus();
       inputRef.current?.select();
     }
-    return () => cancelAnimationFrame(r);
+    return cancel;
   }, [opts.input]);
   const cancel = (): void => done(opts.input ? null : false);
   const ok = (): void => done(opts.input ? value.trim() || null : true);

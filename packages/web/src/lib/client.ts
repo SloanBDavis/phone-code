@@ -15,6 +15,7 @@ import {
   vapidKey,
 } from './state';
 import type { Transport } from './transport';
+import { soon } from './util';
 
 type DistOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 type RpcRequest = DistOmit<Extract<ClientMessage, { id: string }>, 'id'>;
@@ -257,9 +258,8 @@ class Client {
   private scheduleFlush(): void {
     if (this.flushScheduled) return;
     this.flushScheduled = true;
-    const run = (): void => this.flush();
-    if (document.visibilityState === 'visible') requestAnimationFrame(run);
-    else setTimeout(run, 50);
+    // Next frame, or a timer when WebKit holds frames back (hidden, Low Power Mode).
+    soon(() => this.flush(), 50);
   }
 
   private flush(): void {

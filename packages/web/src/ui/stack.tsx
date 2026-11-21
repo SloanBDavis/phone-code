@@ -1,7 +1,7 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { lastAnim, leaving, pop, stack, type Entry, type Route } from '../lib/nav';
-import { haptic, reducedMotion } from '../lib/util';
+import { afterAnimation, haptic, reducedMotion } from '../lib/util';
 
 const DUR = 460;
 const EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
@@ -36,17 +36,22 @@ export function Stack({
   const exiting = leaving.value;
   const rootRef = useRef<HTMLDivElement>(null);
   const prevRef = useRef<Entry[]>(entries);
+  const genRef = useRef(0);
 
   useLayoutEffect(() => {
     const old = prevRef.current;
     if (old === entries) return;
     prevRef.current = entries;
+    // Animations are decoration: the final state is applied when they finish, are
+    // cancelled, or after a timeout, and a newer navigation supersedes older ones.
+    const gen = ++genRef.current;
     const host = hostsIn(rootRef.current);
     const anim = lastAnim.peek();
     const topEl = host(entries[entries.length - 1]?.key);
     const underEl = host(entries[entries.length - 2]?.key);
 
     const settle = (): void => {
+      if (gen !== genRef.current) return;
       entries.forEach((e, i) => {
         const el = host(e.key);
         if (!el) return;
@@ -70,7 +75,7 @@ export function Stack({
         easing: EASE,
       });
       const dim = dimOf(underEl).animate([{ opacity: 0 }, { opacity: DIM }], { duration: DUR, easing: EASE });
-      dim.onfinish = settle;
+      afterAnimation(dim, DUR, settle);
       return;
     }
 
@@ -85,10 +90,11 @@ export function Stack({
       });
       topEl.animate([{ transform: `translate3d(${UNDER}%,0,0)` }, { transform: 'translate3d(0,0,0)' }], opts);
       const dim = dimOf(topEl).animate([{ opacity: DIM }, { opacity: 0 }], opts);
-      dim.onfinish = () => {
+      afterAnimation(dim, opts.duration, () => {
+        if (gen !== genRef.current) return;
         leaving.value = null;
         settle();
-      };
+      });
       return;
     }
     leaving.value = null;
@@ -172,7 +178,7 @@ function EdgeSwipe({
       opts,
     );
     dimOf(under).animate([{ opacity: DIM * (1 - p) }, { opacity: commit ? 0 : DIM }], opts);
-    a.onfinish = () => {
+    afterAnimation(a, ms, () => {
       for (const el of [top, under, dimOf(under)]) for (const x of el.getAnimations()) x.cancel();
       if (commit) {
         top.style.transform = 'translate3d(100%,0,0)';
@@ -186,7 +192,7 @@ function EdgeSwipe({
         under.style.visibility = 'hidden';
         dimOf(under).style.opacity = '0';
       }
-    };
+    });
   };
 
   return (
