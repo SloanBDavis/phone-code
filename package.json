@@ -1,0 +1,15 @@
+{
+  "name": "phone-code-monorepo",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "workspaces": ["packages/*", "e2e"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "npm run build -w @phone-code/protocol && npm run build -w @phone-code/web && npm run build -w phone-code",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:daemon": "npm run dev -w phone-code",
+    "dev:web": "npm run dev -w @phone-code/web",
+    "e2e": "npm run test -w e2e"
+  }
+}

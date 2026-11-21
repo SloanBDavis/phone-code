@@ -1,0 +1,16 @@
+{
+  "name": "phone-code",
+  "version": "0.1.0",
+  "description": "Host daemon for phone-code: your terminal, Claude Code and Codex as a native-feeling chat on your phone.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "phonecode": "./dist/cli.js", "phone-code": "./dist/cli.js" },
+  "files": ["dist", "web"],
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsup",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": { "@phone-code/protocol": "*" },
+  "devDependencies": { "typescript": "^5.6.0", "tsx": "^4.19.0", "tsup": "^8.3.0", "@types/node": "^22.0.0" }
+}
