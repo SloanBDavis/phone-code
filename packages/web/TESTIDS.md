@@ -6,7 +6,8 @@ in brackets carry state worth asserting on.
 Demo mode (`/?demo=1`) gives deterministic fixtures: sessions `demo-auth` (pending
 permission), `demo-billing` (running Codex), `demo-chart` (pending question),
 `demo-shell` (terminal), `demo-vite` (finished turn with sub-agent, todos, table, code),
-`demo-dev` (exited terminal), `demo-notes`. `?demo=1&demoItems=2000` adds `demo-long`.
+`demo-dev` (exited terminal), `demo-gemini` (finished turn of an ACP-backed agent, Gemini CLI),
+`demo-notes`. `?demo=1&demoItems=2000` adds `demo-long`.
 
 ## Screens
 
@@ -41,7 +42,7 @@ permission), `demo-billing` (running Codex), `demo-chart` (pending question),
 | `conn-retry`                                                    | retry link while reconnecting/offline                                                   |
 | `demo-banner`                                                   | demo notice                                                                             |
 | `section-waiting`, `section-running`, `section-recent`          | list sections                                                                           |
-| `session-row`                                                   | a row [`data-session-id`, `data-status`]                                                |
+| `session-row`                                                   | a row [`data-session-id`, `data-status`, `data-agent` (agent id, agent sessions only)]  |
 | `session-unread`                                                | unread dot inside a row                                                                 |
 | `session-rename`, `session-delete`                              | swipe actions                                                                           |
 | `sessions-empty`, `empty-new`                                   | empty state and its button                                                              |
@@ -58,12 +59,16 @@ permission), `demo-billing` (running Codex), `demo-chart` (pending question),
 | ---------------------------------------------------------------------------- | ------------------------------------------------------ |
 | `new-session-sheet`, `new-session-close`                                     | sheet and its close button                             |
 | `new-kind-claude`, `new-kind-codex`, `new-kind-terminal`                     | type tiles [`aria-pressed`, disabled when unavailable] |
+| `new-kind-<agentId>`                                                         | tile of an ACP agent, e.g. `new-kind-gemini` (1)       |
 | `new-folder`                                                                 | folder row (opens picker)                              |
 | `new-recent-dir`                                                             | recent folder chip                                     |
 | `new-model`, `new-permission`                                                | model / permission rows (open menus)                   |
 | `new-start`                                                                  | start button                                           |
 | `resume-row`                                                                 | a resumable past session                               |
 | `folder-picker`, `folder-back`, `folder-up`, `folder-entry`, `folder-choose` | folder picker                                          |
+
+(1) ACP agents (Agent Client Protocol) get a tile when installed on the host or defined in
+`agents.json`; ids are the daemon's agent ids (`gemini`, `opencode`, …, or the user's own).
 
 ## Chat
 
@@ -77,7 +82,7 @@ permission), `demo-billing` (running Codex), `demo-chart` (pending question),
 | `chat-item-todo`, `todo-list`, `chat-item-task` [`data-status`]                                         | plan and sub-agent cards                            |
 | `chat-item-permission` [`data-status`]                                                                  | permission card                                     |
 | `permission-allow`, `permission-allow-always`, `permission-deny`                                        | its buttons                                         |
-| `permission-deny-feedback`, `permission-deny-message`, `permission-deny-send`                           | deny with a message                                 |
+| `permission-deny-feedback`, `permission-deny-message`, `permission-deny-send`                           | deny with a message (not for ACP agents)            |
 | `chat-item-question` [`data-status`]                                                                    | question card                                       |
 | `question-option`, `question-other`, `question-other-input`, `question-submit`                          | its controls                                        |
 | `chat-item-notice`, `chat-item-turn` [`data-outcome`]                                                   | notices, turn footers                               |
@@ -109,3 +114,4 @@ permission), `demo-billing` (running Codex), `demo-chart` (pending question),
 | `settings-unpair`, `unpair-dialog`, `unpair-dialog-confirm`           | unpair                     |
 | `settings-exit-demo`                                                  | exit demo (demo mode only) |
 | `settings-source`                                                     | source link                |
+| `settings-agent`                                                      | agent row [`data-agent`]   |

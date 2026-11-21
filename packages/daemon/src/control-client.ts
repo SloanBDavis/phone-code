@@ -25,6 +25,18 @@ async function controlFile(home: string): Promise<ControlFile | undefined> {
     : undefined;
 }
 
+/** Pid of a daemon that holds this state dir and is still alive (it may not answer yet). */
+export async function liveDaemonPid(home: string): Promise<number | undefined> {
+  const file = await controlFile(home);
+  if (file === undefined || file.pid === process.pid) return undefined;
+  try {
+    process.kill(file.pid, 0);
+    return file.pid;
+  } catch (err) {
+    return isRecord(err) && err['code'] === 'EPERM' ? file.pid : undefined;
+  }
+}
+
 export class ControlClient {
   private constructor(private readonly file: ControlFile) {}
 

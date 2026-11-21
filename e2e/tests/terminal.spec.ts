@@ -76,6 +76,8 @@ test('resizes the PTY when the viewport changes', async ({ phone }) => {
   const landscape = /wide=(\d+)x(\d+)/.exec(await screen(phone).innerText());
   expect(Number(landscape?.[1])).toBeGreaterThan(Number(portrait?.[1]));
   expect(Number(landscape?.[2])).toBeLessThan(Number(portrait?.[2]));
+  // The app fills the landscape screen (no desktop-style framed card on a phone).
+  expect((await phone.page.locator('.app').boundingBox())?.width).toBe(852);
   await shot(phone, 'terminal-landscape');
 });
 

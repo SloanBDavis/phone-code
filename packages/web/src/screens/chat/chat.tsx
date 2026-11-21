@@ -5,7 +5,7 @@ import '../../styles/chat.css';
 import { copyLastResponse, deleteSession, renameSession } from '../../lib/actions';
 import { agentLabel, agentShortLabel } from '../../lib/agents';
 import { client } from '../../lib/client';
-import { chatOf, host, sessionById } from '../../lib/state';
+import { chatOf, conn, host, sessionById } from '../../lib/state';
 import { copyText, tildify } from '../../lib/util';
 import { BackButton, TopBar } from '../../ui/chrome';
 import { GlassButton } from '../../ui/glass';
@@ -48,6 +48,8 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
   if (!s) return null;
   const agent = agentShortLabel(s, host.value);
   const loaded = chat.loaded.value;
+  // While the link is down, say so instead of a status that may be stale.
+  const link = conn.value.status === 'open';
   const empty = loaded && chat.ids.value.length === 0 && chat.pending.value.length === 0;
 
   const menu = (e: TargetedMouseEvent<HTMLButtonElement>): void =>
@@ -121,13 +123,16 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
         titleSlot={
           <GlassButton class="title-capsule" onClick={menu} testid="chat-title">
             <span class="title-main">{s.title}</span>
-            <span class={`title-sub st-${s.status}`}>
-              {s.status === 'running' ? (
+            <span class={`title-sub st-${link ? s.status : 'away'}`} data-link={conn.value.status}>
+              {!link ? (
+                <span class="dot warn pulse" />
+              ) : s.status === 'running' ? (
                 <span class="dot ok pulse" />
               ) : s.status === 'waiting' ? (
                 <span class="dot warn" />
               ) : null}
-              {STATUS_LABEL[s.status]} · {s.model ?? agent}
+              {link ? STATUS_LABEL[s.status] : conn.value.status === 'offline' ? 'Offline' : 'Reconnecting…'}{' '}
+              · {s.model ?? agent}
             </span>
           </GlassButton>
         }

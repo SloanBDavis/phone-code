@@ -106,7 +106,8 @@ textarea {
   contain: strict;
 }
 
-@media (min-width: 700px) {
+/* Desktop: show the app as a phone-sized card. Not for phones in landscape (short viewports). */
+@media (min-width: 700px) and (min-height: 600px) {
   body {
     background:
       radial-gradient(60% 50% at 20% 10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent),

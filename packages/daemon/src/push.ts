@@ -1,4 +1,4 @@
-import type { SessionInfo } from '@phone-code/protocol';
+import type { PushPayload, SessionInfo } from '@phone-code/protocol';
 import type * as WebPush from 'web-push';
 import type { DeviceStore, PushSubscriptionRecord } from './auth/devices.ts';
 import { log } from './log.ts';
@@ -34,13 +34,6 @@ async function loadOrCreateKeys(path: string): Promise<VapidKeys> {
   const keys = await generateVapidKeys();
   await writeFileAtomic(path, JSON.stringify(keys));
   return keys;
-}
-
-export interface PushPayload {
-  title: string;
-  body: string;
-  sessionId: string;
-  url: string;
 }
 
 /** Web Push delivery. Every failure is swallowed: push is best effort. */
@@ -81,7 +74,8 @@ export class PushService {
       title: reason === 'waiting' ? `${session.title} needs you` : `${session.title} is done`,
       body,
       sessionId: session.id,
-      url: `/#/s/${encodeURIComponent(session.id)}`,
+      // One notification per session: "needs you" and "is done" replace each other.
+      tag: session.id,
     };
     void this.sendAll(payload);
   }

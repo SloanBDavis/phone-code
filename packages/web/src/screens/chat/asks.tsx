@@ -155,14 +155,16 @@ export function PermissionCard({
               Allow
             </button>
           </div>
-          <button
-            type="button"
-            class="perm-feedback"
-            onClick={() => setDenying(true)}
-            data-testid="permission-deny-feedback"
-          >
-            Deny with feedback…
-          </button>
+          {p.canDenyWithMessage !== false && (
+            <button
+              type="button"
+              class="perm-feedback"
+              onClick={() => setDenying(true)}
+              data-testid="permission-deny-feedback"
+            >
+              Deny with feedback…
+            </button>
+          )}
         </>
       )}
     </div>

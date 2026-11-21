@@ -1,18 +1,19 @@
 # Fake agents for the e2e suite
 
-Two executable, dependency-free scripts that stand in for the real CLIs. The
+Executable, dependency-free scripts that stand in for the real CLIs. The
 adapters in `packages/daemon/src/agents/` cannot tell them from the real
 binaries. Point the daemon at them with:
 
 ```sh
 PHONECODE_CLAUDE_BIN=$PWD/e2e/fakes/fake-claude.mjs \
 PHONECODE_CODEX_BIN=$PWD/e2e/fakes/fake-codex.mjs \
+PHONECODE_GEMINI_BIN=$PWD/e2e/fakes/fake-acp.mjs \
 CLAUDE_CONFIG_DIR=/tmp/fake-claude-home \
 CODEX_HOME=/tmp/fake-codex-home \
 bun packages/daemon/src/cli.ts
 ```
 
-Both scripts start with `#!/usr/bin/env bun` and also run under node.
+All scripts start with `#!/usr/bin/env bun` and also run under node.
 `FAKE_SPEED=4` makes every delay 4x shorter.
 
 ## fake-claude.mjs
@@ -120,3 +121,63 @@ under `untrusted` and `on-request`. File edits are asked about under
 | anything else   | `You said: …`                                                                                                          |
 
 Every turn ends with `thread/tokenUsage/updated` and then `turn/completed`.
+
+## fake-acp.mjs
+
+It speaks the Agent Client Protocol (ACP v1): JSON-RPC 2.0 over stdio, one
+object per line, with `"jsonrpc":"2.0"`, so it stands in for any ACP agent
+(`gemini --acp`, `opencode acp`, …). Message shapes follow the stable v1 schema
+shipped in `@agentclientprotocol/sdk` 2.8.0 (`schema/v1/schema.json`). Modes are
+sent the way Gemini CLI 0.70.0 sends them (`modes` with `default`, `autoEdit`,
+`yolo`, `plan`; changed with `session/set_mode`, confirmed with a
+`current_mode_update`), and the model the way OpenCode 1.19.6 does (a
+`configOptions` entry with `category: "model"`, changed with
+`session/set_config_option`; `session/set_model` works too).
+
+Two ways to select it:
+
+- `PHONECODE_GEMINI_BIN=…/fake-acp.mjs` makes the built-in Gemini CLI preset
+  launch the fake (`fake-acp.mjs --acp`). Any preset works the same way with
+  `PHONECODE_<ID>_BIN`.
+- an entry in `$PHONECODE_HOME/agents.json`, read when the daemon starts:
+  `{"agents":[{"id":"my-agent","name":"My Agent","command":"/abs/path/fake-acp.mjs"}]}`.
+
+Implemented methods: `initialize` (capabilities `loadSession`,
+`sessionCapabilities.list/resume/close`, image and embedded-context prompts;
+auth methods `fake-login`, `fake-api-key` and a `terminal` one), `authenticate`,
+`session/new`, `session/load` (replays the stored history as `session/update`),
+`session/resume`, `session/list`, `session/close`, `session/set_mode`,
+`session/set_config_option`, `session/set_model`, `session/prompt` and the
+`session/cancel` notification. Sessions are stored as JSON in
+`$FAKE_ACP_HOME/sessions/` (default: a `fake-acp-home` folder in the temp dir).
+The fake calls back into the client: `session/request_permission` (options
+`allow_once`, `allow_always`, `reject_once`), `fs/read_text_file`,
+`fs/write_text_file` and the `terminal/*` methods, each only when the client
+advertised the capability. A prompt answers with `stopReason` `end_turn` or
+`cancelled` plus `usage`, followed by a `usage_update` with a cost in USD.
+
+"Always allow" lasts for the life of the process. Mode `yolo` never asks;
+`autoEdit` does not ask for edits.
+
+Environment: `FAKE_ACP_REQUIRE_AUTH=1` makes `session/new`, `load` and `resume`
+fail with `-32000` (auth required) until `authenticate` succeeds, which it does
+only for `fake-api-key` when `FAKE_ACP_API_KEY` is set (the adapter tries that
+method by itself when an `*_API_KEY` variable is present).
+
+| prompt contains | what happens                                                                                                                                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crash`         | streams a few words, writes to stderr, exits with code 3 in the middle of the turn                                                                                                                                  |
+| `hello`         | streams a short markdown answer word by word                                                                                                                                                                        |
+| `think`         | `agent_thought_chunk`s, then the answer                                                                                                                                                                             |
+| `run tests`     | an `execute` tool call (`npm test`) with a permission request; if allowed, the output and a markdown table, if rejected the tool fails and the agent acknowledges                                                   |
+| `failing`       | an `execute` tool call `ls ./does-not-exist` that fails with exit code 2, no permission needed                                                                                                                      |
+| `edit file`     | reads `notes.md` in cwd through `fs/read_text_file`, sends an `edit` tool call with `diff` content (new file, or `hello world` → `hello phone-code` plus a line), asks, then writes it through `fs/write_text_file` |
+| `read outside`  | asks the client to read `/etc/hostname` (the adapter refuses: outside the session folder)                                                                                                                           |
+| `terminal`      | asks, then runs `echo … && ls` through `terminal/create`, embeds the terminal in the tool call, waits for exit and releases it                                                                                      |
+| `todo` / `plan` | a `plan` update 4 times as 3 entries move from pending to in_progress to completed                                                                                                                                  |
+| `search`        | a `search` tool call, a `fetch` tool call and a `think` tool call                                                                                                                                                   |
+| `notice`        | a `notice` session update (only when the client advertised `session.notices`)                                                                                                                                       |
+| `long`          | streams 100 words over about 10 s (for testing cancel)                                                                                                                                                              |
+| anything else   | `You said: …`                                                                                                                                                                                                       |
+
+The first pattern that matches wins, in the order of the table.

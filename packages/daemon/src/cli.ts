@@ -15,7 +15,7 @@ import { parseArgs } from 'node:util';
 import { DeviceStore } from './auth/devices.ts';
 import { banner, bold, dim, pairingBlock, secureUrlHelp } from './banner.ts';
 import { DAEMON_VERSION, DEFAULT_PORT, envFlag, stateDir, statePaths } from './config.ts';
-import { ControlClient } from './control-client.ts';
+import { ControlClient, liveDaemonPid } from './control-client.ts';
 import { startDaemon, type DaemonOptions } from './daemon.ts';
 import { log } from './log.ts';
 import { isLoopbackHost, isLoopbackUrl, isSecureUrl } from './net/transport.ts';
@@ -97,6 +97,12 @@ async function revokeCommand(home: string, id: string | undefined): Promise<numb
   const client = await ControlClient.connect(home);
   let revoked: { id: string; name: string } | null | undefined;
   if (client === undefined) {
+    // Editing devices.json under a running daemon would be silently undone by it.
+    const pid = await liveDaemonPid(home);
+    if (pid !== undefined) {
+      process.stderr.write(`The daemon (pid ${pid}) is not answering yet; try again in a moment.\n`);
+      return 1;
+    }
     const store = await DeviceStore.load(statePaths(home).devices);
     revoked = store.revoke(id);
     await store.flush();

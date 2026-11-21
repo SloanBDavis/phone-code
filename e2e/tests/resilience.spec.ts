@@ -43,10 +43,12 @@ test('dropping the connection mid-stream loses and duplicates nothing', async ({
 test('a message sent while offline is delivered once on reconnect', async ({ phone }) => {
   await createSession(phone, 'claude');
   await phone.goOffline();
+  await expect(phone.testId('chat-title')).toContainText('Offline');
   await send(phone, 'hello from the tunnel');
   await expect(phone.testId('chat-item-pending')).toHaveAttribute('data-status', 'sending');
   await phone.goOnline();
   await waitTurn(phone, 1);
+  await expect(phone.testId('chat-title')).toContainText('Ready');
   await expect(phone.testId('chat-item-user')).toHaveCount(1);
   await expect(phone.testId('chat-item-pending')).toHaveCount(0);
 });

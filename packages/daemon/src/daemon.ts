@@ -84,6 +84,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   const home = opts.home ?? stateDir();
   const paths = statePaths(home);
   await mkdir(home, { recursive: true, mode: 0o700 });
+  const controlToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+  // Claim the state dir before reading devices.json: from here on an offline
+  // `phonecode revoke` sees a live daemon and refuses to edit the file under it.
+  const starting: ControlFile = { pid: process.pid, port: 0, token: controlToken };
+  await writeFileAtomic(paths.control, JSON.stringify(starting));
 
   const [devices, assets] = await Promise.all([DeviceStore.load(paths.devices), loadWebAssets()]);
   const push = await PushService.create(paths.vapid, devices);
@@ -102,7 +107,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   const pairing = new PairingCodes();
   const registry = new ConnectionRegistry();
   const client: ClientContext = { devices, manager, host, push, registry };
-  const controlToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
   const insecure = opts.insecure === true;
   const hostname = opts.hostname ?? (insecure ? '0.0.0.0' : '127.0.0.1');
   let publicUrl = '';
@@ -133,6 +137,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
         const removed = devices.revoke(id);
         if (removed === undefined) return undefined;
         registry.closeDevice(removed.id);
+        pairing.forgetDevice(removed.id);
         log.info(`revoked device "${removed.name}" (${removed.id})`);
         return {
           id: removed.id,

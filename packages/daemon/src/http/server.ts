@@ -122,16 +122,17 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     const token = bearer(req);
     const device = token === undefined ? undefined : opts.devices.authenticate(token);
     if (device === undefined) return json({ error: 'unauthorized' }, 401);
-    const res: HandoffResponse = opts.pairing.create('handoff', PAIR_CODE_TTL_MS);
+    const res: HandoffResponse = opts.pairing.create('handoff', PAIR_CODE_TTL_MS, device.id);
     return json(res);
   }
 
   /** The phone unpairs itself: forget its token so it stops working everywhere. */
-  function unpair(req: Request): Response {
+  async function unpair(req: Request): Promise<Response> {
     const token = bearer(req);
     const device = token === undefined ? undefined : opts.devices.authenticate(token);
     if (device === undefined) return json({ error: 'unauthorized' }, 401);
     opts.control.revoke(device.id);
+    await opts.devices.flush();
     return json({ ok: true });
   }
 
@@ -143,7 +144,10 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
       const body = await readJsonBody(req);
       const id = body?.['id'];
       if (typeof id !== 'string') return json({ error: 'bad request' }, 400);
-      return json({ revoked: opts.control.revoke(id) ?? null });
+      const revoked = opts.control.revoke(id) ?? null;
+      // Answer only once devices.json no longer has it: a crash must not bring it back.
+      if (revoked !== null) await opts.devices.flush();
+      return json({ revoked });
     }
     return json({ error: 'not found' }, 404);
   }

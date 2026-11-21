@@ -60,7 +60,7 @@ test('dark theme renders the main screens', async ({ newPhone }) => {
   const phone = await newPhone();
   await phone.page.emulateMedia({ colorScheme: 'dark' });
   await phone.page.goto('/?demo=1');
-  await expect(phone.testId('screen-sessions')).toBeVisible();
+  await expect(phone.testId('section-recent')).toBeVisible();
   await shot(phone, 'dark-sessions');
   await row(phone, 'demo-vite').click();
   await expect(phone.testId('chat-item-task').first()).toBeVisible();

@@ -13,11 +13,11 @@ interface WsResult {
   closeCode: number | undefined;
 }
 
-/** Opens /ws, sends `frames` in order, collects replies until closed or `untilType` arrives. */
+/** Opens /ws, sends `frames` in order, collects replies until closed or `done` says so. */
 function talk(
   daemon: Daemon,
   frames: Array<string | Uint8Array<ArrayBuffer>>,
-  untilType?: string,
+  done?: (messages: WsResult['messages']) => boolean,
 ): Promise<WsResult> {
   return new Promise((resolve) => {
     const ws = new WebSocket(`${daemon.url.replace('http', 'ws')}/ws`);
@@ -32,7 +32,7 @@ function talk(
     ws.addEventListener('message', (e) => {
       const msg = record(JSON.parse(String(e.data)));
       result.messages.push(msg);
-      if (untilType !== undefined && msg['t'] === untilType) {
+      if (done?.(result.messages) === true) {
         clearTimeout(timer);
         ws.close();
         resolve(result);
@@ -45,6 +45,15 @@ function talk(
     });
   });
 }
+
+const has =
+  (type: string) =>
+  (messages: WsResult['messages']): boolean =>
+    messages.some((m) => m['t'] === type);
+
+/** Ids of the rpc calls that were refused. */
+const answered = (m: WsResult['messages']): string[] =>
+  m.filter((x) => x['t'] === 'res' && x['ok'] === false).map((x) => String(x['id']));
 
 /** GET with a raw, un-normalized request path. */
 function rawGet(daemon: Daemon, path: string, headers: Record<string, string> = {}) {
@@ -73,7 +82,7 @@ test('the websocket requires a valid token', async ({ daemon }) => {
   const good = await talk(
     daemon,
     [JSON.stringify({ t: 'hello', v: 1, token: await daemon.pairToken() })],
-    'sessions',
+    has('sessions'),
   );
   expect(good.messages.map((m) => m['t'])).toEqual(['ready', 'sessions']);
 });
@@ -123,13 +132,12 @@ test('garbage frames do not crash the daemon', async ({ daemon }) => {
   const pre = await talk(daemon, garbage.slice(0, 8));
   expect(pre.closeCode).toBeDefined();
   // …and after.
-  const post = await talk(daemon, [hello, ...garbage], 'pong');
+  const post = await talk(daemon, [hello, ...garbage], (m) => has('pong')(m) && answered(m).length >= 5);
   expect(post.messages.some((m) => m['t'] === 'pong')).toBe(true);
-  const failed = post.messages.filter((m) => m['t'] === 'res' && m['ok'] === false).map((m) => m['id']);
-  expect(failed).toEqual(expect.arrayContaining(['r1', 'r2', 'r3', 'r4', 'r5']));
+  expect(answered(post.messages).toSorted()).toEqual(['r1', 'r2', 'r3', 'r4', 'r5']);
   expect(daemon.alive).toBe(true);
   // Still serving normally.
-  const again = await talk(daemon, [hello, JSON.stringify({ t: 'ping' })], 'pong');
+  const again = await talk(daemon, [hello, JSON.stringify({ t: 'ping' })], has('pong'));
   expect(again.messages.map((m) => m['t'])).toContain('pong');
   expect((await fetch(`${daemon.url}/api/health`)).status).toBe(200);
 });

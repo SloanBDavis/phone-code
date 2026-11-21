@@ -773,6 +773,7 @@ class AcpSession implements AgentSession {
       ...(view.detail ? { detail: view.detail } : {}),
       status: 'pending',
       canAllowAlways: options.some((o) => o.kind === 'allow_always'),
+      canDenyWithMessage: false,
     };
     this.pending.set(item.id, { rpcId, toolCallId, options, item });
     this.status.pending.add(item.id);
