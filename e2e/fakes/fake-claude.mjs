@@ -121,7 +121,13 @@ function startSubagent(agentId, toolUseId, description, prompt) {
     fs.mkdirSync(subagentDir, { recursive: true });
     fs.writeFileSync(
       path.join(subagentDir, `agent-${agentId}.meta.json`),
-      JSON.stringify({ agentType: 'general-purpose', isBuiltIn: true, description, toolUseId, spawnDepth: 1 }),
+      JSON.stringify({
+        agentType: 'general-purpose',
+        isBuiltIn: true,
+        description,
+        toolUseId,
+        spawnDepth: 1,
+      }),
     );
   } catch {
     // ignore
@@ -450,7 +456,8 @@ function makeTurn() {
           kind === 'text' ? { type: 'text', text: '' } : { type: 'thinking', thinking: '', signature: '' },
       });
       // display "omitted": the block arrives with a signature but no text.
-      const words = kind === 'thinking' && thinkingDisplay !== 'summarized' ? [] : (text.match(/\S+\s*|\s+/g) ?? []);
+      const words =
+        kind === 'thinking' && thinkingDisplay !== 'summarized' ? [] : (text.match(/\S+\s*|\s+/g) ?? []);
       let sent = '';
       try {
         for (const w of words) {

@@ -116,3 +116,34 @@ test('model and mode switching', async ({ phone }) => {
   await expect(phone.testId('chat-item-permission')).toHaveCount(0);
   await expect(phone.testId('composer-model')).toContainText(second);
 });
+
+test('an app-server that stops reading its input: an error, and the next message restarts it', async ({
+  phone,
+}) => {
+  await createSession(phone, 'codex');
+  await send(phone, 'close input');
+  await waitTurn(phone, 1);
+  // Long enough that the write fails (Bun reports EPIPE only for writes it cannot finish at once).
+  await send(phone, `are you there ${'z'.repeat(20_000)}`);
+  await expect(phone.testId('chat-item-notice').last()).toContainText('stopped reading its input');
+  await waitTurn(phone, 2, 'error');
+  await expect(phone.testId('chat-title')).toContainText('Error');
+  await send(phone, 'hello, are you back?');
+  await waitTurn(phone, 3);
+  await expect(phone.testId('chat-title')).toContainText('Ready');
+});
+
+test('stop declines an approval asked after the turn ended', async ({ phone }) => {
+  await createSession(phone, 'codex');
+  await send(phone, 'late ask');
+  await waitTurn(phone, 1);
+  const perm = phone.testId('chat-item-permission').last();
+  await expect(perm).toHaveAttribute('data-status', 'pending');
+  await expect(perm).toContainText('git fetch');
+  await phone.testId('composer-stop').click();
+  await expect(perm).toHaveAttribute('data-status', 'cancelled');
+  await expect(phone.testId('chat-title')).toContainText('Ready');
+  await send(phone, 'background decision?');
+  await waitTurn(phone, 2);
+  await expect(lastText(phone)).toContainText('Background request: decline');
+});

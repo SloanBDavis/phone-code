@@ -94,6 +94,7 @@ export function spawnAgent(
     const grace = new Promise<void>((resolve) => setTimeout(resolve, INPUT_LOST_GRACE_MS));
     void Promise.race([exited, grace]).then(() => {
       if (!exitInfo) opts.onInputLost?.();
+      return undefined;
     });
   };
   // A dead pipe must not crash the daemon.

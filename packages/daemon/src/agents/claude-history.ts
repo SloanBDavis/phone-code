@@ -309,7 +309,9 @@ async function replaySubagents(file: string, chain: Rec[], mapper: ClaudeMapper)
   const agents = await mapPool(ids, 8, async (id) => {
     let toolUseId: string | undefined;
     try {
-      toolUseId = str(rec(JSON.parse(await readFile(path.join(dir, `agent-${id}.meta.json`), 'utf8'))).toolUseId);
+      toolUseId = str(
+        rec(JSON.parse(await readFile(path.join(dir, `agent-${id}.meta.json`), 'utf8'))).toolUseId,
+      );
     } catch {
       // no meta file: fall back to the agentId in the starting call's result
     }
@@ -324,9 +326,11 @@ async function replaySubagents(file: string, chain: Rec[], mapper: ClaudeMapper)
   const byResult = new Map<string, string>();
   agentToolIds(chain, byResult);
   for (const a of loaded) agentToolIds(a.entries, byResult);
-  let left = loaded
-    .map((a) => ({ ...a, parent: a.toolUseId ?? byResult.get(a.id) }))
-    .filter((a): a is typeof a & { parent: string } => a.parent !== undefined);
+  let left: Array<{ parent: string; entries: Rec[] }> = [];
+  for (const a of loaded) {
+    const parent = a.toolUseId ?? byResult.get(a.id);
+    if (parent !== undefined) left.push({ parent, entries: a.entries });
+  }
   // Parents first: a nested agent's starting call is in its parent agent's transcript.
   for (;;) {
     const ready = left.filter((a) => mapper.tools.has(a.parent));

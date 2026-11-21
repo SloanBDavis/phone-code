@@ -244,7 +244,9 @@ function claudeTranscript(home: string): string {
   const root = join(home, '.claude', 'projects');
   let out = '';
   for (const dir of readdirSync(root)) {
-    for (const f of readdirSync(join(root, dir))) out += readFileSync(join(root, dir, f), 'utf8');
+    for (const f of readdirSync(join(root, dir))) {
+      if (f.endsWith('.jsonl')) out += readFileSync(join(root, dir, f), 'utf8');
+    }
   }
   return out;
 }

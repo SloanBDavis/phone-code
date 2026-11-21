@@ -6,7 +6,8 @@ import { REPO } from '../lib/daemon.ts';
 import { back, createSession, lastText, row, send, shot, waitTurn } from '../lib/ui.ts';
 
 const FAKE = join(REPO, 'e2e/fakes/fake-acp.mjs');
-test.use({ daemonOptions: { env: { PHONECODE_GEMINI_BIN: FAKE } } });
+// The Antigravity preset runs the same fake, for its preset-specific rules.
+test.use({ daemonOptions: { env: { PHONECODE_GEMINI_BIN: FAKE, PHONECODE_ANTIGRAVITY_BIN: FAKE } } });
 
 test('streams an answer from Gemini CLI', async ({ phone }) => {
   await phone.testId('new-session').click();
@@ -90,6 +91,82 @@ test('agent terminal, plan, interrupt and crash recovery', async ({ phone }) => 
   await send(phone, 'hello, are you back?');
   await waitTurn(phone, 5);
   await expect(phone.testId('chat-title')).toContainText('Ready');
+});
+
+test('an agent that stops reading its input: an error, and the next message restarts it', async ({
+  phone,
+}) => {
+  await createSession(phone, 'gemini');
+  await send(phone, 'close input');
+  await waitTurn(phone, 1);
+  // Long enough that the write fails (Bun reports EPIPE only for writes it cannot finish at once).
+  await send(phone, `are you there ${'z'.repeat(20_000)}`);
+  await expect(phone.testId('chat-item-notice').last()).toContainText('stopped reading its input');
+  await waitTurn(phone, 2, 'error');
+  await expect(phone.testId('chat-title')).toContainText('Error');
+  await send(phone, 'hello, are you back?');
+  await waitTurn(phone, 3);
+  await expect(phone.testId('chat-title')).toContainText('Ready');
+});
+
+test('stop cancels a permission asked after the prompt ended', async ({ phone }) => {
+  await createSession(phone, 'gemini');
+  await send(phone, 'late ask');
+  await waitTurn(phone, 1);
+  const perm = phone.testId('chat-item-permission').last();
+  await expect(perm).toHaveAttribute('data-status', 'pending');
+  await phone.testId('composer-stop').click();
+  await expect(perm).toHaveAttribute('data-status', 'cancelled');
+  await expect(phone.testId('chat-title')).toContainText('Ready');
+  await send(phone, 'background decision?');
+  await waitTurn(phone, 2);
+  await expect(lastText(phone)).toContainText('Background request: cancelled');
+});
+
+test('question form: single choice, multiple choice and free text reach the agent', async ({ phone }) => {
+  await createSession(phone, 'gemini');
+  await send(phone, 'ask me');
+  const q = phone.testId('chat-item-question');
+  await expect(q).toHaveAttribute('data-status', 'pending');
+  const blocks = q.locator('fieldset');
+  await expect(blocks).toHaveCount(3); // the `_other` fields are folded into their questions
+  await expect(blocks.nth(0)).toContainText('Which color?');
+  await blocks.nth(0).getByTestId('question-option').filter({ hasText: 'Red' }).click();
+  await blocks.nth(1).getByTestId('question-option').filter({ hasText: 'iOS' }).click();
+  await blocks.nth(1).getByTestId('question-option').filter({ hasText: 'Web' }).click();
+  await blocks.nth(2).getByTestId('question-other').click();
+  await blocks.nth(2).getByTestId('question-other-input').fill('GPL-3.0');
+  // The card stands for the agent's ask_question tool call: no separate tool row.
+  await expect(phone.testId('chat-item-tool').filter({ hasText: 'ask_question' })).toHaveCount(0);
+  await shot(phone, 'acp-question');
+  await q.getByTestId('question-submit').click();
+  await expect(q).toHaveAttribute('data-status', 'answered');
+  await waitTurn(phone, 1);
+  await expect(lastText(phone)).toContainText('Received: {"q1":"2","q2":["ios","web"],"q3_other":"GPL-3.0"}');
+  await expect(phone.testId('chat-item-tool').filter({ hasText: 'ask_question' })).toHaveCount(0);
+});
+
+test('Antigravity: an executor error sent as a reply is an error, for that preset only', async ({
+  phone,
+}) => {
+  await createSession(phone, 'antigravity');
+  await send(phone, 'model error');
+  await waitTurn(phone, 1, 'error');
+  await expect(phone.testId('chat-item-notice').last()).toContainText(
+    'agent executor error: model unavailable (RESOURCE_EXHAUSTED)',
+  );
+  await expect(phone.testId('chat-item-text')).toHaveCount(0);
+  await send(phone, 'hello');
+  await waitTurn(phone, 2);
+  await expect(lastText(phone)).toContainText('fake ACP agent');
+  await back(phone);
+
+  // The same words from another agent are just its answer.
+  await createSession(phone, 'gemini');
+  await send(phone, 'model error');
+  await waitTurn(phone, 1);
+  await expect(lastText(phone)).toContainText('agent executor error');
+  await expect(phone.testId('chat-item-notice')).toHaveCount(0);
 });
 
 test('resumes a past Gemini session from history', async ({ phone, daemon }) => {

@@ -211,7 +211,10 @@ class ClaudeSession implements AgentSession {
   /** The process runs but takes no more input: drop it like a crash, so the next message starts a new one. */
   private onInputLost(proc: SpawnedAgent): void {
     if (this.proc !== proc || this.disposed) return;
-    this.lost(proc, 'Claude Code stopped reading its input, so phone-code stopped it. Send your message again to restart it.');
+    this.lost(
+      proc,
+      'Claude Code stopped reading its input, so phone-code stopped it. Send your message again to restart it.',
+    );
     void proc.kill();
   }
 
@@ -645,7 +648,7 @@ class ClaudeSession implements AgentSession {
 
   /** Cancel pending prompts and tell the CLI, which (outside a turn we interrupt) still waits for an answer. */
   private denyAllPending(): void {
-    for (const p of [...this.pending.values()]) {
+    for (const p of this.pending.values()) {
       this.settle(p.item.id, 'cancelled');
       if (p.toolUseId) this.mapper.denied.add(p.toolUseId);
       this.respond(p.requestId, {

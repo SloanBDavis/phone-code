@@ -403,7 +403,11 @@ async function askMe(c) {
             { const: '2', title: 'Red' },
           ],
         },
-        q1_other: { type: 'string', title: 'Other', description: 'Optional free-form answer to: Which color?' },
+        q1_other: {
+          type: 'string',
+          title: 'Other',
+          description: 'Optional free-form answer to: Which color?',
+        },
         q2: {
           type: 'array',
           title: 'Which platforms?',
@@ -423,7 +427,11 @@ async function askMe(c) {
             { const: 'apache', title: 'Apache-2.0' },
           ],
         },
-        q3_other: { type: 'string', title: 'Other', description: 'Optional free-form answer to: Which license?' },
+        q3_other: {
+          type: 'string',
+          title: 'Other',
+          description: 'Optional free-form answer to: Which license?',
+        },
       },
     },
   });

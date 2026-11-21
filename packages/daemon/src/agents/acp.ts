@@ -630,7 +630,8 @@ class AcpSession implements AgentSession {
 
   private appendText(kind: 'text' | 'thinking', delta: string, messageId: string | undefined): void {
     if (!delta) return;
-    const same = (a: string | undefined): boolean => a === undefined || messageId === undefined || a === messageId;
+    const same = (a: string | undefined): boolean =>
+      a === undefined || messageId === undefined || a === messageId;
     if (this.held) {
       if (kind === 'text' && same(this.held.messageId)) {
         this.held.text += delta;
@@ -643,7 +644,13 @@ class AcpSession implements AgentSession {
     if (err?.last && this.text === undefined) {
       if (kind === 'text' && same(err.messageId)) {
         err.text += delta;
-        this.upsertItem({ kind: 'notice', id: err.id, ts: Date.now(), level: 'error', text: err.text.trim() });
+        this.upsertItem({
+          kind: 'notice',
+          id: err.id,
+          ts: Date.now(),
+          level: 'error',
+          text: err.text.trim(),
+        });
         return;
       }
       err.last = false;

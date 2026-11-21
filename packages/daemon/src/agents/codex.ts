@@ -277,7 +277,10 @@ class CodexSession implements AgentSession {
   /** The app-server runs but takes no more input: drop it like a crash, so the next message starts a new one. */
   private onInputLost(proc: SpawnedAgent): void {
     if (this.proc !== proc || this.disposed) return;
-    this.lost(proc, 'Codex stopped reading its input, so phone-code stopped it. Send your message again to restart it.');
+    this.lost(
+      proc,
+      'Codex stopped reading its input, so phone-code stopped it. Send your message again to restart it.',
+    );
     void proc.kill();
   }
 
@@ -742,7 +745,7 @@ class CodexSession implements AgentSession {
 
   /** Answer every pending request with a refusal (outside a turn, nobody else resolves them). */
   private declineAllPending(): void {
-    for (const p of [...this.pending.values()]) {
+    for (const p of this.pending.values()) {
       if (p.item.kind === 'permission') {
         this.resolvePermission(p.item.id, 'deny');
         this.events.upsert({ ...p.item, status: 'cancelled' });
@@ -866,7 +869,13 @@ class CodexSession implements AgentSession {
   /** A message that never started a turn: say why and end it as an error (the core shows it running). */
   private failTurn(text: string): void {
     this.notice('error', text);
-    this.events.upsert({ kind: 'turn', id: `turn:${randomUUID()}`, ts: Date.now(), outcome: 'error', error: text });
+    this.events.upsert({
+      kind: 'turn',
+      id: `turn:${randomUUID()}`,
+      ts: Date.now(),
+      outcome: 'error',
+      error: text,
+    });
     this.status.turnActive = false;
     this.status.emit(true);
   }
