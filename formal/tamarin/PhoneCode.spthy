@@ -60,13 +60,13 @@ begin
  *    and is not modelled as a protocol step.
  *  - One daemon epoch; crashes, persistence and in-flight rpcs are the TLA+
  *    model's job.
- *  - The device store is a set of persistent facts !Dev(id, token); a device
- *    removed by a revocation is modelled by the live_* restrictions: a lookup
- *    (DeviceStore.authenticate, or redeeming a handoff code whose issuer was
- *    forgotten) at time i succeeds only if the device, and with the cascade
- *    every ancestor of it, was not revoked before i. A device paired through
- *    a handoff code of P gets the id <~n, P>, so "A is an ancestor of L" is
- *    the subterm relation A << L.
+ *  - The device store is a set of persistent facts !Dev(id, lineage, token).
+ *    A device removed by a revocation is modelled by the live_*
+ *    restrictions: a lookup (DeviceStore.authenticate, or redeeming a handoff
+ *    code whose issuer was forgotten) at time i succeeds only if the device,
+ *    and with the cascade every ancestor of it, was not revoked before i. A
+ *    device paired through a handoff code of P has the lineage <id, lineage
+ *    of P>, so "A is an ancestor of L" is the subterm relation A << L.
  */
 
 builtins: hashing
@@ -92,7 +92,7 @@ rule Code_Expire:
   [ PairCode(c) ] --[ Expired(c) ]-> [ ]
 
 rule Handoff_Expire:
-  [ HandoffCode(h, P) ] --[ Expired(h) ]-> [ ]
+  [ HandoffCode(h, P, plin) ] --[ Expired(h) ]-> [ ]
 
 // ------------------------------------------------------------ channels
 // Req(ch, s, m): request m on connection s from a client of kind ch.
@@ -191,46 +191,51 @@ rule Compromise_Token:
 // Host check (hostAllowed) and Origin check (originAllowed) are restrictions
 // on ApiReq / WsReq below.
 
+// The store holds !Dev(id, lin, token): `id` is the device id the client sees
+// (a fresh name), `lin` its lineage: `id` for a device paired with a pairing
+// code, <id, lin of P> for one paired with a handoff code of P
+// (DeviceRecord.parent). Only the daemon handles lineages; they never go on
+// the wire, so the attacker never gets to take them apart.
+
 // pair() -> PairingCodes.redeem (match, single-use delete) -> DeviceStore.add.
 rule D_Pair:
-  [ Req(ch, s, <'pair', c>), PairCode(c), Fr(~L), Fr(~t) ]
-  --[ ApiReq(ch), PairedVia(ch, ~L, c), Paired(~L, c), DeviceToken(~L, ~t) ]->
-  [ Res(ch, s, <'paired', ~L, ~t>), !Dev(~L, ~t) ]
+  [ Req(ch, s, <'pair', c>), PairCode(c), Fr(~id), Fr(~t) ]
+  --[ ApiReq(ch), PairedVia(ch, ~id, c), Paired(~id, c), DevLin(~id, ~id), DeviceToken(~id, ~t) ]->
+  [ Res(ch, s, <'paired', ~id, ~t>), !Dev(~id, ~id, ~t) ]
 
-// Same endpoint with a handoff code: the new device records its parent
-// (DeviceRecord.parent), so its id is <~n, P>. PairingCodes.forgetDevice
-// dropped the code if P (or, with the cascade, an ancestor) was revoked:
-// IssuerLive(P) is checked by the live_* restrictions.
+// Same endpoint with a handoff code of P. PairingCodes.forgetDevice dropped
+// the code when P (or, with the cascade, an ancestor) was revoked: the
+// Live(lin of P) check below is that lookup.
 #ifdef NO_HANDOFF_FORGET
 rule D_PairHandoff:
-  [ Req(ch, s, <'pair', h>), HandoffCode(h, P), Fr(~n), Fr(~t) ]
-  --[ ApiReq(ch), PairedVia(ch, <~n, P>, h), Paired(<~n, P>, h), Child(<~n, P>, P, h),
-      DeviceToken(<~n, P>, ~t) ]->
-  [ Res(ch, s, <'paired', <~n, P>, ~t>), !Dev(<~n, P>, ~t) ]
+  [ Req(ch, s, <'pair', h>), HandoffCode(h, P, plin), Fr(~id), Fr(~t) ]
+  --[ ApiReq(ch), PairedVia(ch, ~id, h), Paired(~id, h), Child(~id, P, h),
+      DevLin(~id, <~id, plin>), DeviceToken(<~id, plin>, ~t) ]->
+  [ Res(ch, s, <'paired', ~id, ~t>), !Dev(~id, <~id, plin>, ~t) ]
 #else
 rule D_PairHandoff:
-  [ Req(ch, s, <'pair', h>), HandoffCode(h, P), Fr(~n), Fr(~t) ]
-  --[ ApiReq(ch), PairedVia(ch, <~n, P>, h), Paired(<~n, P>, h), Child(<~n, P>, P, h),
-      DeviceToken(<~n, P>, ~t), Live(P) ]->
-  [ Res(ch, s, <'paired', <~n, P>, ~t>), !Dev(<~n, P>, ~t) ]
+  [ Req(ch, s, <'pair', h>), HandoffCode(h, P, plin), Fr(~id), Fr(~t) ]
+  --[ ApiReq(ch), PairedVia(ch, ~id, h), Paired(~id, h), Child(~id, P, h),
+      DevLin(~id, <~id, plin>), DeviceToken(<~id, plin>, ~t), Live(plin) ]->
+  [ Res(ch, s, <'paired', ~id, ~t>), !Dev(~id, <~id, plin>, ~t) ]
 #endif
 
 // ws-client.ts Connection.hello -> DeviceStore.authenticate.
 rule D_Hello:
-  [ Req(ch, s, <'hello', t>), !Dev(L, t) ]
-  --[ WsReq(ch), Accept(ch, s, L), Live(L) ]->
+  [ Req(ch, s, <'hello', t>), !Dev(id, lin, t) ]
+  --[ WsReq(ch), Accept(ch, s, id), AcceptLin(s, lin), Live(lin) ]->
   [ Res(ch, s, 'ready') ]
 
 // handoff(): authenticate the Bearer token, PairingCodes.create('handoff', issuer).
 rule D_Handoff:
-  [ Req(ch, s, <'handoff', t>), !Dev(L, t), Fr(~h) ]
-  --[ ApiReq(ch), Live(L), HandoffMinted(~h, L) ]->
-  [ HandoffCode(~h, L), Res(ch, s, <'handoff_code', ~h>) ]
+  [ Req(ch, s, <'handoff', t>), !Dev(id, lin, t), Fr(~h) ]
+  --[ ApiReq(ch), Live(lin), HandoffMinted(~h, id) ]->
+  [ HandoffCode(~h, id, lin), Res(ch, s, <'handoff_code', ~h>) ]
 
 // unpair(): authenticate the Bearer token -> control.revoke(device.id).
 rule D_Unpair:
-  [ Req(ch, s, <'unpair', t>), !Dev(L, t) ]
-  --[ ApiReq(ch), Live(L), Revoked(L) ]->
+  [ Req(ch, s, <'unpair', t>), !Dev(id, lin, t) ]
+  --[ ApiReq(ch), Live(lin), Revoked(lin), RevokedId(id) ]->
   [ Res(ch, s, 'ok') ]
 
 // /_control/pair: controlAllowed (loopback, no proxy headers, secret) -> newPairCode.
@@ -239,10 +244,10 @@ rule D_CtlPair:
   --[ CtlReq(ch), Issued(~c) ]->
   [ PairCode(~c), !Banner(~c), Res(ch, s, 'ok') ]
 
-// /_control/revoke -> control.revoke.
+// /_control/revoke -> control.revoke (device ids are not secret).
 rule D_CtlRevoke:
-  [ Req(ch, s, <'ctl_revoke', ct, L>), !CtlSecret(ct), !Dev(L, t) ]
-  --[ CtlReq(ch), Revoked(L) ]->
+  [ Req(ch, s, <'ctl_revoke', ct, id>), !CtlSecret(ct), !Dev(id, lin, t) ]
+  --[ CtlReq(ch), Revoked(lin), RevokedId(id) ]->
   [ Res(ch, s, 'ok') ]
 
 // The owner runs `phonecode pair` / `phonecode revoke <id>` (cli.ts,
@@ -251,7 +256,7 @@ rule Owner_CliPair:
   [ !CtlFile(ct), Fr(~s) ] --[ OwnerPair() ]-> [ Req('loc', ~s, <'ctl_pair', ct>) ]
 
 rule Owner_CliRevoke:
-  [ !CtlFile(ct), !Dev(L, t), Fr(~s) ]
+  [ !CtlFile(ct), !Dev(L, lin, t), Fr(~s) ]
   --[ OwnerRevoke(L) ]->
   [ Req('loc', ~s, <'ctl_revoke', ct, L>) ]
 
@@ -309,12 +314,12 @@ lemma exec_pair_hello:
 
 lemma exec_handoff_child:
   exists-trace
-  "Ex ch s P n h t #i #j #k #l. Child(<n, P>, P, h)@i & PhonePaired(<n, P>, t, h)@j
-     & PhoneHello(s, <n, P>)@k & Accept(ch, s, <n, P>)@l"
+  "Ex ch s C P h t #i #j #k #l. Child(C, P, h)@i & PhonePaired(C, t, h)@j
+     & PhoneHello(s, C)@k & Accept(ch, s, C)@l"
 
 lemma exec_owner_revoke:
   exists-trace
-  "Ex L t c #i #j #k. PhonePaired(L, t, c)@i & OwnerRevoke(L)@j & Revoked(L)@k"
+  "Ex L t c #i #j #k. PhonePaired(L, t, c)@i & OwnerRevoke(L)@j & RevokedId(L)@k"
 
 // ---- secrecy
 
@@ -381,38 +386,42 @@ lemma no_pair_after_expiry:
 lemma handoff_bound_to_minter:
   "All C P h #i. Child(C, P, h)@i ==>
      Ex #j. HandoffMinted(h, P)@j & #j < #i
-       & ((Ex s #k. PhoneHandoffReq(s, P)@k & #k < #j) | (Ex A #k. Compromised(A)@k & (A = P | A << P)))"
+       & ((Ex s #k. PhoneHandoffReq(s, P)@k & #k < #j)
+          | (Ex A alin plin #k #m #n. Compromised(A)@k & DevLin(A, alin)@m & DevLin(P, plin)@n
+               & (alin = plin | alin << plin)))"
 
 // A handoff code minted before its device was revoked no longer pairs.
 lemma no_handoff_after_revoke:
-  "All C P h #i #j. Child(C, P, h)@i & Revoked(P)@j ==> #i < #j"
+  "All C P h #i #j. Child(C, P, h)@i & RevokedId(P)@j ==> #i < #j"
 
 // ---- revocation
 
 lemma revoked_no_session:
-  "All ch s L #i #j. Accept(ch, s, L)@i & Revoked(L)@j ==> #i < #j"
+  "All ch s L #i #j. Accept(ch, s, L)@i & RevokedId(L)@j ==> #i < #j"
 
 // Revoking a device also ends every device paired through it (transitively).
 lemma revoke_cascades:
-  "All ch s L A #i #j. Accept(ch, s, L)@i & Revoked(A)@j & A << L ==> #i < #j"
+  "All s lin A #i #j. AcceptLin(s, lin)@i & Revoked(A)@j & A << lin ==> #i < #j"
 
-// Only the owner (CLI) or a holder of the device's own token revokes it.
+// Only the owner (CLI) or a holder of the device's own token (or of an
+// ancestor's, which could mint the handoff code it was paired with) revokes it.
 lemma revoke_only_owner_or_holder:
-  "All L #i. Revoked(L)@i ==>
+  "All L #i. RevokedId(L)@i ==>
        (Ex #j. OwnerRevoke(L)@j) | (Ex #j. PhoneUnpair(L)@j)
-     | (Ex A #j. Compromised(A)@j & (A = L | A << L))"
+     | (Ex A alin lin #j #m #n. Compromised(A)@j & DevLin(A, alin)@m & DevLin(L, lin)@n
+          & (alin = lin | alin << lin))"
 
 #ifdef COMPROMISE
 // Helper for the next lemma: the attacker knows a device token only if it
 // stole that device's token or the token of an ancestor.
 lemma att_tokens_from_compromise [use_induction, reuse]:
-  "All L t #i #j. DeviceToken(L, t)@i & K(t)@j ==>
-     Ex A #k. Compromised(A)@k & (A = L | A << L)"
+  "All lin t #i #j. DeviceToken(lin, t)@i & K(t)@j ==>
+     Ex A alin #k #m. Compromised(A)@k & DevLin(A, alin)@m & (alin = lin | alin << lin)"
 
 // Stolen token: once the owner revokes the stolen device, the attacker has no
 // authorized socket left, through it or through anything it paired.
 lemma revoke_evicts_thief:
-  "All L #c #r. Compromised(L)@c & Revoked(L)@r ==>
+  "All L #c #r. Compromised(L)@c & RevokedId(L)@r ==>
      not (Ex s C #i. Accept('att', s, C)@i & #r < #i)"
 #endif
 
