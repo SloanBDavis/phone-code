@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Model-checks every TLA+ spec in formal/ with TLC.
 #
-#   formal/check.sh              all default configs (about 6 minutes on 4 cores)
+#   formal/check.sh              all default configs (about 3.5 minutes on 4 cores)
 #   formal/check.sh --extended   also the large ChatSync safety run (long)
 #   formal/check.sh NAME.cfg ... only these configs
 #
