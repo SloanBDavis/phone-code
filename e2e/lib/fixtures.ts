@@ -56,13 +56,13 @@ export class Phone {
     return this.page.getByTestId(id);
   }
 
-  /** Pair through the QR link, continue past the iOS install coach and land on the sessions list. */
+  /** Pair through the QR link, continue past the iOS install coach and land in a new chat. */
   async pair(): Promise<void> {
     const { pairUrl } = await this.daemon.newPairCode();
     await this.page.goto(pairUrl);
     await expect(this.testId('pair-install')).toBeVisible();
     await this.testId('pair-continue').click();
-    await expect(this.testId('screen-sessions')).toBeVisible();
+    await expect(this.testId('screen-chat')).toHaveAttribute('data-draft', 'true');
     await expect(this.testId('conn-state')).toHaveAttribute('data-status', 'open');
   }
 
@@ -95,7 +95,7 @@ interface Fixtures {
   /** Extra daemon environment for this file (`test.use({ daemonOptions: … })`). */
   daemonOptions: DaemonOptions;
   daemon: Daemon;
-  /** A paired phone on the sessions screen. */
+  /** A paired phone, in a new chat. */
   phone: Phone;
   /** Opens another, unpaired phone (fresh context, empty storage). */
   newPhone: () => Promise<Phone>;

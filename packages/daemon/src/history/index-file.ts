@@ -19,6 +19,8 @@ import { mapPool } from '../agents/shared/common.ts';
 const VERSION = 1;
 /** Files read at once while building. Low on purpose: indexing must not starve the daemon. */
 const READ_POOL = 4;
+/** Debounce for writing the index file. Lost on a crash, which only means re-reading those files. */
+const SAVE_MS = 5000;
 
 /** What an extractor learns from one conversation file. */
 export interface Conversation {
@@ -78,6 +80,7 @@ export class ConversationIndex {
   private readonly lc = new Map<string, string>();
   private loaded: Promise<void> | undefined;
   private running: Promise<RefreshStats> | undefined;
+  private saveTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly file: string;
   lastRefresh: RefreshStats | undefined;
 
@@ -144,11 +147,22 @@ export class ConversationIndex {
       this.rows.set(f.path, { ...f, ...(conv === undefined ? {} : { conv }) });
       this.lc.delete(f.path);
     });
-    if (changed) await this.save();
+    // A live chat changes its file on every turn: write the index at most every SAVE_MS.
+    if (changed) this.saveSoon();
     const stats = { files: files.length, read: stale.length, ms: Math.round(performance.now() - started) };
     this.lastRefresh = stats;
-    if (stale.length > 0) log.debug(`${this.name} index: ${stale.length}/${files.length} files read in ${stats.ms} ms`);
+    if (stale.length > 0)
+      log.debug(`${this.name} index: ${stale.length}/${files.length} files read in ${stats.ms} ms`);
     return stats;
+  }
+
+  private saveSoon(): void {
+    if (this.saveTimer !== undefined) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = undefined;
+      void this.save();
+    }, SAVE_MS);
+    this.saveTimer.unref();
   }
 
   private async save(): Promise<void> {
@@ -175,42 +189,54 @@ export class ConversationIndex {
   /** Every indexed conversation with its file's mtime. */
   conversations(): Array<Conversation & { mtime: number; path: string }> {
     const out: Array<Conversation & { mtime: number; path: string }> = [];
-    for (const row of this.rows.values()) if (row.conv !== undefined) out.push({ ...row.conv, mtime: row.mtime, path: row.path });
+    for (const row of this.rows.values())
+      if (row.conv !== undefined) out.push({ ...row.conv, mtime: row.mtime, path: row.path });
     return out;
   }
 }
 
 /**
  * Stream a file's lines to `visit` without holding it in memory. Lines longer
- * than `maxLine` (base64 images, huge tool output) are skipped unparsed.
+ * than `maxLine` (base64 images, huge tool output) are skipped unparsed. The
+ * loop yields to the event loop every YIELD_BYTES, so even a very large file
+ * never blocks the daemon for long.
  */
 export async function eachJsonLine(
   path: string,
   visit: (entry: Record<string, unknown>, raw: string) => void,
   maxLine = 1_000_000,
 ): Promise<void> {
+  const YIELD_BYTES = 512 * 1024;
   const decoder = new TextDecoder();
   let carry = '';
   let skipping = false;
+  let sinceYield = 0;
   const handle = (line: string): void => {
     if (line === '' || line.length > maxLine) return;
     const v = parseJson(line);
     if (isRecord(v)) visit(v, line);
   };
   for await (const chunk of Bun.file(path).stream()) {
-    let text = carry + decoder.decode(chunk, { stream: true });
+    const text = carry + decoder.decode(chunk, { stream: true });
+    let start = 0;
     let nl = text.indexOf('\n');
     while (nl >= 0) {
-      if (!skipping) handle(text.slice(0, nl));
+      if (!skipping) handle(text.slice(start, nl));
       skipping = false;
-      text = text.slice(nl + 1);
-      nl = text.indexOf('\n');
+      sinceYield += nl - start;
+      start = nl + 1;
+      if (sinceYield > YIELD_BYTES) {
+        sinceYield = 0;
+        // oxlint-disable-next-line no-await-in-loop -- yielding to the event loop is the point
+        await new Promise((r) => setImmediate(r));
+      }
+      nl = text.indexOf('\n', start);
     }
-    if (text.length > maxLine) {
+    carry = text.slice(start);
+    if (carry.length > maxLine) {
       skipping = true; // drop the rest of this over-long line
-      text = '';
+      carry = '';
     }
-    carry = text;
   }
   if (!skipping) handle(carry + decoder.decode());
 }

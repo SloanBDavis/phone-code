@@ -1,39 +1,29 @@
 import type { JSX } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { mode, unpair } from './lib/boot';
-import type { Route } from './lib/nav';
+import { openNew, route } from './lib/nav';
 import { conn, sessionById, sessionsLoaded } from './lib/state';
 import { ChatScreen } from './screens/chat/chat';
 import { PairScreen } from './screens/pair';
-import { SessionsScreen } from './screens/sessions';
-import { SettingsScreen } from './screens/settings';
+import { LoadingScreen } from './screens/placeholder';
+import { Sidebar } from './screens/sidebar';
+import { Shell } from './ui/drawer';
 import { lazy } from './ui/lazy';
 import { OverlayHost } from './ui/overlay';
-import { Stack } from './ui/stack';
-import { MissingScreen, LoadingScreen } from './screens/placeholder';
 
 export const TerminalScreen = lazy(() => import('./screens/terminal'), LoadingScreen);
 
-function renderRoute(route: Route, top: boolean): JSX.Element {
-  switch (route.name) {
-    case 'home':
-      return <SessionsScreen top={top} />;
-    case 'settings':
-      return <SettingsScreen />;
-    case 'session': {
-      const s = sessionById(route.id);
-      if (!s) return sessionsLoaded.value ? <MissingScreen /> : <LoadingScreen />;
-      return s.kind === 'terminal' ? (
-        <TerminalScreen sessionId={s.id} top={top} />
-      ) : (
-        <ChatScreen sessionId={s.id} top={top} />
-      );
-    }
-    default: {
-      const never: never = route;
-      return never;
-    }
-  }
+function Main(): JSX.Element {
+  const r = route.value;
+  const s = r.name === 'session' ? sessionById(r.id) : undefined;
+  const gone = r.name === 'session' && !s && sessionsLoaded.value;
+  // A chat that is no longer on the host (deleted elsewhere): back to a new chat.
+  useEffect(() => {
+    if (gone) openNew();
+  }, [gone]);
+  if (r.name === 'session' && !s) return <LoadingScreen />;
+  if (s?.kind === 'terminal') return <TerminalScreen sessionId={s.id} top />;
+  return <ChatScreen session={s} />;
 }
 
 export function App(): JSX.Element {
@@ -45,7 +35,13 @@ export function App(): JSX.Element {
 
   return (
     <>
-      {mode.value === 'app' ? <Stack render={renderRoute} /> : <PairScreen />}
+      {mode.value === 'app' ? (
+        <Shell sidebar={<Sidebar />}>
+          <Main />
+        </Shell>
+      ) : (
+        <PairScreen />
+      )}
       <OverlayHost />
     </>
   );

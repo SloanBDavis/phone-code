@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Phone } from '../lib/fixtures.ts';
-import { back, createSession, row, shot } from '../lib/ui.ts';
+import { openChat, openSidebar, openTerminal, shot, startNewChat } from '../lib/ui.ts';
 
 /** Visible terminal text (xterm's DOM renderer, which the app uses on iOS). */
 function screen(phone: Phone): ReturnType<Phone['page']['locator']> {
@@ -13,15 +13,15 @@ async function run(phone: Phone, command: string): Promise<void> {
   await phone.page.keyboard.press('Enter');
 }
 
-async function openTerminal(phone: Phone, folder?: string): Promise<string> {
-  const id = await createSession(phone, 'terminal', folder === undefined ? {} : { folder });
+async function term(phone: Phone, folder?: string): Promise<string> {
+  const id = await openTerminal(phone, folder === undefined ? {} : { folder });
   await expect(screen(phone)).toContainText('$');
   await phone.testId('terminal').click();
   return id;
 }
 
 test('runs a command and shows its output', async ({ phone }) => {
-  await openTerminal(phone);
+  await term(phone);
   await run(phone, 'echo "answer=$((6*7))"');
   await expect(screen(phone)).toContainText('answer=42');
   await shot(phone, 'terminal');
@@ -30,7 +30,7 @@ test('runs a command and shows its output', async ({ phone }) => {
 test('key bar: ctrl-C, tab completion, history arrows, ctrl modifier', async ({ phone, daemon }) => {
   const folder = daemon.folder('term-keys');
   writeFileSync(join(daemon.userHome, folder, 'uniquely-named-file.txt'), 'file-body-xyz\n');
-  await openTerminal(phone, folder);
+  await term(phone, folder);
 
   // ^C interrupts a long sleep: the next command runs right away.
   await run(phone, 'sleep 60');
@@ -65,7 +65,7 @@ test('key bar: ctrl-C, tab completion, history arrows, ctrl modifier', async ({ 
 });
 
 test('resizes the PTY when the viewport changes', async ({ phone }) => {
-  await openTerminal(phone);
+  await term(phone);
   await run(phone, 'echo "size=$(tput cols)x$(tput lines)"');
   await expect(screen(phone)).toContainText(/size=\d+x\d+/);
   const portrait = /size=(\d+)x(\d+)/.exec(await screen(phone).innerText());
@@ -87,15 +87,16 @@ test('a full-screen app survives leaving and re-entering the screen', async ({ p
     join(daemon.userHome, folder, 'long.txt'),
     Array.from({ length: 300 }, (_, i) => `line number ${i + 1}`).join('\n'),
   );
-  const id = await openTerminal(phone, folder);
+  const id = await term(phone, folder);
   await run(phone, 'less long.txt');
   await expect(screen(phone)).toContainText('line number 1');
   await phone.page.keyboard.press('Space');
   await expect(screen(phone)).not.toContainText(/line number 1(?!\d)/);
   const shown = /line number (\d+)/.exec(await screen(phone).innerText())?.[1] ?? '';
   expect(Number(shown)).toBeGreaterThan(5);
-  await back(phone);
-  await row(phone, id).click();
+  // Away to a new chat and back through the sidebar.
+  await startNewChat(phone);
+  await openChat(phone, id);
   await expect(phone.testId('screen-terminal')).toBeVisible();
   // The same page of less is back on screen.
   await expect(screen(phone)).toContainText(`line number ${shown}`);
@@ -106,11 +107,11 @@ test('a full-screen app survives leaving and re-entering the screen', async ({ p
 });
 
 test('large output does not freeze the UI', async ({ phone }) => {
-  await openTerminal(phone);
+  await term(phone);
   await run(phone, 'seq 1 300000; echo seq-finished');
   await expect(screen(phone)).toContainText('seq-finished', { timeout: 20_000 });
   // Still responsive: navigation and input work right after.
   const t0 = Date.now();
-  await back(phone);
+  await openSidebar(phone);
   expect(Date.now() - t0).toBeLessThan(5000);
 });

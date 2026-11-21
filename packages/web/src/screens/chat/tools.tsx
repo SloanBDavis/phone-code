@@ -4,6 +4,8 @@ import type { Signal } from '@preact/signals';
 import type { ChatItem, ToolDetail, ToolItem } from '@phone-code/protocol';
 import { ansiToHtml } from '../../lib/ansi';
 import { childrenOf, type ChatState } from '../../lib/state';
+import { picsOf } from '../../lib/images';
+import { Thumbs } from '../../ui/thumbs';
 import { Icon, Spinner, type IconName } from '../../ui/icons';
 import { Markdown } from './md';
 
@@ -325,7 +327,15 @@ function Meta({ t }: { t: ToolItem }): JSX.Element | null {
   return null;
 }
 
-export function ToolRow({ item, nested }: { item: Signal<ChatItem>; nested?: boolean }): JSX.Element | null {
+export function ToolRow({
+  item,
+  nested,
+  sessionId,
+}: {
+  item: Signal<ChatItem>;
+  nested?: boolean;
+  sessionId: string;
+}): JSX.Element | null {
   const t = item.value;
   const [open, setOpen] = useState(false);
   if (t.kind !== 'tool') return null;
@@ -355,6 +365,7 @@ export function ToolRow({ item, nested }: { item: Signal<ChatItem>; nested?: boo
         <StatusMark t={t} />
         {hasBody && <Icon name="forward" size={14} stroke={2.4} class="tool-chev" />}
       </button>
+      {t.images?.length ? <Thumbs pics={picsOf(sessionId, t.images)} variant="tool" /> : null}
       {open && (
         <div class="tool-body">
           {t.detail && t.detail.type !== 'command' && <DetailView detail={t.detail} />}
@@ -410,7 +421,7 @@ export function ToolGroup({ chat, ids }: { chat: ChatState; ids: string[] }): JS
         </button>
       )}
       {visible.map((s) => (
-        <ToolRow key={s.value.id} item={s} />
+        <ToolRow key={s.value.id} item={s} sessionId={chat.sessionId} />
       ))}
     </div>
   );
@@ -463,7 +474,7 @@ export function TaskCard({ chat, item }: { chat: ChatState; item: Signal<ChatIte
         <div class="task-children">
           {(open ? kids : kids.slice(-3)).map((id) => {
             const s = chat.items.get(id);
-            return s ? <ToolRow key={id} item={s} nested /> : null;
+            return s ? <ToolRow key={id} item={s} nested sessionId={chat.sessionId} /> : null;
           })}
           {!open && kids.length > 3 && (
             <button type="button" class="task-more" onClick={() => setOpen(true)}>

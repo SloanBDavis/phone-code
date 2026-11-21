@@ -1,4 +1,11 @@
-import type { ChatItem, FsListResult, HostInfo, ResumableSession, SessionInfo } from '@phone-code/protocol';
+import type {
+  ChatItem,
+  FsListResult,
+  HostInfo,
+  ResumableSession,
+  SessionInfo,
+  SlashCommand,
+} from '@phone-code/protocol';
 
 /** Scripted content for the in-browser demo host. */
 
@@ -12,6 +19,7 @@ export const demoHost: HostInfo = {
   home: HOME,
   daemonVersion: '0.1.0',
   shell: '/bin/zsh',
+  connection: { mode: 'tailscale', secure: true },
   agents: [
     { kind: 'claude', available: true, version: '2.1.4', models: ['opus', 'sonnet', 'haiku'] },
     { kind: 'codex', available: true, version: '0.58.0', models: ['gpt-5-codex', 'gpt-5', 'gpt-5-mini'] },
@@ -24,6 +32,13 @@ export const demoHost: HostInfo = {
       available: true,
       version: '2.1.4',
       models: ['opus', 'sonnet', 'haiku'],
+      commands: [
+        { name: 'compact', description: 'Summarize the conversation to free up context', argumentHint: '[instructions]', source: 'builtin' },
+        { name: 'clear', description: 'Start over with an empty context', source: 'builtin' },
+        { name: 'review', description: 'Review the current changes', source: 'builtin' },
+        { name: 'init', description: 'Write a CLAUDE.md for this project', source: 'builtin' },
+        { name: 'cost', description: 'Show what this session has cost so far', source: 'builtin' },
+      ],
     },
     {
       id: 'codex',
@@ -32,12 +47,47 @@ export const demoHost: HostInfo = {
       available: true,
       version: '0.58.0',
       models: ['gpt-5-codex', 'gpt-5', 'gpt-5-mini'],
+      commands: [
+        { name: 'review', description: 'Review my current changes', source: 'builtin' },
+        { name: 'diff', description: 'Show the git diff', source: 'builtin' },
+        { name: 'compact', description: 'Summarize the conversation', source: 'builtin' },
+      ],
     },
     // ACP-backed (Agent Client Protocol): models come per session.
     { id: 'gemini', name: 'Gemini CLI', impl: 'acp', available: true, version: '0.70.0', source: 'builtin' },
     { id: 'opencode', name: 'OpenCode', impl: 'acp', available: true, version: '1.19.6', source: 'builtin' },
+    {
+      id: 'antigravity',
+      name: 'Antigravity',
+      impl: 'acp',
+      available: false,
+      source: 'builtin',
+      setupHint: 'Not installed. Install Antigravity on your computer, then run: phonecode restart',
+    },
   ],
 };
+
+/** What `session.commands` adds in a Claude Code session: the project's and the user's own. */
+export const SESSION_COMMANDS: SlashCommand[] = [
+  { name: 'deploy-preview', description: 'Build and deploy a preview of this branch', source: 'project' },
+  { name: 'release-notes', description: 'Draft release notes from merged PRs', argumentHint: '<version>', source: 'project' },
+  { name: 'standup', description: 'Summarize what I did yesterday', source: 'user' },
+  { name: 'pr-comments', description: 'Fetch and address review comments', source: 'plugin' },
+  { name: 'linear:issue', description: 'Open a Linear issue for this change', argumentHint: '<title>', source: 'mcp' },
+];
+
+/** A simple picture for the demo's images: a phone screenshot mock, a chart. */
+export function demoSvg(kind: string, w = 600): string {
+  const h = Math.round(w * (kind === 'chart' ? 0.62 : 1.9));
+  if (kind === 'chart') {
+    const bars = [38, 52, 47, 70, 64, 88, 80]
+      .map((v, i) => `<rect x="${60 + i * 70}" y="${330 - v * 3}" width="44" height="${v * 3}" rx="8" fill="#3be0a8" opacity="${0.55 + i * 0.06}"/>`)
+      .join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 372" width="${w}" height="${h}"><rect width="600" height="372" fill="#101114"/><text x="40" y="44" fill="#fff" font-family="system-ui" font-size="22" font-weight="600">Revenue, last 90 days</text>${bars}<line x1="40" y1="331" x2="560" y2="331" stroke="#555"/></svg>`;
+  }
+  const rows = Array.from({ length: 7 }, (_, i) => `<rect x="36" y="${300 + i * 92}" width="${i === 3 ? 380 : 528}" height="70" rx="16" fill="${i === 3 ? '#ff5a4f' : '#1c1c1e'}"/><rect x="60" y="${325 + i * 92}" width="${160 + (i % 3) * 60}" height="18" rx="9" fill="#8e8e93"/>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1140" width="${w}" height="${h}"><rect width="600" height="1140" fill="#000"/><text x="36" y="200" fill="#fff" font-family="system-ui" font-size="56" font-weight="700">Settings</text><text x="36" y="250" fill="#8e8e93" font-family="system-ui" font-size="24">Version 2.3 (beta)</text>${rows}</svg>`;
+}
 
 let idn = 0;
 const id = (p: string): string => `${p}-${(idn++).toString(36)}`;
@@ -615,6 +665,77 @@ export function buildDemo(now = Date.now()): DemoSession[] {
     ),
     s(
       {
+        id: 'demo-ci',
+        kind: 'agent',
+        agent: 'codex',
+        title: 'Speed up the CI cache for node_modules',
+        cwd: `${HOME}/code/acme-api`,
+        updatedAt: ago(300),
+        status: 'idle',
+        archived: true,
+        preview: 'Cache hit rate is now 94%.',
+        model: 'gpt-5-codex',
+        permissionMode: 'default',
+      },
+      [
+        { id: 'ci-1', ts: ago(320), kind: 'user', text: 'CI spends four minutes restoring node_modules. Can you make the cache work?' },
+        {
+          id: 'ci-2',
+          ts: ago(301),
+          kind: 'text',
+          streaming: false,
+          text: 'The cache key included the commit SHA, so it never hit. Keyed on the lockfile hash instead: **cache hit rate is now 94%** and installs take 20 s.',
+        },
+        { id: 'ci-3', ts: ago(300), kind: 'turn', outcome: 'completed', durationMs: 190_000, costUsd: 0.21 },
+      ],
+    ),
+    s(
+      {
+        id: 'demo-design',
+        kind: 'agent',
+        agent: 'claude',
+        title: 'Settings row overflows on iPhone',
+        cwd: `${HOME}/code/app`,
+        updatedAt: ago(95),
+        status: 'idle',
+        preview: 'Fixed: the row now wraps instead of overflowing.',
+        model: 'sonnet',
+        permissionMode: 'acceptEdits',
+      },
+      [
+        {
+          id: 'des-1',
+          ts: ago(100),
+          kind: 'user',
+          text: 'The red row on the settings screen runs off the edge on my phone. Screenshots attached.',
+          images: [
+            { id: 'img-phone-1', mediaType: 'image/svg+xml', name: 'settings.png', width: 600, height: 1140 },
+            { id: 'img-phone-2', mediaType: 'image/svg+xml', name: 'settings-dark.png', width: 600, height: 1140 },
+          ],
+        },
+        {
+          id: 'des-2',
+          ts: ago(99),
+          kind: 'tool',
+          name: 'Read',
+          title: 'design/settings-spec.png',
+          status: 'done',
+          detail: { type: 'file', path: 'design/settings-spec.png' },
+          images: [{ id: 'img-spec', mediaType: 'image/svg+xml', name: 'settings-spec.png', width: 600, height: 1140 }],
+        },
+        {
+          id: 'des-3',
+          ts: ago(97),
+          kind: 'text',
+          streaming: false,
+          text: 'The **Version** row had a fixed width. It now wraps on narrow screens, like the spec shows. While I was there, the revenue card got the same fix:',
+          images: [{ id: 'img-chart', mediaType: 'image/svg+xml', name: 'revenue.png', width: 600, height: 372 }],
+        },
+        { id: 'des-4', ts: ago(95), kind: 'turn', outcome: 'completed', durationMs: 84_000, costUsd: 0.11 },
+      ],
+    ),
+    s(
+      {
         id: 'demo-notes',
         kind: 'agent',
         agent: 'codex',
@@ -662,6 +783,24 @@ export function fsList(path?: string): FsListResult {
 export function history(now = Date.now()): ResumableSession[] {
   return [
     {
+      agent: 'codex',
+      resumeId: 'h6',
+      cwd: `${HOME}/code/acme-api`,
+      title: 'Speed up the CI cache for node_modules',
+      updatedAt: now - 5 * 60 * MIN,
+      messageCount: 16,
+      archived: true,
+      sessionId: 'demo-ci',
+    },
+    {
+      agent: 'opencode',
+      resumeId: 'h7',
+      cwd: `${HOME}/code/dashboard`,
+      title: 'Add a dark mode toggle to the dashboard',
+      updatedAt: now - 30 * 60 * MIN,
+      messageCount: 9,
+    },
+    {
       agent: 'gemini',
       resumeId: 'h5',
       cwd: `${HOME}/code/site`,
@@ -702,6 +841,17 @@ export function history(now = Date.now()): ResumableSession[] {
     },
   ];
 }
+
+/** What the past conversations said, for the demo's text search. */
+export const HISTORY_TEXT: Record<string, string> = {
+  h1: 'Use a token bucket per API key. Redis keeps the counters so every instance shares the limit.',
+  h2: 'The hero image is served at 1x. Added srcset with 2x and 3x variants and the blur is gone.',
+  h3: 'Moved the settings screen to the new router. The back button now restores the scroll position.',
+  h4: 'Startup went from 1.9 s to 0.3 s: nvm is loaded lazily and the completion cache is rebuilt once a day.',
+  h5: 'Found 41 unused selectors in pricing.css and features.css. Removing them saves 18 kB.',
+  h6: 'The cache key included the commit SHA, so it never hit. Keyed on the lockfile hash instead.',
+  h7: 'The toggle stores the choice in localStorage and follows the system theme until the user picks one.',
+};
 
 /**
  * A synthetic long transcript (`?demo=1&demoItems=2000`) for checking scroll

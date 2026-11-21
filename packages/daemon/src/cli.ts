@@ -19,11 +19,13 @@ import { ControlClient, liveDaemonPid } from './control-client.ts';
 import { startDaemon, type DaemonOptions } from './daemon.ts';
 import { log } from './log.ts';
 import { isLoopbackHost, isLoopbackUrl, isSecureUrl } from './net/transport.ts';
+import { runSetup, setupHelp } from './setup.ts';
 
 const HELP = `${bold('phonecode')} ${dim(`v${DAEMON_VERSION}`)}: your terminal, Claude Code and Codex on your phone
 
 Usage
   phonecode [options]        start the daemon and show a pairing QR code
+  phonecode setup            check what your phone needs to reach this computer (Tailscale or not)
   phonecode pair             show a fresh pairing QR code (daemon must be running)
   phonecode devices          list paired devices
   phonecode revoke <id>      revoke a paired device (id or unique prefix)
@@ -180,7 +182,8 @@ async function serve(values: Record<string, string | boolean | undefined>): Prom
     };
     process.stdout.write(`PHONECODE_READY ${JSON.stringify(ready)}\n`);
   } else {
-    process.stdout.write(await banner(daemon, showQr, interactive));
+    const help = daemon.phoneReachable || daemon.insecure ? undefined : await setupHelp(daemon.port);
+    process.stdout.write(await banner(daemon, showQr, interactive, help));
   }
 
   if (interactive) {
@@ -255,6 +258,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       return pairCommand(home, values['no-qr'] === true);
     case 'devices':
       return devicesCommand(home);
+    case 'setup': {
+      const r = await runSetup({ json: envFlag('PHONECODE_JSON') });
+      return r === 'start' ? serve(values) : r;
+    }
     case 'revoke':
       return revokeCommand(home, arg);
     default:

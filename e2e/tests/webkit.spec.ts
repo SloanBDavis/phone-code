@@ -2,12 +2,22 @@
  * Smoke subset in real WebKit (Safari's engine), run by the "webkit" project
  * only. The daemon serves plain http on the machine's LAN address, so the page
  * is a non-secure context like an iPhone on Wi-Fi without https: no service
- * worker, push or camera. Covers the bugs first seen on a real iPhone: the New
- * sheet staying empty, the model menu floating away from its chip, swipe-back
- * stuck half way, and the http-only wording.
+ * worker, push or camera. Covers the bugs first seen on a real iPhone: a lazily
+ * loaded sheet staying empty, the model menu floating away from its chip, a
+ * gesture stuck half way, and the http-only wording.
  */
 import { expect, test, type Phone } from '../lib/fixtures.ts';
-import { back, createSession, pickFolder, send, waitTurn } from '../lib/ui.ts';
+import {
+  closeComputer,
+  newChat,
+  openChat,
+  openComputer,
+  openSidebar,
+  openTerminal,
+  send,
+  startChat,
+  waitTurn,
+} from '../lib/ui.ts';
 
 test.use({ daemonOptions: { insecure: true } });
 
@@ -23,29 +33,31 @@ test('pairs over plain http and says what needs https', async ({ newPhone, daemo
   await phone.testId('pair-continue').click();
   await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open');
 
-  await phone.testId('open-settings').click();
+  await openComputer(phone);
   await expect(phone.testId('notifications-note')).toContainText('https');
   await expect(phone.testId('notifications-note')).not.toContainText('browser');
-  await back(phone);
+  await expect(phone.testId('works-notifications')).toHaveAttribute('data-ok', 'false');
+  await closeComputer(phone);
 });
 
-test('the New sheet always fills in, for every kind', async ({ phone, daemon }) => {
-  // The sheet's content is a lazily loaded chunk that usually lands between render and effect.
+test('lazily loaded sheets always fill in; every harness starts a chat', async ({ phone, daemon }) => {
+  // The folder sheet's content is a lazily loaded chunk that usually lands between render and effect.
   for (let i = 0; i < 3; i++) {
-    await phone.testId('new-session').click();
-    const sheet = phone.testId('new-session-sheet');
-    await expect(sheet.getByTestId('new-start')).toBeVisible();
-    await sheet.getByTestId('new-session-close').click();
+    await phone.testId('composer-folder').click();
+    const sheet = phone.testId('folder-sheet');
+    await expect(sheet.getByTestId('folder-choose')).toBeVisible();
+    await sheet.getByTestId('folder-close').click();
     await expect(sheet).toBeHidden();
   }
-  for (const kind of ['claude', 'codex', 'terminal']) {
-    await createSession(phone, kind, { folder: daemon.folder(`wk-${kind}`) });
-    await back(phone);
+  for (const kind of ['claude', 'codex']) {
+    await startChat(phone, kind, 'hello', { folder: daemon.folder(`wk-${kind}`) });
+    await waitTurn(phone, 1);
   }
+  await openTerminal(phone, { folder: daemon.folder('wk-terminal') });
 });
 
 test('chat: send, allow a permission, models by name, Auto mode', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   const perm = phone.testId('chat-item-permission');
   await send(phone, 'run tests please');
   await expect(perm.last()).toHaveAttribute('data-status', 'pending');
@@ -74,7 +86,6 @@ test('chat: send, allow a permission, models by name, Auto mode', async ({ phone
   await expectAnchored(phone, chip, menu);
   await menu.getByTestId('model-opus').click();
   await expect(chip).toHaveText('Opus Fake');
-  await expect(phone.testId('chat-title')).toContainText('Opus Fake');
 
   await phone.testId('composer-mode').click();
   await phone.testId('mode-menu').getByTestId('mode-auto').click();
@@ -86,7 +97,7 @@ test('chat: send, allow a permission, models by name, Auto mode', async ({ phone
 });
 
 test('Codex does not offer Auto', async ({ phone }) => {
-  await createSession(phone, 'codex');
+  await newChat(phone, 'codex');
   await phone.testId('composer-mode').click();
   await expect(phone.testId('mode-menu').getByTestId('mode-default')).toBeVisible();
   await expect(phone.testId('mode-menu').getByTestId('mode-auto')).toHaveCount(0);
@@ -94,7 +105,7 @@ test('Codex does not offer Auto', async ({ phone }) => {
 });
 
 test('terminal typing', async ({ phone }) => {
-  await createSession(phone, 'terminal');
+  await openTerminal(phone);
   const rows = phone.testId('terminal').locator('.xterm-rows');
   await expect(rows).toContainText('$');
   await phone.testId('terminal').click();
@@ -103,18 +114,16 @@ test('terminal typing', async ({ phone }) => {
   await expect(rows).toContainText('wk=42');
 });
 
-test('navigation: back, forward and the folder picker', async ({ phone }) => {
-  await phone.testId('open-settings').click();
-  await expect(phone.testId('screen-settings')).toBeVisible();
-  await phone.page.goBack();
-  await expect(phone.testId('screen-sessions')).toBeVisible();
-  await expect(phone.testId('screen-settings')).toHaveCount(0);
-  await phone.page.goForward();
-  await expect(phone.testId('screen-settings')).toBeVisible();
-  await back(phone);
-  await phone.testId('new-session').click();
-  await pickFolder(phone, 'project');
-  await phone.testId('new-session-close').click();
+test('launch reopens the chat that was open', async ({ phone }) => {
+  const id = await startChat(phone, 'claude', 'hello');
+  await waitTurn(phone, 1);
+  await phone.page.goto('/');
+  await expect(phone.testId('screen-chat')).toHaveAttribute('data-session-id', id);
+  await phone.testId('new-chat').click();
+  await expect(phone.testId('screen-chat')).toHaveAttribute('data-draft', 'true');
+  await phone.page.reload();
+  await expect(phone.testId('screen-chat')).toHaveAttribute('data-draft', 'true');
+  await openChat(phone, id);
 });
 
 type Step = [type: string, x: number];
@@ -125,12 +134,17 @@ interface TouchFactories {
 }
 
 /**
- * Synthesized edge-swipe input on the top screen's edge strip, as iOS can
- * deliver it: pointer and touch events, ending in pointerup, touchend,
- * touchcancel only, or nothing at all. ['wait', ms] pauses.
+ * Synthesized drawer drags as iOS can deliver them: pointer and touch events,
+ * ending in pointerup, touchend, touchcancel only, or nothing at all.
+ * ['wait', ms] pauses. Opening starts on the left-edge strip, closing on the
+ * dimmed chat.
  */
 async function edgeSwipe(phone: Phone, steps: Step[]): Promise<void> {
-  await gesture(phone, '.stack > .screen-host:last-child > .edge-swipe', steps);
+  await gesture(phone, '[data-testid="edge-swipe"]', steps);
+}
+
+async function scrimSwipe(phone: Phone, steps: Step[]): Promise<void> {
+  await gesture(phone, '[data-testid="drawer-scrim"]', steps);
 }
 
 /** Like edgeSwipe on any element; `y` steps move vertically instead (['y:pointermove', 300]). */
@@ -198,55 +212,52 @@ async function gesture(
   );
 }
 
-/** No screen left part way: one visible, unmoved top screen. */
-async function settled(phone: Phone, screen: string): Promise<void> {
-  await expect(phone.testId(screen)).toBeVisible();
-  await expect(phone.page.locator('.screen-host.moving')).toHaveCount(0);
+/** The drawer fully open or fully closed: state, position and no drag in progress. */
+async function settled(phone: Phone, want: 'open' | 'closed'): Promise<void> {
+  await expect(phone.testId('shell')).toHaveAttribute('data-drawer', want);
+  await expect(phone.page.locator('.shell.dragging')).toHaveCount(0);
   await expect
     .poll(() =>
-      phone.page.evaluate(() =>
-        [...document.querySelectorAll<HTMLElement>('.stack > .screen-host')]
-          .filter((h) => getComputedStyle(h).visibility !== 'hidden')
-          .map((h) => Math.round(h.getBoundingClientRect().x)),
-      ),
+      phone.page.evaluate(() => {
+        const side = document.querySelector<HTMLElement>('.sidebar');
+        if (!side) return 'none';
+        if (side.style.transform !== '' || side.style.transition !== '') return 'inline styles left';
+        return side.getBoundingClientRect().right > 40 ? 'open' : 'closed';
+      }),
     )
-    .toEqual([0]);
+    .toBe(want);
+  // Usable: the sidebar takes taps when open.
+  if (want === 'open') await expect(phone.testId('sidebar-new-chat')).toBeVisible();
 }
 
-test('swipe back always settles, however the touch ends', async ({ phone }) => {
+test('the drawer always settles, however the touch ends', async ({ phone }) => {
   const W = phone.page.viewportSize()?.width ?? 393;
-  const open = async (): Promise<void> => {
-    await phone.testId('open-settings').click();
-    await settled(phone, 'screen-settings');
-  };
+  await settled(phone, 'closed');
 
-  // A system gesture takes the touch half way: touchcancel only, no pointer end.
-  await open();
+  // A system gesture takes the touch past half way: touchcancel only, no pointer end. Opens.
   await edgeSwipe(phone, [
     ['pointerdown', 4],
     ['touchstart', 4],
     ['pointermove', 80],
     ['touchmove', 80],
-    ['pointermove', W / 2],
-    ['touchmove', W / 2],
+    ['pointermove', W * 0.7],
+    ['touchmove', W * 0.7],
     ['wait', 200],
-    ['touchcancel', W / 2],
+    ['touchcancel', W * 0.7],
   ]);
-  await settled(phone, 'screen-sessions');
+  await settled(phone, 'open');
 
-  // Touch events only, released at exactly half way: commits.
-  await open();
-  await edgeSwipe(phone, [
-    ['touchstart', 4],
-    ['touchmove', 100],
-    ['touchmove', W / 2],
+  // Closing from the dimmed chat, touch events only, released far left: closes.
+  await scrimSwipe(phone, [
+    ['touchstart', W - 20],
+    ['touchmove', W - 80],
+    ['touchmove', 40],
     ['wait', 200],
-    ['touchend', W / 2],
+    ['touchend', 40],
   ]);
-  await settled(phone, 'screen-sessions');
+  await settled(phone, 'closed');
 
-  // A short, slow drag that is cancelled: snaps back open, still usable.
-  await open();
+  // A short, slow drag that is cancelled: stays closed.
   await edgeSwipe(phone, [
     ['pointerdown', 4],
     ['pointermove', 30],
@@ -254,7 +265,7 @@ test('swipe back always settles, however the touch ends', async ({ phone }) => {
     ['wait', 200],
     ['pointercancel', 60],
   ]);
-  await settled(phone, 'screen-settings');
+  await settled(phone, 'closed');
 
   // No end event at all: the watchdog settles it (closed: short and at rest).
   await edgeSwipe(phone, [
@@ -262,34 +273,44 @@ test('swipe back always settles, however the touch ends', async ({ phone }) => {
     ['pointermove', 40],
     ['pointermove', 90],
   ]);
-  await settled(phone, 'screen-settings');
+  await settled(phone, 'closed');
 
-  // A new drag during the snap-back settle takes over and can commit.
+  // A fling opens even when short.
   await edgeSwipe(phone, [
     ['pointerdown', 4],
-    ['pointermove', 60],
-    ['wait', 200],
-    ['pointerup', 60],
-    ['pointerdown', 8],
-    ['pointermove', 120],
-    ['pointermove', W * 0.7],
-    ['wait', 200],
-    ['pointerup', W * 0.7],
+    ['pointermove', 30],
+    ['pointermove', 90],
+    ['pointerup', 90],
   ]);
-  await settled(phone, 'screen-sessions');
+  await settled(phone, 'open');
 
-  // And a tap right after works.
-  await open();
-  await back(phone);
-  await settled(phone, 'screen-sessions');
+  // A tap on the dimmed chat closes; the button opens again; Escape closes.
+  await scrimSwipe(phone, [
+    ['pointerdown', W - 20],
+    ['pointerup', W - 20],
+  ]);
+  await settled(phone, 'closed');
+  await phone.testId('open-sidebar').click();
+  await settled(phone, 'open');
+  await phone.page.keyboard.press('Escape');
+  await settled(phone, 'closed');
+
+  // A vertical drag on the edge is not a drawer gesture.
+  await edgeSwipe(phone, [
+    ['pointerdown', 4],
+    ['y:pointermove', 480],
+    ['y:pointermove', 600],
+    ['pointerup', 4],
+  ]);
+  await settled(phone, 'closed');
 });
 
 test('sheet drag and row swipe settle when the touch is cancelled', async ({ phone }) => {
   // Sheet: a short drag cancelled by the system snaps back, a long one dismisses.
-  await phone.testId('new-session').click();
-  const sheet = phone.testId('new-session-sheet');
-  await expect(sheet.getByTestId('new-start')).toBeVisible();
-  const grab = '[data-testid="new-session-sheet"] .sheet-grabber';
+  await phone.testId('composer-folder').click();
+  const sheet = phone.testId('folder-sheet');
+  await expect(sheet.getByTestId('folder-choose')).toBeVisible();
+  const grab = '[data-testid="folder-sheet"] .sheet-grabber';
   const top = (await sheet.boundingBox())?.y ?? 100;
   const steps = (dy: number): Step[] => [
     ['y:pointerdown', top + 4],
@@ -300,13 +321,13 @@ test('sheet drag and row swipe settle when the touch is cancelled', async ({ pho
   ];
   await gesture(phone, grab, steps(50), { x: 200, y: top + 4 });
   await expect.poll(() => sheet.evaluate((el) => el.style.transform)).toBe('');
-  await expect(sheet.getByTestId('new-start')).toBeVisible();
+  await expect(sheet.getByTestId('folder-choose')).toBeVisible();
   await gesture(phone, grab, steps(260), { x: 200, y: top + 4 });
   await expect(sheet).toBeHidden();
 
   // Row: a swipe left cancelled past half way settles open, with its actions usable.
-  const id = await createSession(phone, 'terminal');
-  await back(phone);
+  const id = await openTerminal(phone);
+  await openSidebar(phone);
   const content = `.swipe:has([data-session-id="${id}"]) .swipe-content`;
   const box = await phone.page.locator(content).boundingBox();
   if (!box) throw new Error('row not visible');
@@ -325,7 +346,7 @@ test('sheet drag and row swipe settle when the touch is cancelled', async ({ pho
   );
   const swipe = phone.page.locator('.swipe', { has: phone.page.locator(`[data-session-id="${id}"]`) });
   await expect(swipe).toHaveAttribute('data-open', 'true');
-  await expect(swipe.getByTestId('session-rename')).toBeVisible();
+  await expect(swipe.getByTestId('session-archive')).toBeVisible();
 });
 
 /** The menu sits right above (or below) its chip, horizontally overlapping it. */

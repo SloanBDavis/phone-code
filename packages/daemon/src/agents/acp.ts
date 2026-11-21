@@ -44,7 +44,9 @@ import type {
   ModelOption,
   PermissionMode,
   QuestionItem,
+  ImageRef,
   ResumableSession,
+  SlashCommand,
   TextItem,
   ThinkingItem,
   ToolItem,
@@ -166,6 +168,7 @@ class AcpSession implements AgentSession {
 
   private readonly items = new Map<string, ChatItem>();
   private readonly tools = new Map<string, AcpToolState>();
+  private readonly toolImageRefs = new Map<string, { count: number; refs: ImageRef[] }>();
   private readonly toolTs = new Map<string, number>();
   private readonly denied = new Set<string>();
   private readonly terminalTool = new Map<string, string>();
@@ -540,6 +543,12 @@ class AcpSession implements AgentSession {
         return; // live: the core already shows the user's message
       case 'agent_message_chunk':
       case 'agent_thought_chunk': {
+        const img = rec(u.content);
+        if (img.type === 'image') {
+          if (this.replay === 'history') this.replayAgentSinceUser = true;
+          this.agentImage(img);
+          return;
+        }
         const text = blockText(u.content);
         // Gemini CLI announces a mode switch as a message chunk "[MODE_UPDATE] <modeId>".
         const modeUpdate = /^\[MODE_UPDATE\] (\S+)\s*$/.exec(text);
@@ -615,9 +624,59 @@ class AcpSession implements AgentSession {
           );
         return;
       }
+      case 'available_commands_update': {
+        const commands: SlashCommand[] = [];
+        for (const c of arr(u.availableCommands).map(rec)) {
+          const name = str(c.name)?.replace(/^\//, '');
+          if (!name || commands.some((x) => x.name === name)) continue;
+          const description = str(c.description);
+          const hint = str(rec(c.input).hint);
+          commands.push({
+            name,
+            ...(description ? { description } : {}),
+            ...(hint ? { argumentHint: hint } : {}),
+          });
+        }
+        this.events.meta({ commands });
+        return;
+      }
       default:
-        return; // available_commands_update, compaction, future variants: ignored on purpose
+        return; // compaction, future variants: ignored on purpose
     }
+  }
+
+  /** An image the agent sent as message content: shown as its own message. */
+  private agentImage(block: Rec): void {
+    const data = str(block.data);
+    const ref = data ? this.events.image(data) : undefined;
+    if (!ref) return;
+    this.closeText();
+    this.upsertItem({
+      kind: 'text',
+      id: this.nextItemId('img'),
+      ts: Date.now(),
+      text: '',
+      streaming: false,
+      images: [ref],
+    });
+  }
+
+  /** Images in a tool call's content blocks (stored once per tool call and block count). */
+  private toolImages(toolCallId: string, content: Rec[]): ImageRef[] | undefined {
+    const blocks = content
+      .filter((c) => c.type === 'content' && rec(c.content).type === 'image')
+      .map((c) => rec(c.content));
+    if (blocks.length === 0) return undefined;
+    const cached = this.toolImageRefs.get(toolCallId);
+    if (cached?.count === blocks.length) return cached.refs;
+    const refs: ImageRef[] = [];
+    for (const b of blocks) {
+      const data = str(b.data);
+      const ref = data ? this.events.image(data) : undefined;
+      if (ref && !refs.some((r) => r.id === ref.id)) refs.push(ref);
+    }
+    this.toolImageRefs.set(toolCallId, { count: blocks.length, refs });
+    return refs.length ? refs : undefined;
   }
 
   private nextItemId(prefix: string): string {
@@ -750,6 +809,8 @@ class AcpSession implements AgentSession {
     const item = toolItem(state, this.toolItemId(toolCallId), this.opts.cwd, ts, {
       denied: this.denied.has(toolCallId),
     });
+    const images = this.toolImages(toolCallId, state.content);
+    if (images) item.images = images;
     // The question card is this tool call's UI: nest the generic row under it, where it is not shown.
     const ask = this.askTools.get(toolCallId);
     this.upsertItem(ask === undefined ? item : { ...item, parentId: ask });
@@ -1422,7 +1483,11 @@ export function createAcpAdapter(cfg: AcpAgentConfig): AgentAdapter {
     source: cfg.source,
     async detect() {
       const found = Bun.which(cfg.command);
-      if (found === null) return { available: false };
+      if (found === null)
+        return {
+          available: false,
+          setupHint: `Not installed: \`${cfg.command}\` was not found on this computer's PATH.`,
+        };
       if (cfg.versionArgs === null) return { available: true };
       const out = await runQuick(found, cfg.versionArgs, 4000);
       const version = out === undefined ? undefined : /\d+\.\d+(?:\.\d+)?[\w.+-]*/.exec(out)?.[0];

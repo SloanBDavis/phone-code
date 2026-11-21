@@ -1,4 +1,4 @@
-import type { JSX } from 'preact';
+import type { ButtonHTMLAttributes, JSX } from 'preact';
 import { useComputed, useSignal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import type { SessionInfo } from '@phone-code/protocol';
@@ -73,7 +73,7 @@ function Status({ s }: { s: SessionInfo }): JSX.Element | null {
 
 /** Long press (touch) or right click (mouse) opens the row's menu. */
 function useLongPress(onLong: (el: Element) => void): {
-  handlers: JSX.HTMLAttributes<HTMLButtonElement>;
+  handlers: ButtonHTMLAttributes<HTMLButtonElement>;
   fired: () => boolean;
 } {
   const timer = useRef(0);

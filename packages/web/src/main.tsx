@@ -4,11 +4,12 @@ import './styles/base.css';
 import './styles/glass.css';
 import './styles/overlay.css';
 import './styles/sessions.css';
+import './styles/shell.css';
 import { App } from './app';
 import { autoCode, mode, readLaunchParams, startDemo, startHost } from './lib/boot';
 import { startClock } from './lib/clock';
 import { refractionSupported, startGlassHighlights } from './lib/glass';
-import { push, startNav } from './lib/nav';
+import { openChat, startNav } from './lib/nav';
 import { creds } from './lib/storage';
 import { startTheme } from './lib/theme';
 import { trackViewport } from './lib/viewport';
@@ -46,7 +47,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener(
     'message',
     (e: MessageEvent<{ type?: string; sessionId?: string }>) => {
-      if (e.data.type === 'open-session' && e.data.sessionId) push({ name: 'session', id: e.data.sessionId });
+      if (e.data.type === 'open-session' && e.data.sessionId) openChat(e.data.sessionId);
     },
   );
 }

@@ -2,28 +2,19 @@ import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import '../styles/settings.css';
 import { exitDemo, unpairDevice } from '../lib/boot';
-import { agentCatalog } from '../lib/agents';
+import { connectionOf } from '../lib/connection';
+import { harnessList } from '../lib/harness';
 import { pushSupport, disablePush, enablePush } from '../lib/push';
-import { deviceId, host, isDemo } from '../lib/state';
+import { conn, host, isDemo } from '../lib/state';
 import { creds, settings, updateSettings, type ThemePref } from '../lib/storage';
 import { haptic, isStandalone } from '../lib/util';
 import { APP_VERSION, SOURCE_URL } from '../lib/version';
-import { BackButton, TopBar, useScrolled } from '../ui/chrome';
+import { GlassButton } from '../ui/glass';
 import { Glyph, agentGlyph } from '../ui/glyph';
 import { Icon, Spinner } from '../ui/icons';
 import { alertDialog, toast } from '../ui/overlay';
-import { ConnectionLabel } from './sessions';
 
 const PLATFORM: Record<string, string> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' };
-
-function Row({ label, value, mono }: { label: string; value?: string; mono?: boolean }): JSX.Element {
-  return (
-    <div class="cell static">
-      <span class="cell-main cell-title">{label}</span>
-      <span class={`cell-value ${mono ? 'mono' : ''}`}>{value ?? '—'}</span>
-    </div>
-  );
-}
 
 function NotificationsRow(): JSX.Element {
   const [busy, setBusy] = useState(false);
@@ -77,18 +68,41 @@ function NotificationsRow(): JSX.Element {
   );
 }
 
-export function SettingsScreen(): JSX.Element {
-  const [ref, scrolled] = useScrolled<HTMLDivElement>(30);
+/** One line of "what works on this connection". */
+function Works({ ok, label, testid }: { ok: boolean; label: string; testid: string }): JSX.Element {
+  return (
+    <div class="cell static works" data-testid={testid} data-ok={ok}>
+      <span class={`works-mark ${ok ? 'ok' : 'no'}`}>
+        <Icon name={ok ? 'check' : 'close'} size={14} stroke={3} />
+      </span>
+      <span class="cell-main cell-title">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * "This computer": how the phone reaches it and what that allows, what you
+ * can run there, and the few preferences there are. Opened from the host name
+ * at the top of the sidebar.
+ */
+export default function ComputerSheet({ close }: { close: () => void }): JSX.Element {
   const h = host.value;
   const c = creds.value;
   const s = settings.value;
   const demo = isDemo.value;
+  const info = connectionOf(h);
+  const online = conn.value.status === 'open';
+  const secure = info.secure;
+  const installed = isStandalone();
 
   return (
-    <div class="screen grouped" data-testid="screen-settings">
-      <div class="scroll" ref={ref}>
-        <h1 class="large-title">Settings</h1>
-
+    <div class="computer" data-testid="screen-settings">
+      <div class="sheet-head">
+        <span class="glass-btn glass-circle ghost" />
+        <h2>This computer</h2>
+        <GlassButton icon="close" label="Close" onClick={close} testid="computer-close" />
+      </div>
+      <div class="sheet-scroll">
         <section class="section">
           <div class="list">
             <div class="cell static host-cell">
@@ -97,32 +111,73 @@ export function SettingsScreen(): JSX.Element {
               </span>
               <span class="cell-main">
                 <span class="cell-title host-name">{h?.name ?? c?.host.name ?? 'Not connected'}</span>
-                <span class="cell-sub">
-                  <ConnectionLabel showHost={false} />
+                <span class="cell-sub" data-testid="connection-mode" data-mode={info.mode}>
+                  {demo ? 'Demo: a simulated computer' : online ? info.label : 'Not connected right now'}
                 </span>
               </span>
             </div>
-            <Row label="System" value={h ? `${PLATFORM[h.platform] ?? h.platform} · ${h.user}` : undefined} />
-            <Row label="Shell" value={h?.shell} mono />
-            <Row label="phone-code on host" value={h?.daemonVersion} />
+            {h && (
+              <div class="cell static">
+                <span class="cell-main cell-title">System</span>
+                <span class="cell-value">
+                  {PLATFORM[h.platform] ?? h.platform} · phone-code {h.daemonVersion}
+                </span>
+              </div>
+            )}
           </div>
         </section>
 
+        {!demo && (
+          <section class="section" data-testid="connection-works">
+            <h2 class="section-head">On this connection</h2>
+            <div class="list">
+              <Works ok label="Chats and terminals" testid="works-chat" />
+              <Works ok={secure} label="Notifications" testid="works-notifications" />
+              <Works ok={secure} label="Opens without a connection" testid="works-offline" />
+              <Works ok={secure} label="In-app QR scanner" testid="works-scanner" />
+            </div>
+            {!secure && (
+              <p class="footnote fix" data-testid="connection-fix">
+                These need an https address for your computer. The simple way is Tailscale, free for
+                personal use: on your computer run <code class="cmd">npx phone-code setup</code>. It checks
+                Tailscale and tells you the one thing to do. Then pair this phone again from the new QR
+                code.
+              </p>
+            )}
+          </section>
+        )}
+
         {h && (
           <section class="section">
-            <h2 class="section-head">Agents</h2>
+            <h2 class="section-head">What you can use</h2>
             <div class="list">
-              {agentCatalog(h)
-                .filter((a) => a.impl === 'native' || a.available || a.source === 'config')
-                .map((a) => (
-                  <div class="cell static" key={a.id} data-testid="settings-agent" data-agent={a.id}>
-                    <Glyph kind={agentGlyph(a.id)} size={30} />
-                    <span class="cell-main cell-title">{a.name}</span>
-                    <span class={`cell-value ${a.available ? '' : 'warn'}`}>
-                      {a.available ? (a.version ? `v${a.version}` : 'Installed') : 'Not installed'}
-                    </span>
-                  </div>
-                ))}
+              {harnessList().map((a) => (
+                <div
+                  class={`cell static ${a.available ? '' : 'off'}`}
+                  key={a.id}
+                  data-testid="settings-agent"
+                  data-agent={a.id}
+                >
+                  <Glyph kind={a.id === 'terminal' ? 'terminal' : agentGlyph(a.id)} size={30} />
+                  <span class="cell-main">
+                    <span class="cell-title">{a.id === 'terminal' ? 'Terminal' : (a.info?.name ?? a.id)}</span>
+                    {!a.available && (
+                      <span class="cell-sub" data-testid="setup-hint">
+                        {a.info?.setupHint ?? 'Not installed on this computer'}
+                      </span>
+                    )}
+                  </span>
+                  <span class={`cell-value ${a.available ? '' : 'warn'}`}>
+                    {a.available
+                      ? a.id === 'terminal'
+                        ? (h.shell.split('/').pop() ?? 'shell')
+                        : a.info?.version
+                          ? `v${a.info.version}`
+                          : 'Ready'
+                      : 'Not set up'}
+                  </span>
+                </div>
+              ))}
             </div>
           </section>
         )}
@@ -190,24 +245,23 @@ export function SettingsScreen(): JSX.Element {
         </section>
 
         <section class="section">
-          <h2 class="section-head">This device</h2>
+          <h2 class="section-head">This phone</h2>
           <div class="list">
-            <Row label="Device ID" value={(deviceId.value ?? c?.deviceId)?.slice(0, 12)} mono />
-            <Row
-              label="Paired"
-              value={c ? new Date(c.pairedAt).toLocaleDateString() : demo ? 'Demo' : undefined}
-            />
-            <Row label="Installed app" value={isStandalone() ? 'Yes' : 'No, running in the browser'} />
-          </div>
-        </section>
-
-        <section class="section">
-          <div class="list">
+            <div class="cell static">
+              <span class="cell-main cell-title">Paired</span>
+              <span class="cell-value">
+                {c ? new Date(c.pairedAt).toLocaleDateString() : demo ? 'Demo' : '—'}
+                {installed ? ' · Home Screen app' : ''}
+              </span>
+            </div>
             {demo ? (
               <button
                 type="button"
                 class="cell destructive"
-                onClick={exitDemo}
+                onClick={() => {
+                  close();
+                  exitDemo();
+                }}
                 data-testid="settings-exit-demo"
               >
                 <span class="cell-main cell-title">Exit demo</span>
@@ -225,7 +279,11 @@ export function SettingsScreen(): JSX.Element {
                     confirm: 'Unpair',
                     destructive: true,
                     testid: 'unpair-dialog',
-                  }).then((ok) => ok && unpairDevice())
+                  }).then((ok) => {
+                    if (!ok) return;
+                    close();
+                    unpairDevice();
+                  })
                 }
               >
                 <span class="cell-main cell-title">Unpair from {c?.host.name ?? 'host'}</span>
@@ -235,7 +293,7 @@ export function SettingsScreen(): JSX.Element {
         </section>
 
         <div class="about">
-          <img src="/icons/icon.svg" width={44} height={44} alt="" />
+          <img src="/icons/icon.svg" width={40} height={40} alt="" />
           <div class="about-name">phone-code {APP_VERSION}</div>
           <div class="about-sub">Free and open source under the MIT license.</div>
           <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" data-testid="settings-source">
@@ -244,7 +302,6 @@ export function SettingsScreen(): JSX.Element {
           </a>
         </div>
       </div>
-      <TopBar left={<BackButton label="Sessions" />} title="Settings" showTitle={scrolled} fade={scrolled} />
     </div>
   );
 }

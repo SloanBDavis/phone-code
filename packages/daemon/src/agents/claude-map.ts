@@ -7,7 +7,7 @@
  *   tool             the tool_use id
  *   plan text        `plan:${toolUseId}`
  */
-import type { ChatItem, TextItem, ThinkingItem, ToolItem, ToolStatus } from '@phone-code/protocol';
+import type { ChatItem, ImageRef, TextItem, ThinkingItem, ToolItem, ToolStatus } from '@phone-code/protocol';
 import type { AgentEvents } from './types.ts';
 import { arr, isRec, num, rec, str, truncateOutput, type Rec } from './shared/common.ts';
 import {
@@ -19,7 +19,18 @@ import {
   toolResultText,
 } from './claude-tools.ts';
 
-type Sink = Pick<AgentEvents, 'upsert' | 'delta'>;
+type Sink = Pick<AgentEvents, 'upsert' | 'delta'> & Partial<Pick<AgentEvents, 'image'>>;
+
+/** Text inside `<local-command-stdout>` / `<local-command-stderr>` (what a local slash command printed). */
+export function localCommandOutput(text: string): string | undefined {
+  const parts = [
+    ...text.matchAll(/<local-command-std(?:out|err)>([\s\S]*?)<\/local-command-std(?:out|err)>/g),
+  ]
+    // oxlint-disable-next-line no-control-regex -- stripping ANSI colour codes from command output
+    .map((m) => (m[1] ?? '').replaceAll(/\u001B\[[0-9;]*[A-Za-z]/g, '').trim())
+    .filter((t) => t !== '');
+  return parts.length ? parts.join('\n\n') : undefined;
+}
 
 interface StreamBlock {
   kind: 'text' | 'thinking' | 'tool_use' | 'other';
@@ -357,14 +368,47 @@ export class ClaudeMapper {
         if (d) detail = d;
       }
       const { output, truncated } = truncateOutput(outputText);
+      const images = this.resultImages(block.content);
       this.upsert({
         ...tool,
         status,
+        ...(images.length ? { images } : {}),
         output,
         ...(truncated ? { outputTruncated: true } : { outputTruncated: undefined }),
         ...(detail ? { detail } : {}),
       });
     }
+  }
+
+  /** Images (base64 `image` blocks) in a tool result, stored through the sink. */
+  private resultImages(content: unknown): ImageRef[] {
+    if (!this.sink.image) return [];
+    const refs: ImageRef[] = [];
+    for (const b of arr(content).map(rec)) {
+      const src = rec(b.source);
+      if (b.type !== 'image' || src.type !== 'base64') continue;
+      const data = str(src.data);
+      const ref = data ? this.sink.image(data) : undefined;
+      if (ref && !refs.some((r) => r.id === ref.id)) refs.push(ref);
+    }
+    return refs;
+  }
+
+  /** A user-role message carrying what a local slash command printed (`/cost`, `/context` in older CLIs). */
+  onLocalCommandOutput(entry: Rec, ts = Date.now()): void {
+    const content = rec(entry.message).content;
+    const text =
+      typeof content === 'string'
+        ? content
+        : arr(content)
+            .map(rec)
+            .filter((b) => b.type === 'text')
+            .map((b) => str(b.text) ?? '')
+            .join('\n');
+    const out = localCommandOutput(text);
+    if (out === undefined) return;
+    const id = `cmd:${str(entry.uuid) ?? ts}`;
+    this.upsert({ kind: 'text', id, ts, text: '```\n' + out + '\n```', streaming: false });
   }
 
   /** End of turn: close streams; tools that never got a result failed unless the turn completed. */

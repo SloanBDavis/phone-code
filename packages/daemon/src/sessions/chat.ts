@@ -304,7 +304,8 @@ export class ChatSession implements LiveSession {
       const refs = found.filter((r): r is ImageRef => r !== undefined);
       const at = this.index.get(item.id);
       const cur = at === undefined ? undefined : this.items[at];
-      if (refs.length === 0 || this.disposed || cur?.kind !== 'text' || cur.text !== item.text) return;
+      if (refs.length === 0 || this.disposed || cur?.kind !== 'text' || cur.text !== item.text)
+        return undefined;
       const have = new Set((cur.images ?? []).map((r) => r.id));
       const add = refs.filter((r) => !have.has(r.id));
       if (add.length > 0) this.upsert({ ...cur, images: [...(cur.images ?? []), ...add] });
@@ -472,7 +473,8 @@ export class ChatSession implements LiveSession {
       }
       // oxlint-disable-next-line no-await-in-loop -- at most 10, in order
       const bytes = await normalizeImage(raw);
-      if (bytes === undefined) throw new UserError(`${a.name ?? 'That file'} is not a PNG, JPEG, GIF or WebP image.`);
+      if (bytes === undefined)
+        throw new UserError(`${a.name ?? 'That file'} is not a PNG, JPEG, GIF or WebP image.`);
       const res = this.deps.images.put(this.info.id, bytes, a.name);
       if (!res.ok) throw new UserError(`Could not attach ${a.name ?? 'the image'}: ${res.error}`);
       // oxlint-disable-next-line no-await-in-loop -- see above
@@ -500,10 +502,9 @@ export class ChatSession implements LiveSession {
       if (stored.images.length > 0) item.images = stored.images;
       // Transcripts carry no inline bytes any more: only what the other files were.
       if (stored.others.length > 0)
-        item.attachments = stored.others.map((a) => ({
-          mediaType: a.mediaType,
-          ...(a.name === undefined ? {} : { name: a.name }),
-        }));
+        item.attachments = stored.others.map((a) =>
+          a.name === undefined ? { mediaType: a.mediaType } : { mediaType: a.mediaType, name: a.name },
+        );
     }
     if (this.info.archived === true) {
       // Sending to an archived chat brings it back to the sidebar.
@@ -558,6 +559,11 @@ export class ChatSession implements LiveSession {
     this.agent?.setModel(model).catch((err: unknown) => log.warn('setModel failed', err));
   }
 
+  /** The agent's own conversation id, once known (what history entries call resumeId). */
+  get nativeId(): string | undefined {
+    return this.nativeSessionId;
+  }
+
   /** Slash commands the running agent reported, if it did. */
   get agentCommands(): SlashCommand[] | undefined {
     return this.commands;
@@ -586,7 +592,9 @@ export class ChatSession implements LiveSession {
     const agent = this.agent ?? (await this.starting);
     this.agent = undefined;
     if (agent !== undefined) {
-      await agent.dispose().catch((err: unknown) => log.warn(`agent dispose failed for ${this.info.id}`, err));
+      await agent
+        .dispose()
+        .catch((err: unknown) => log.warn(`agent dispose failed for ${this.info.id}`, err));
     }
     // Late events of the stopped process are ignored from here on.
     this.generation += 1;

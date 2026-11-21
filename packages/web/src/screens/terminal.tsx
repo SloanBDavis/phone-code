@@ -6,14 +6,15 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import '../styles/terminal.css';
-import { deleteSession, renameSession } from '../lib/actions';
+import { archiveSession, deleteSession, renameSession } from '../lib/actions';
 import { client } from '../lib/client';
 import { host, sessionById } from '../lib/state';
 import { settings, updateSettings } from '../lib/storage';
 import { resolvedTheme } from '../lib/theme';
 import { keyboardOpen } from '../lib/viewport';
 import { haptic, isIOS, tildify } from '../lib/util';
-import { BackButton, TopBar } from '../ui/chrome';
+import { TopBar } from '../ui/chrome';
+import { PaneButtons } from '../ui/drawer';
 import { GlassButton, GlassSurface } from '../ui/glass';
 import { Icon } from '../ui/icons';
 import { openMenu, toast } from '../ui/overlay';
@@ -285,6 +286,7 @@ export default function TerminalScreen({
         items: [
           { label: 'Rename', icon: 'pencil', onSelect: () => void renameSession(s) },
           { label: 'Clear screen', icon: 'refresh', onSelect: () => termRef.current?.clear() },
+          { label: 'Archive', icon: 'archive', onSelect: () => void archiveSession(s), testid: 'menu-archive' },
         ],
       },
       {
@@ -306,7 +308,7 @@ export default function TerminalScreen({
       </div>
       <TopBar
         fade
-        left={<BackButton />}
+        left={PaneButtons().left}
         titleSlot={
           <GlassButton class="title-capsule" onClick={menu} testid="term-title">
             <span class="title-main">{s.title}</span>

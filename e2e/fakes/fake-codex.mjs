@@ -14,6 +14,12 @@ if (argv.includes('--version')) {
   process.stdout.write('codex-cli 0.171.0\n');
   process.exit(0);
 }
+// `codex login status` (FAKE_CODEX_LOGGED_OUT=1: "Not logged in", exit 1).
+if (argv[0] === 'login' && argv[1] === 'status') {
+  const out = process.env.FAKE_CODEX_LOGGED_OUT === '1';
+  process.stdout.write(out ? 'Not logged in\n' : 'Logged in using ChatGPT\n');
+  process.exit(out ? 1 : 0);
+}
 if (argv[0] !== 'app-server') {
   process.stderr.write('fake-codex only implements `app-server`\n');
   process.exit(2);
@@ -299,6 +305,30 @@ function onMessage(msg) {
     }
     case 'thread/list':
       return result(msg.id, { data: [], nextCursor: null, backwardsCursor: null });
+    case 'skills/list':
+      return result(msg.id, {
+        data: (p.cwds ?? []).map((cwd) => ({
+          cwd,
+          skills: [
+            {
+              name: 'release-notes',
+              description: 'Write release notes for the next version',
+              shortDescription: 'Write release notes',
+              path: path.join(codexHome, 'skills', 'release-notes', 'SKILL.md'),
+              scope: 'user',
+              enabled: true,
+            },
+          ],
+          errors: [],
+        })),
+      });
+    case 'thread/compact/start': {
+      if (!thread || thread.id !== p.threadId) return rpcError(msg.id, 'thread not found');
+      if (current) return rpcError(msg.id, 'a turn is already running');
+      result(msg.id, {});
+      void compactTurn();
+      return undefined;
+    }
     default:
       if (msg.id !== undefined) return rpcError(msg.id, `unknown method ${msg.method}`, -32601);
       return undefined;
@@ -710,10 +740,53 @@ scenario(/long/i, async (c) => {
 });
 
 scenario(/./s, async (c, _turn, text) => {
-  await c.message(`You said: ${text.slice(0, 200)}`);
+  const images = turnImages.length ? ` [with ${turnImages.length} image(s): ${turnImages.join(', ')}]` : '';
+  await c.message(`You said: ${text.slice(0, 200)}${images}`);
 });
 
+/** `thread/compact/start`: a turn holding one contextCompaction item. */
+async function compactTurn() {
+  const turn = {
+    id: randomUUID(),
+    items: [],
+    itemsView: 'full',
+    status: 'inProgress',
+    error: null,
+    startedAt: nowS(),
+    completedAt: null,
+    durationMs: null,
+  };
+  current = { turn, aborted: false, onAbort: new Set() };
+  notify('turn/started', { threadId: thread.id, turn });
+  const c = ctx(turn);
+  const item = { type: 'contextCompaction', id: `cc_${randomUUID()}` };
+  c.started(item);
+  await sleep(100);
+  c.completed(item);
+  turn.status = 'completed';
+  turn.completedAt = nowS();
+  turn.durationMs = 100;
+  thread.turns.push(turn);
+  current = null;
+  notify('turn/completed', { threadId: thread.id, turn: { ...turn, items: [], itemsView: 'notLoaded' } });
+}
+
+/** What the images in the input were: "localImage png 70b" (the file must exist), "image png". */
+let turnImages = [];
+
 async function runTurn(turn, input) {
+  turnImages = input
+    .filter((i) => i.type === 'localImage' || i.type === 'image')
+    .map((i) => {
+      if (i.type === 'image') return `image ${/^data:image\/(\w+)/.exec(i.url ?? '')?.[1] ?? '?'}`;
+      let size = 'missing';
+      try {
+        size = `${fs.statSync(i.path).size}b`;
+      } catch {
+        // missing
+      }
+      return `localImage ${path.extname(i.path).slice(1)} ${size}`;
+    });
   const text = input
     .filter((i) => i.type === 'text')
     .map((i) => i.text)

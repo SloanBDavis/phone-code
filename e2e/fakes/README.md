@@ -66,27 +66,33 @@ copies these parts of it:
 A rule saved with "always allow" (an `addRules` suggestion) lasts for the life
 of the process. A `setMode` update changes the mode, as in the real CLI.
 
-| prompt contains       | what happens                                                                                                                                                                                                                                  |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `close input`         | answers, then closes its stdin and keeps running (the host's next long enough write fails with EPIPE)                                                                                                                                         |
-| `late ask`            | answers and ends the turn, then asks for permission to run `Bash git fetch` outside any turn                                                                                                                                                  |
-| `background decision` | reports what the host answered to that late request (`Background request: deny (interrupt)`, …)                                                                                                                                               |
-| `crash`               | streams a few words, writes to stderr, exits with code 3 in the middle of the turn                                                                                                                                                            |
-| `hello`               | streams a short markdown answer word by word                                                                                                                                                                                                  |
-| `think`               | streams a thinking block, then the answer                                                                                                                                                                                                     |
-| `run tests`           | sends text, then `Bash npm test` and asks for permission (unless always-allowed or the mode is `bypassPermissions`). If allowed: test output, then a markdown table. If denied: an acknowledgement                                            |
-| `failing`             | runs `Bash ls ./does-not-exist`, which fails with `Exit code 2` (no permission needed)                                                                                                                                                        |
-| `edit file`           | creates `notes.md` in cwd with `Write`, or changes it with `Edit` if it exists (`hello world` becomes `hello phone-code` plus one line). Asks for permission unless the mode is `acceptEdits` or `bypassPermissions`. The file really changes |
-| `ask me`              | an `AskUserQuestion` with 2 options. The answer comes back in `updatedInput.answers`                                                                                                                                                          |
-| `todo`                | `TodoWrite` 4 times as 3 items move from pending to in_progress to completed (about 0.5 s apart)                                                                                                                                              |
-| `agent` / `task`      | a `Task` tool whose sub-agent runs `Bash ls`. Those messages carry `parent_tool_use_id`                                                                                                                                                       |
-| `plan`                | `ExitPlanMode` with a markdown plan. Allowing it applies the host's `setMode`                                                                                                                                                                 |
-| `long`                | streams 100 words over about 10 s (for testing interrupt)                                                                                                                                                                                     |
-| `compact`             | `status: compacting`, then a `compact_boundary`                                                                                                                                                                                               |
-| `rate limit`          | an `allowed_warning` `rate_limit_event` and an `api_retry`                                                                                                                                                                                    |
-| anything else         | `You said: …`                                                                                                                                                                                                                                 |
+| prompt contains                              | what happens                                                                                                                                                                                                                                  |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/cost`, `/usage`, `/context` (at the start) | a local slash command as 2.1.330 runs one: a single synthetic assistant message (model `<synthetic>`), no model call                                                                                                                          |
+| `screenshot`                                 | a `Read` of `shot.png` whose tool result is an image block (a 1x1 PNG)                                                                                                                                                                        |
+| `close input`                                | answers, then closes its stdin and keeps running (the host's next long enough write fails with EPIPE)                                                                                                                                         |
+| `late ask`                                   | answers and ends the turn, then asks for permission to run `Bash git fetch` outside any turn                                                                                                                                                  |
+| `background decision`                        | reports what the host answered to that late request (`Background request: deny (interrupt)`, …)                                                                                                                                               |
+| `crash`                                      | streams a few words, writes to stderr, exits with code 3 in the middle of the turn                                                                                                                                                            |
+| `hello`                                      | streams a short markdown answer word by word                                                                                                                                                                                                  |
+| `think`                                      | streams a thinking block, then the answer                                                                                                                                                                                                     |
+| `run tests`                                  | sends text, then `Bash npm test` and asks for permission (unless always-allowed or the mode is `bypassPermissions`). If allowed: test output, then a markdown table. If denied: an acknowledgement                                            |
+| `failing`                                    | runs `Bash ls ./does-not-exist`, which fails with `Exit code 2` (no permission needed)                                                                                                                                                        |
+| `edit file`                                  | creates `notes.md` in cwd with `Write`, or changes it with `Edit` if it exists (`hello world` becomes `hello phone-code` plus one line). Asks for permission unless the mode is `acceptEdits` or `bypassPermissions`. The file really changes |
+| `ask me`                                     | an `AskUserQuestion` with 2 options. The answer comes back in `updatedInput.answers`                                                                                                                                                          |
+| `todo`                                       | `TodoWrite` 4 times as 3 items move from pending to in_progress to completed (about 0.5 s apart)                                                                                                                                              |
+| `agent` / `task`                             | a `Task` tool whose sub-agent runs `Bash ls`. Those messages carry `parent_tool_use_id`                                                                                                                                                       |
+| `plan`                                       | `ExitPlanMode` with a markdown plan. Allowing it applies the host's `setMode`                                                                                                                                                                 |
+| `long`                                       | streams 100 words over about 10 s (for testing interrupt)                                                                                                                                                                                     |
+| `compact`                                    | `status: compacting`, then a `compact_boundary`                                                                                                                                                                                               |
+| `rate limit`                                 | an `allowed_warning` `rate_limit_event` and an `api_retry`                                                                                                                                                                                    |
+| anything else                                | `You said: …`                                                                                                                                                                                                                                 |
 
-The first pattern that matches wins, in the order of the table.
+The first pattern that matches wins, in the order of the table. The `initialize`
+response lists slash commands shaped like 2.1.330's (`builtin` flags, "(user)" /
+"(project)" description tags, a hidden `__internal`). The echo reply ends with
+`[with N image(s): image/png, …]` when the message carried image blocks.
+`claude auth status` prints `{"loggedIn": …}` (`FAKE_CLAUDE_LOGGED_OUT=1`: false, exit 1).
 
 ## fake-codex.mjs
 
@@ -133,6 +139,12 @@ under `untrusted` and `on-request`. File edits are asked about under
 | anything else         | `You said: …`                                                                                                          |
 
 Every turn ends with `thread/tokenUsage/updated` and then `turn/completed`.
+
+Also: `skills/list` (one user skill, `release-notes`), `thread/compact/start` (a
+turn with one `contextCompaction` item), `codex login status`
+(`FAKE_CODEX_LOGGED_OUT=1`: "Not logged in", exit 1). The echo reply lists the
+images it got (`localImage png 1234b` when the file exists, or `image png`).
+`skills/list` and `thread/compact/start` shapes were not checked against a real binary.
 
 ## fake-acp.mjs
 
@@ -199,3 +211,17 @@ method by itself when an `*_API_KEY` variable is present).
 | anything else         | `You said: …`                                                                                                                                                                                                           |
 
 The first pattern that matches wins, in the order of the table.
+
+`available_commands_update` (`init`, `help`, `review` with an input hint) follows
+`session/new`, `load` and `resume`; a prompt starting with `/help` answers with the
+list. The echo reply lists the image content blocks it got.
+
+## fake-tailscale.mjs
+
+Plays one state of the `tailscale` CLI, chosen with `FAKE_TAILSCALE_STATE`:
+`ready` (default), `stopped`, `needs-login`, `starting`, `no-daemon`, `hang`
+(`status` never answers), `no-magicdns`, `no-https`, `serve-disabled`. It
+implements `version`, `status --json` and `serve <target>` (stays up until
+SIGINT). Put it on PATH as `tailscale`, or point `PHONECODE_TAILSCALE_APP` at it
+to play the macOS app's bundled CLI. Shapes follow Tailscale's documentation;
+the real CLI was not available to check them.

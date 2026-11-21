@@ -75,7 +75,10 @@ export class HistoryService {
   private readonly claude: ConversationIndex;
   private readonly codex: ConversationIndex;
   private readonly transcripts: ConversationIndex;
-  private readonly acp = new Map<string, { at: number; list: ResumableSession[]; inflight?: Promise<void> }>();
+  private readonly acp = new Map<
+    string,
+    { at: number; list: ResumableSession[]; inflight?: Promise<void> }
+  >();
 
   constructor(
     paths: StatePaths,
@@ -156,7 +159,11 @@ export class HistoryService {
     return s.list.map((entry) => ({ entry, text: '', lower: () => '' }));
   }
 
-  async query(agent: AgentId | undefined, q: HistoryQuery, sessions: KnownSession[]): Promise<ResumableSession[]> {
+  async query(
+    agent: AgentId | undefined,
+    q: HistoryQuery,
+    sessions: KnownSession[],
+  ): Promise<ResumableSession[]> {
     const want = (id: AgentId): boolean => agent === undefined || agent === id;
     const acpIds = listAdapters(this.adapters)
       .filter((a) => a.impl === 'acp' && want(a.kind))
@@ -211,6 +218,7 @@ export class HistoryService {
     const sorted = [...byKey.values()].toSorted((x, y) => y.entry.updatedAt - x.entry.updatedAt);
     const out: ResumableSession[] = [];
     for (let i = 0; i < sorted.length && out.length < limit; i++) {
+      // oxlint-disable-next-line no-await-in-loop -- yielding to the event loop is the point
       if (i > 0 && i % CHUNK === 0) await yieldNow();
       const c = sorted[i];
       if (c === undefined) continue;

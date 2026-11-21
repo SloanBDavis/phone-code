@@ -348,7 +348,11 @@ export type ClientMessage =
   | { t: 'session.delete'; id: string; sessionId: string }
   /** Directory listing for the "pick a folder" UI. Result: FsListResult */
   | { t: 'fs.list'; id: string; path?: string }
-  /** Past agent sessions found on the host that can be resumed. Result: ResumableSession[] */
+  /**
+   * Past agent sessions found on the host that can be resumed. Result: ResumableSession[]
+   * With `query` (even `{}`): "All chats", see HistoryQuery. Without it: the
+   * older resume picker (native agents only unless `agent` is given, newest 50).
+   */
   | { t: 'history.list'; id: string; agent?: AgentId; query?: HistoryQuery }
   /** Hide a session from the sidebar (or bring it back). Result: SessionInfo */
   | { t: 'session.archive'; id: string; sessionId: string; archived: boolean }
@@ -411,7 +415,10 @@ export interface ResumableSession {
   agentName?: string;
   /**
    * Set when this conversation already is a phone-code session (in the sidebar
-   * or archived): open that session instead of creating a new one.
+   * or archived): open that session instead of creating a new one. (A
+   * `session.create` with this entry's resumeId also returns that session,
+   * un-archived. For a phone-code session whose agent has not reported its own
+   * id yet, resumeId is the phone-code session id.)
    */
   sessionId?: string;
   archived?: boolean;

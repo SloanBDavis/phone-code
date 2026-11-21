@@ -58,6 +58,14 @@ function LayerCtx({ layer }: { layer: Layer }): JSX.Element {
   return <>{layer.render(() => closeLayer(layer.id), layer.closing)}</>;
 }
 
+/** A full-screen layer with its own look (e.g. the image viewer). `closing` turns true on close. */
+export function openLayer(
+  render: (close: () => void, closing: boolean) => ComponentChildren,
+  onClosed?: () => void,
+): () => void {
+  return addLayer(render, onClosed);
+}
+
 // ------------------------------------------------------------------ sheet
 
 export interface SheetOptions {

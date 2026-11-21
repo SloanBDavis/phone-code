@@ -1,10 +1,19 @@
 import { mkdir } from 'node:fs/promises';
 import { basename } from 'node:path';
-import type { AgentId, CreateSessionParams, ResumableSession, SessionInfo } from '@phone-code/protocol';
-import type { AdapterRegistry } from '../agents/types.ts';
+import type {
+  AgentId,
+  CreateSessionParams,
+  HistoryQuery,
+  ResumableSession,
+  SessionInfo,
+  SlashCommand,
+} from '@phone-code/protocol';
+import { agentDisplayName, type AdapterRegistry } from '../agents/types.ts';
 import type { StatePaths } from '../config.ts';
 import { assertDirectory, expandPath } from '../fs-list.ts';
+import { HistoryService, type KnownSession } from '../history/service.ts';
 import { userShell } from '../host-info.ts';
+import { ImageStore } from '../images/store.ts';
 import { log } from '../log.ts';
 import { JsonWriter, randomId, readJson } from '../util/files.ts';
 import { isRecord } from '../util/guards.ts';
@@ -48,12 +57,18 @@ export class SessionManager implements SessionHost {
   private readonly writer: JsonWriter;
   private structureTimer: ReturnType<typeof setTimeout> | undefined;
   private activityTimer: ReturnType<typeof setTimeout> | undefined;
+  readonly images: ImageStore;
+  readonly historyIndex: HistoryService;
+  /** Slash commands per agent known without a session (AgentInfo.commands), set by the host info. */
+  catalogCommands: (agent: AgentId) => Promise<SlashCommand[] | undefined> = () => Promise.resolve(undefined);
 
   private constructor(
     private readonly paths: StatePaths,
     private readonly adapters: AdapterRegistry,
     private readonly events: ManagerEvents,
   ) {
+    this.images = new ImageStore(paths.images);
+    this.historyIndex = new HistoryService(paths, adapters);
     this.writer = new JsonWriter(paths.sessions, () => ({
       v: 1,
       sessions: [...this.sessions.values()].map((s) => s.toRecord()),
@@ -87,7 +102,12 @@ export class SessionManager implements SessionHost {
   }
 
   private chatDeps(): ChatDeps {
-    return { host: this, adapters: this.adapters, transcriptsDir: this.paths.transcripts };
+    return {
+      host: this,
+      adapters: this.adapters,
+      transcriptsDir: this.paths.transcripts,
+      images: this.images,
+    };
   }
 
   private terminalDeps(): TerminalDeps {
@@ -130,7 +150,25 @@ export class SessionManager implements SessionHost {
     return this.sessions.get(id);
   }
 
+  /** The phone-code session that already is this agent conversation, if any. */
+  private findResumed(agent: AgentId, resumeId: string): ChatSession | undefined {
+    for (const s of this.sessions.values()) {
+      if (!(s instanceof ChatSession) || s.info.agent !== agent) continue;
+      if (s.nativeId === resumeId || s.info.id === resumeId) return s;
+    }
+    return undefined;
+  }
+
   async create(params: CreateSessionParams): Promise<SessionInfo> {
+    if (params.kind === 'agent' && params.resumeId !== undefined) {
+      // Continuing a chat that is already a phone-code session (in the sidebar or
+      // archived) opens that session instead of making a duplicate.
+      const existing = this.findResumed(params.agent ?? 'claude', params.resumeId);
+      if (existing !== undefined) {
+        await existing.setArchived(false);
+        return existing.info;
+      }
+    }
     const cwd = expandPath(params.cwd);
     await assertDirectory(cwd);
     const id = randomId(9);
@@ -165,6 +203,21 @@ export class SessionManager implements SessionHost {
     return s.info;
   }
 
+  async archive(id: string, archived: boolean): Promise<SessionInfo | undefined> {
+    const s = this.sessions.get(id);
+    if (s === undefined) return undefined;
+    await s.setArchived(archived);
+    return s.info;
+  }
+
+  /** Slash commands of a session: what its running agent reported, else what the agent offers in general. */
+  async commands(id: string): Promise<SlashCommand[] | undefined> {
+    const s = this.sessions.get(id);
+    if (s === undefined) return undefined;
+    if (!(s instanceof ChatSession)) return [];
+    return s.agentCommands ?? (await this.catalogCommands(s.info.agent ?? 'claude')) ?? [];
+  }
+
   async delete(id: string): Promise<boolean> {
     const s = this.sessions.get(id);
     if (s === undefined) return false;
@@ -175,7 +228,22 @@ export class SessionManager implements SessionHost {
     return true;
   }
 
-  async history(agent: AgentId | undefined): Promise<ResumableSession[]> {
+  private known(): KnownSession[] {
+    return [...this.sessions.values()].map((s) =>
+      s instanceof ChatSession && s.nativeId !== undefined
+        ? { info: s.info, nativeId: s.nativeId }
+        : { info: s.info },
+    );
+  }
+
+  /**
+   * With a `query` (even `{}`): "All chats" across every agent, merged with
+   * phone-code's own sessions (history/service.ts). Without one, the older
+   * resume picker: native agents only (or the one asked for), each entry that
+   * already is a phone-code session marked with its `sessionId`.
+   */
+  async history(agent: AgentId | undefined, query?: HistoryQuery): Promise<ResumableSession[]> {
+    if (query !== undefined) return this.historyIndex.query(agent, query, this.known());
     // Without an agent: the native ones only (listing an ACP agent's sessions starts its process).
     const kinds: AgentId[] = agent === undefined ? ['claude', 'codex'] : [agent];
     const lists = await Promise.all(
@@ -186,7 +254,25 @@ export class SessionManager implements SessionHost {
         }),
       ),
     );
-    return lists.flat().toSorted((a, b) => b.updatedAt - a.updatedAt);
+    const mine = new Map<string, SessionInfo>();
+    for (const k of this.known()) {
+      if (k.nativeId !== undefined && k.info.agent !== undefined)
+        mine.set(`${k.info.agent}\u0000${k.nativeId}`, k.info);
+    }
+    // Copies: adapters may share the listed objects with other callers.
+    const out: ResumableSession[] = [];
+    for (const listed of lists.flat()) {
+      const e: ResumableSession = Object.assign({}, listed, {
+        agentName: agentDisplayName(this.adapters, listed.agent),
+      });
+      const s = mine.get(`${e.agent}\u0000${e.resumeId}`);
+      if (s !== undefined) {
+        e.sessionId = s.id;
+        if (s.archived === true) e.archived = true;
+      }
+      out.push(e);
+    }
+    return out.toSorted((a, b) => b.updatedAt - a.updatedAt);
   }
 
   async ensureDirs(): Promise<void> {

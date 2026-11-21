@@ -15,6 +15,7 @@ import {
 } from '../net/transport.ts';
 import { isRecord, parseJson } from '../util/guards.ts';
 import { Connection, type ClientContext, type WsData } from '../ws-client.ts';
+import { isImageRoute, serveImage } from './images.ts';
 import { SECURITY_HEADERS, serveManifest, serveStatic } from './static.ts';
 import type { WebAssets } from './web-assets.ts';
 
@@ -279,6 +280,8 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
       if (path === '/api/handoff' && req.method === 'POST') return handoff(req);
       if (path === '/api/unpair' && req.method === 'POST') return unpair(req);
       if (path === '/api/health' && req.method === 'GET') return json({ ok: true, version: DAEMON_VERSION });
+      if (isImageRoute(path))
+        return serveImage(req, url, { devices: opts.devices, manager: opts.client.manager });
       return json({ error: 'not found' }, 404);
     }
     if (req.method !== 'GET' && req.method !== 'HEAD')

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { expect, test } from '../lib/fixtures.ts';
 import { REPO } from '../lib/daemon.ts';
-import { createSession, send } from '../lib/ui.ts';
+import { newChat, send } from '../lib/ui.ts';
 
 test.use({
   daemonOptions: {
@@ -10,7 +10,7 @@ test.use({
 });
 
 test('an ACP agent that is not signed in tells the user to log in on the computer', async ({ phone }) => {
-  await createSession(phone, 'gemini');
+  await newChat(phone, 'gemini');
   await send(phone, 'hello');
   await expect(phone.testId('chat-item-notice').last()).toContainText(/log in/i);
 });

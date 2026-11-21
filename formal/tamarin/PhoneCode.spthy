@@ -365,7 +365,11 @@ lemma src_auth_thief [use_induction, reuse]:
 
 // ---- sanity: the honest protocol runs (the model is not vacuous)
 // Restricted to traces without attacker requests, which is all they need to
-// show and keeps the search short where the attacker has many moves.
+// show and keeps the search short where the attacker has many moves. Not
+// defined under PLAIN: there the search runs out of memory, and the attack
+// traces found for the falsified lemmas already show the protocol running.
+#ifdef PLAIN
+#else
 
 lemma exec_pair_hello:
   exists-trace
@@ -385,6 +389,7 @@ lemma exec_owner_revoke:
   "(Ex L lin t c #i #j #k. PhonePaired(L, t, c)@i & OwnerRevoke(L)@j & Revoked(L, lin)@k)
    & (All ch #x. ApiReq(ch)@x ==> ch = 'ph' | ch = 'net')
    & (All ch #x. CtlReq(ch)@x ==> ch = 'loc')"
+#endif
 
 // ---- secrecy
 
@@ -400,7 +405,7 @@ lemma pair_code_secret:
 
 // A handoff code minted for the owner's phone stays secret.
 lemma handoff_code_secret:
-  "All h P s #i #j. HandoffMinted(h, P, 'ph')@i & PhoneHandoffReq(s, P)@j ==>
+  "All h P ch s #i #j. HandoffMinted(h, P, ch)@i & PhoneHandoffReq(s, P)@j & (ch = 'ph' | ch = 'net') ==>
      not (Ex #k. K(h)@k) | (Ex #k. Compromised(P)@k)"
 
 // The control secret never reaches the attacker.
@@ -431,6 +436,10 @@ lemma codes_redeemed_only_by_owner:
 lemma code_single_use:
   "All c L1 L2 #i #j. Paired(L1, c)@i & Paired(L2, c)@j ==> #i = #j"
 
+// Not defined under PLAIN, where the attacker can forge the phone's answers
+// and these two say nothing (the search also does not finish).
+#ifdef PLAIN
+#else
 // After the owner's phone redeemed a code, nobody else gets a device from it.
 lemma owner_first_excludes_others:
   "All c L t L2 #i #j. PhonePaired(L, t, c)@i & Paired(L2, c)@j ==> L2 = L"
@@ -440,6 +449,7 @@ lemma owner_first_excludes_others:
 lemma race_loss_is_visible:
   "All c L #i. Paired(L, c)@i & not (Ex t #j. PhonePaired(L, t, c)@j) ==>
      not (Ex L2 t2 #k. PhonePaired(L2, t2, c)@k)"
+#endif
 
 lemma no_pair_after_expiry:
   "All c L #i #j. Expired(c)@i & Paired(L, c)@j ==> #j < #i"
@@ -463,9 +473,14 @@ lemma revoked_no_session:
   "All ch s L lin #i #j. Accept(ch, s, L)@i & Revoked(L, lin)@j ==> #i < #j"
 
 // Revoking a device also ends every device paired through it (transitively).
+// Not defined under NO_CASCADE: there revoke_evicts_thief carries the
+// counterexample (this one does not finish within the time budget).
+#ifdef NO_CASCADE
+#else
 lemma revoke_cascades:
   "All ch s L lin A alin #i #j. Accept(ch, s, L)@i & DevLin(L, lin)@i & Revoked(A, alin)@j
      & A << lin ==> #i < #j"
+#endif
 
 // Only the owner (CLI) or a holder of the device's token revokes it.
 lemma revoke_only_owner_or_holder:

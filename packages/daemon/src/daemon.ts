@@ -9,7 +9,7 @@ import { HostInfoProvider } from './host-info.ts';
 import { startServer } from './http/server.ts';
 import { WebAssets } from './http/web-assets.ts';
 import { log } from './log.ts';
-import { resolvePublicUrl, type UrlSource } from './net/url.ts';
+import { connectionInfo, resolvePublicUrl, type UrlSource } from './net/url.ts';
 import { PushService } from './push.ts';
 import { SessionManager } from './sessions/manager.ts';
 import { ScreenWorker } from './sessions/screen.ts';
@@ -104,6 +104,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   await manager.ensureDirs();
 
   const host = new HostInfoProvider(opts.adapters);
+  manager.catalogCommands = (agent) => host.commandsFor(agent);
   const pairing = new PairingCodes();
   const registry = new ConnectionRegistry();
   const client: ClientContext = { devices, manager, host, push, registry };
@@ -163,6 +164,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   });
   const tunnel = resolved.helper;
   publicUrl = resolved.url;
+  host.setConnection(connectionInfo(resolved));
+  manager.historyIndex.warm();
 
   const fixed = process.env['PHONECODE_PAIR_CODE'];
   let pair: PairCode;

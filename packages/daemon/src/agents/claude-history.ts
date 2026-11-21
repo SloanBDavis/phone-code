@@ -10,8 +10,8 @@
 import { open, readdir, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { ChatItem, ResumableSession } from '@phone-code/protocol';
-import { ClaudeMapper, tsOf } from './claude-map.ts';
+import type { ChatItem, ImageRef, ResumableSession } from '@phone-code/protocol';
+import { ClaudeMapper, localCommandOutput, tsOf } from './claude-map.ts';
 import { arr, isRec, mapPool, oneLine, rec, str, type Rec } from './shared/common.ts';
 
 export function claudeConfigDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -69,7 +69,14 @@ export function userPromptText(entry: Rec): string | undefined {
   if (!t || t.startsWith('<') || t.startsWith('[Request interrupted') || t.startsWith('Caveat:')) {
     // <command-name>, <local-command-stdout>, <system-reminder>, interruption markers
     const cmd = /<command-name>([^<]+)<\/command-name>/.exec(t);
-    return cmd ? cmd[1]?.trim() : undefined;
+    if (!cmd?.[1]) return undefined;
+    const name = cmd[1].trim();
+    const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(t)?.[1]?.trim();
+    return args
+      ? `${name.startsWith('/') ? name : `/${name}`} ${args}`
+      : name.startsWith('/')
+        ? name
+        : `/${name}`;
   }
   return t;
 }
@@ -208,7 +215,12 @@ export async function findSessionFile(
  * Replay a session file into ChatItems. Follows the parentUuid chain from the
  * newest leaf so rewound branches are left out, and keeps at most `maxItems`.
  */
-export async function loadClaudeTranscript(file: string, cwd: string, maxItems = 2000): Promise<ChatItem[]> {
+export async function loadClaudeTranscript(
+  file: string,
+  cwd: string,
+  maxItems = 2000,
+  image?: (data: string) => ImageRef | undefined,
+): Promise<ChatItem[]> {
   const text = await readFile(file, 'utf8');
   const entries = parseLines(text, false, false);
   const byUuid = new Map<string, Rec>();
@@ -240,6 +252,7 @@ export async function loadClaudeTranscript(file: string, cwd: string, maxItems =
       items.set(item.id, item);
     },
     delta() {},
+    ...(image ? { image } : {}),
   };
   const mapper = new ClaudeMapper(sink, cwd, false);
   for (const e of chain) {
@@ -252,6 +265,10 @@ export async function loadClaudeTranscript(file: string, cwd: string, maxItems =
         sink.upsert({ kind: 'user', id: `u:${str(e.uuid) ?? order.length}`, ts: tsOf(e), text: prompt });
       } else if (arr(content).some((b) => rec(b).type === 'tool_result')) {
         mapper.onToolResults(e);
+      } else if (
+        localCommandOutput(typeof content === 'string' ? content : JSON.stringify(content)) !== undefined
+      ) {
+        mapper.onLocalCommandOutput(e, tsOf(e));
       } else if (
         typeof content === 'string'
           ? content.startsWith('[Request interrupted')

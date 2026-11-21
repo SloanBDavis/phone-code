@@ -33,6 +33,7 @@ export interface PendingSend {
 }
 
 export interface ChatState {
+  sessionId: string;
   /** Top-level item ids in transcript order (sub-agent children excluded). */
   ids: Signal<string[]>;
   items: Map<string, Signal<ChatItem>>;
@@ -51,6 +52,7 @@ export function chatOf(sessionId: string): ChatState {
   let c = chats.get(sessionId);
   if (!c) {
     c = {
+      sessionId,
       ids: signal([]),
       items: new Map(),
       kinds: new Map(),

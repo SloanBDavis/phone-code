@@ -1,7 +1,5 @@
 import type { ComponentChildren, JSX, RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { pop } from '../lib/nav';
-import { GlassButton } from './glass';
 
 /** Tracks whether a scroller has moved past `threshold`, at most once per frame. */
 export function useScrolled<T extends HTMLElement>(threshold = 8): [RefObject<T | null>, boolean] {
@@ -26,10 +24,6 @@ export function useScrolled<T extends HTMLElement>(threshold = 8): [RefObject<T 
     };
   }, [threshold]);
   return [ref, scrolled];
-}
-
-export function BackButton({ label = 'Back' }: { label?: string }): JSX.Element {
-  return <GlassButton icon="back" label={label} iconSize={22} onClick={() => pop()} testid="nav-back" />;
 }
 
 /** Floating glass controls over content, with the scroll-edge fade beneath them. */

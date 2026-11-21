@@ -196,9 +196,9 @@ function Item({
   const item = s.peek();
   switch (item.kind) {
     case 'user':
-      return <UserBubble item={s} />;
+      return <UserBubble item={s} sessionId={sessionId} />;
     case 'text':
-      return <TextBlock item={s} />;
+      return <TextBlock item={s} sessionId={sessionId} />;
     case 'thinking':
       return <ThinkingBlock item={s} />;
     case 'tool':

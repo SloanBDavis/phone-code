@@ -196,7 +196,7 @@ export default function AllChats({ text, onOpen }: { text: string; onOpen: () =>
               </span>
               {r.snippet && (
                 <span class="sb-snippet" data-testid="history-snippet">
-                  <Marked text={r.snippet} q={q} />
+                  <Marked text={r.snippet.replace(/[*`_#>]+/g, '')} q={q} />
                 </span>
               )}
               <span class="sb-sub">

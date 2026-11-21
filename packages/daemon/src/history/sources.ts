@@ -13,7 +13,9 @@ async function statAll(files: string[]): Promise<FileStat[]> {
   const out = await mapPool(files, 32, async (file) => {
     try {
       const st = await stat(file);
-      return st.isFile() && st.size > 0 ? { path: file, size: st.size, mtime: Math.round(st.mtimeMs) } : undefined;
+      return st.isFile() && st.size > 0
+        ? { path: file, size: st.size, mtime: Math.round(st.mtimeMs) }
+        : undefined;
     } catch {
       return undefined;
     }
@@ -67,7 +69,8 @@ export async function extractClaude(f: FileStat): Promise<Conversation | undefin
   let custom: string | undefined;
   let ai: string | undefined;
   let summary: string | undefined;
-  let sidechain = false;
+  // Mutated inside the line callback (an object, so the checks below are not narrowed away).
+  const flags = { sidechain: false };
   let count = 0;
   let last = 0;
   const pieces: string[] = [];
@@ -79,7 +82,7 @@ export async function extractClaude(f: FileStat): Promise<Conversation | undefin
     else if (type === 'summary') summary ??= str(e.summary);
     if (type !== 'user' && type !== 'assistant') return;
     if (e.isSidechain === true) {
-      if (count === 0) sidechain = true;
+      if (count === 0) flags.sidechain = true;
       return;
     }
     const ts = Date.parse(str(e.timestamp) ?? '');
@@ -97,7 +100,7 @@ export async function extractClaude(f: FileStat): Promise<Conversation | undefin
     }
   });
   const title = custom ?? ai ?? summary ?? firstPrompt;
-  if (sidechain || cwd === undefined || title === undefined) return undefined;
+  if (flags.sidechain || cwd === undefined || title === undefined) return undefined;
   return {
     resumeId: path.basename(f.path, '.jsonl'),
     cwd,
@@ -134,7 +137,7 @@ function codexText(content: unknown, kind: 'input_text' | 'output_text'): string
 export async function extractCodex(f: FileStat): Promise<Conversation | undefined> {
   let id: string | undefined;
   let cwd: string | undefined;
-  let sub = false;
+  const flags = { sub: false };
   let title: string | undefined;
   let count = 0;
   const pieces: string[] = [];
@@ -144,7 +147,7 @@ export async function extractCodex(f: FileStat): Promise<Conversation | undefine
       id ??= str(p.id) ?? str(p.session_id);
       cwd ??= str(p.cwd);
       const source = p.source;
-      if (isRec(source) && ('subagent' in source || 'subAgent' in source)) sub = true;
+      if (isRec(source) && ('subagent' in source || 'subAgent' in source)) flags.sub = true;
       return;
     }
     if (e.type !== 'response_item' || p.type !== 'message') return;
@@ -160,7 +163,7 @@ export async function extractCodex(f: FileStat): Promise<Conversation | undefine
       if (t !== '') pieces.push(t);
     }
   });
-  if (sub || id === undefined || cwd === undefined || title === undefined) return undefined;
+  if (flags.sub || id === undefined || cwd === undefined || title === undefined) return undefined;
   return { resumeId: id, cwd, title: oneLine(title, 100), messageCount: count, text: capText(pieces) };
 }
 
@@ -180,5 +183,10 @@ export async function extractTranscript(f: FileStat): Promise<Conversation | und
     if (e.kind === 'user' || e.kind === 'text') texts.set(id, str(e.text) ?? '');
   });
   // resumeId is the phone-code session id here; cwd and title come from sessions.json.
-  return { resumeId: path.basename(f.path, '.jsonl'), cwd: '', title: '', text: capText([...texts.values()]) };
+  return {
+    resumeId: path.basename(f.path, '.jsonl'),
+    cwd: '',
+    title: '',
+    text: capText([...texts.values()]),
+  };
 }

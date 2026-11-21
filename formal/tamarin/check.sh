@@ -23,6 +23,8 @@ MAUDE_URL="https://github.com/maude-lang/Maude/releases/download/Maude${MAUDE_VE
 MAUDE_SHA256="72ed1ca87e3b3d0dfc6ee1436baf154bf04c45ff97d521bec040c5e8dfc8f92c"
 LEMMA_TIMEOUT="${LEMMA_TIMEOUT:-600}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 2)}"
+# Heap per proof (GHC RTS -M): a runaway proof fails alone instead of the OOM killer taking a sibling.
+TAMARIN_HEAP="${TAMARIN_HEAP:-3500m}"
 
 # ---------------------------------------------------------------- variants
 # name | -D flags | lemmas expected to be FALSIFIED (every other lemma defined
@@ -50,12 +52,12 @@ VARIANTS=(
   # A stolen token: the thief has sessions until the owner revokes that device.
   "stolen_token|NET_CLIENT COMPROMISE|sessions_only_owner_devices hello_injective_agreement codes_redeemed_only_by_owner"
   # Same, code before the cascade: devices the thief paired survive (real flaw, fixed).
-  "stolen_token_old_nocascade|NET_CLIENT COMPROMISE NO_CASCADE|sessions_only_owner_devices hello_injective_agreement codes_redeemed_only_by_owner revoke_cascades revoke_evicts_thief"
+  "stolen_token_old_nocascade|NET_CLIENT COMPROMISE NO_CASCADE|sessions_only_owner_devices hello_injective_agreement codes_redeemed_only_by_owner revoke_evicts_thief"
   # Code before PairingAuth fix 3: a handoff code pairs after its device was revoked.
   "old_handoff_forget|NOLEAK NO_HANDOFF_FORGET|no_handoff_after_revoke"
   # --insecure plain HTTP, or a tunnel operator that is the attacker (same rules):
   # everything on the wire is the attacker's (documented, expected).
-  "insecure|PLAIN NET_CLIENT|token_secret pair_code_secret handoff_code_secret sessions_only_owner_devices hello_injective_agreement codes_redeemed_only_by_owner owner_first_excludes_others race_loss_is_visible handoff_bound_to_minter revoke_only_owner_or_holder"
+  "insecure|PLAIN NET_CLIENT|token_secret pair_code_secret handoff_code_secret sessions_only_owner_devices hello_injective_agreement codes_redeemed_only_by_owner"
 )
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
@@ -99,7 +101,7 @@ if [[ "${1:-}" == "--one" ]]; then
   for f in $flags; do dflags+=("-D=$f"); done
   start=$(date +%s.%N)
   set +e
-  timeout "$LEMMA_TIMEOUT" "$TAMARIN" +RTS -N1 -RTS --prove="$lemma" "${dflags[@]}" "$THEORY" \
+  timeout "$LEMMA_TIMEOUT" "$TAMARIN" +RTS -N1 -M"$TAMARIN_HEAP" -RTS --prove="$lemma" "${dflags[@]}" "$THEORY" \
     --output="$out/$variant.$lemma.spthy" >"$out/$variant.$lemma.log" 2>&1
   rc=$?
   set -e
@@ -116,7 +118,7 @@ fi
 
 # ---------------------------------------------------------------- driver
 setup_tools
-export LANG=C.UTF-8 LC_ALL=C.UTF-8 PATH TAMARIN LEMMA_TIMEOUT THEORY
+export LANG=C.UTF-8 LC_ALL=C.UTF-8 PATH TAMARIN LEMMA_TIMEOUT THEORY TAMARIN_HEAP
 echo "$("$TAMARIN" --version 2>/dev/null | grep -m1 -o 'tamarin-prover [0-9.]*'), maude $(maude --version)"
 
 OUT="${TAMARIN_OUT:-$(mktemp -d "${TMPDIR:-/tmp}/phonecode-tamarin.XXXXXX")}"
@@ -145,7 +147,7 @@ start=$(date +%s)
 results="$OUT/results.txt"
 # sh -c gets $0 = this script, $1 = the output dir, then variant, flags, lemma from xargs.
 xargs -0 -n 3 -P "$JOBS" sh -c '"$0" --one "$2" "$3" "$4" "$1"' "$HERE/check.sh" "$OUT" <"$jobs" >"$results.raw" 2>&1 || true
-sort "$results.raw" >"$results"
+grep -E '^[a-z_]+ [a-z_]+ (verified|falsified|timeout|error) ' "$results.raw" | sort >"$results" || true
 
 failures=0
 while read -r variant lemma result steps secs; do

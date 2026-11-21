@@ -1,7 +1,9 @@
-import type { ComponentChildren, JSX } from 'preact';
+import type { ComponentChildren, HTMLAttributes, JSX } from 'preact';
 import { signal } from '@preact/signals';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import { openNew } from '../lib/nav';
 import { haptic } from '../lib/util';
+import { GlassButton } from './glass';
 
 /**
  * The app shell: the sidebar of chats and the main pane. On a phone the
@@ -202,7 +204,7 @@ export function Shell({
     if (isWide) endRef.current();
   }, [isWide]);
 
-  const handlers = (from: number): JSX.HTMLAttributes<HTMLDivElement> => ({
+  const handlers = (from: number): HTMLAttributes<HTMLDivElement> => ({
     onPointerDown: (e) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       try {
@@ -233,7 +235,7 @@ export function Shell({
       data-testid="shell"
       data-drawer={open ? 'open' : 'closed'}
     >
-      <aside class="sidebar" inert={!isWide && !open} aria-label="Chats" data-testid="sidebar">
+      <aside class={`sidebar ${isWide ? "" : "glass glass-regular"}`} inert={!isWide && !open} aria-label="Chats" data-testid="sidebar">
         {sidebar}
       </aside>
       <main class="main" inert={open}>
@@ -243,4 +245,13 @@ export function Shell({
       {!isWide && !open && <div class="edge-swipe" aria-hidden="true" data-testid="edge-swipe" {...handlers(0)} />}
     </div>
   );
+}
+
+/** The two buttons every main pane has on a phone: the chats drawer and a new chat. */
+export function PaneButtons(): { left: JSX.Element | null; right: JSX.Element | null } {
+  if (wide.value) return { left: null, right: null };
+  return {
+    left: <GlassButton icon="sidebar" label="Chats" iconSize={22} onClick={openDrawer} testid="open-sidebar" />,
+    right: <GlassButton icon="compose" label="New chat" iconSize={21} onClick={openNew} testid="new-chat" />,
+  };
 }

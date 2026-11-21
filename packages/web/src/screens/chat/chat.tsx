@@ -1,19 +1,26 @@
 import type { JSX, TargetedMouseEvent } from 'preact';
 import { useSignal } from '@preact/signals';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import type { SessionInfo } from '@phone-code/protocol';
 import '../../styles/chat.css';
-import { copyLastResponse, deleteSession, renameSession } from '../../lib/actions';
-import { agentLabel, agentShortLabel, modelLabel, sessionModels } from '../../lib/agents';
+import { archiveSession, copyLastResponse, deleteSession, renameSession } from '../../lib/actions';
+import { agentShortLabel } from '../../lib/agents';
 import { client } from '../../lib/client';
-import { chatOf, conn, host, sessionById } from '../../lib/state';
-import { copyText, soon, tildify } from '../../lib/util';
-import { BackButton, TopBar } from '../../ui/chrome';
+import { connectionOf } from '../../lib/connection';
+import { draft, harnessList, openTerminal, retryStart, starting } from '../../lib/harness';
+import { chatOf, conn, host, isDemo } from '../../lib/state';
+import { loadDraft, markSeen, seen } from '../../lib/storage';
+import { basename, copyText, soon, tildify } from '../../lib/util';
+import { TopBar } from '../../ui/chrome';
+import { PaneButtons } from '../../ui/drawer';
 import { GlassButton } from '../../ui/glass';
-import { Glyph, glyphOf } from '../../ui/glyph';
+import { Glyph, agentGlyph, glyphOf } from '../../ui/glyph';
 import { Icon, Spinner } from '../../ui/icons';
 import { openMenu, toast } from '../../ui/overlay';
+import { openComputer } from '../sidebar';
 import { AskBar } from './asks';
 import { Composer } from './composer';
+import { PendingBubble } from './items';
 import { Transcript, type ScrollApi } from './transcript';
 
 const STATUS_LABEL = {
@@ -24,16 +31,181 @@ const STATUS_LABEL = {
   error: 'Error',
 } as const;
 
-export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean }): JSX.Element | null {
-  const s = sessionById(sessionId);
-  const chat = chatOf(sessionId);
+const STARTERS = [
+  'Explain how this project is organized',
+  'Find and fix a failing test',
+  'Review my uncommitted changes',
+];
+
+/** Plain http, said once, in the first new chat: what is limited and how to fix it. */
+function HttpNote(): JSX.Element | null {
+  const [hidden, setHidden] = useState(() => seen('http'));
+  if (hidden || isDemo.value || connectionOf(host.value).secure) return null;
+  return (
+    <div class="http-note" data-testid="http-note">
+      <Icon name="info" size={17} />
+      <span>
+        This connection is plain http: no notifications or opening without a connection.{' '}
+        <button type="button" class="link-btn" onClick={openComputer}>
+          How to fix
+        </button>
+      </span>
+      <button
+        type="button"
+        class="link-btn"
+        data-testid="http-note-dismiss"
+        onClick={() => {
+          markSeen('http');
+          setHidden(true);
+        }}
+      >
+        OK
+      </button>
+    </div>
+  );
+}
+
+/** A new chat before its first message: what it will run, a few ideas, or how to set up an agent. */
+function NewChatEmpty({ onStarter }: { onStarter: (t: string) => void }): JSX.Element {
+  const d = draft.value;
+  const h = host.value;
+  const ready = harnessList().filter((x) => x.available && x.id !== 'terminal');
+  const name = h?.name ?? 'your computer';
+  if (h && ready.length === 0)
+    return (
+      <div class="chat-empty" data-testid="new-chat-empty" data-state="no-agent">
+        <Glyph kind="terminal" size={58} />
+        <h2>No coding agent on {name} yet</h2>
+        <p>Install one on your computer and it shows up here. Meanwhile, the terminal works.</p>
+        <ul class="setup-hints" data-testid="setup-hints">
+          {harnessList()
+            .filter((x) => !x.available)
+            .map((x) => (
+              <li key={x.id}>
+                <strong>{x.info?.name ?? x.id}</strong>
+                <span>{x.info?.setupHint ?? 'Not installed'}</span>
+              </li>
+            ))}
+        </ul>
+        <button type="button" class="btn btn-secondary" onClick={() => void openTerminal()}>
+          <Icon name="terminal" size={18} />
+          Open a terminal
+        </button>
+        <HttpNote />
+      </div>
+    );
+  return (
+    <div class="chat-empty" data-testid="new-chat-empty" data-state={d.info?.available ? 'ready' : 'setup'}>
+      <Glyph kind={agentGlyph(d.harness)} size={58} />
+      <h2>{d.info?.name ?? 'New chat'}</h2>
+      <p>
+        in <code class="cmd">{tildify(d.cwd, h?.home)}</code> on {name}
+      </p>
+      {d.info && (!d.info.available || d.info.setupHint) && (
+        <p class="harness-hint" data-testid="harness-hint">
+          <Icon name="warn" size={16} />
+          {d.info.setupHint ?? 'Not installed on this computer.'}
+        </p>
+      )}
+      {d.info?.available !== false && (
+        <div class="starters">
+          {STARTERS.map((s) => (
+            <button key={s} type="button" class="starter" data-testid="starter" onClick={() => onStarter(s)}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+      <HttpNote />
+    </div>
+  );
+}
+
+function TitleCapsule({ s }: { s?: SessionInfo }): JSX.Element {
+  const link = conn.value.status === 'open';
+  if (!s)
+    return (
+      <div class="title-capsule glass glass-regular glass-btn glass-capsule static" data-testid="chat-title">
+        <span class="title-main">New chat</span>
+        {!link && (
+          <span class="title-sub st-away">
+            <span class="dot warn pulse" />
+            {conn.value.status === 'offline' ? 'Offline' : 'Connecting…'}
+          </span>
+        )}
+      </div>
+    );
+  const menu = (e: TargetedMouseEvent<HTMLButtonElement>): void =>
+    openMenu(
+      e.currentTarget,
+      [
+        {
+          items: [
+            { label: 'Rename', icon: 'pencil', onSelect: () => void renameSession(s), testid: 'menu-rename' },
+            {
+              label: 'Copy last response',
+              icon: 'copy',
+              onSelect: () => void copyLastResponse(s.id),
+              testid: 'menu-copy',
+            },
+            {
+              label: 'Copy folder path',
+              icon: 'folder',
+              hint: tildify(s.cwd, host.value?.home),
+              onSelect: () => void copyText(s.cwd).then((ok) => ok && toast('Copied', 'check')),
+            },
+            { label: 'Archive', icon: 'archive', onSelect: () => void archiveSession(s), testid: 'menu-archive' },
+          ],
+        },
+        {
+          items: [
+            {
+              label: 'Delete chat',
+              icon: 'trash',
+              destructive: true,
+              onSelect: () => void deleteSession(s),
+              testid: 'menu-delete',
+            },
+          ],
+        },
+      ],
+      { testid: 'chat-menu' },
+    );
+  return (
+    <GlassButton class="title-capsule" onClick={menu} testid="chat-title">
+      <span class="title-main">{s.title}</span>
+      <span class={`title-sub st-${link ? s.status : 'away'}`} data-link={conn.value.status}>
+        {!link ? (
+          <span class="dot warn pulse" />
+        ) : s.status === 'running' ? (
+          <span class="dot ok pulse" />
+        ) : s.status === 'waiting' ? (
+          <span class="dot warn" />
+        ) : null}
+        {link ? STATUS_LABEL[s.status] : conn.value.status === 'offline' ? 'Offline' : 'Reconnecting…'} ·{' '}
+        {s.cwd === host.value?.home ? '~' : basename(s.cwd) || s.cwd}
+      </span>
+    </GlassButton>
+  );
+}
+
+/**
+ * The chat pane: a new chat (no `session`) or a session's transcript. The
+ * same instance serves both, so sending the first message turns the new
+ * chat into its session without the keyboard going down.
+ */
+export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Element {
+  const sessionId = s?.id;
+  const chat = sessionId ? chatOf(sessionId) : null;
   const scrollRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<ScrollApi>(null);
   const jump = useSignal(false);
+  const [text, setText] = useState(() => loadDraft(sessionId ?? 'new'));
+  const { left, right } = PaneButtons();
 
-  useEffect(() => client.subscribe(sessionId), [sessionId]);
+  useEffect(() => (sessionId ? client.subscribe(sessionId) : undefined), [sessionId]);
 
   // The transcript scrolls under the floating dock; keep its padding equal to the dock height.
   useEffect(() => {
@@ -54,107 +226,65 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
     };
   }, []);
 
-  if (!s) return null;
-  const agent = agentShortLabel(s, host.value);
-  const loaded = chat.loaded.value;
-  // While the link is down, say so instead of a status that may be stale.
-  const link = conn.value.status === 'open';
-  const empty = loaded && chat.ids.value.length === 0 && chat.pending.value.length === 0;
-
-  const menu = (e: TargetedMouseEvent<HTMLButtonElement>): void =>
-    openMenu(
-      e.currentTarget,
-      [
-        {
-          items: [
-            { label: 'Rename', icon: 'pencil', onSelect: () => void renameSession(s), testid: 'menu-rename' },
-            {
-              label: 'Copy last response',
-              icon: 'copy',
-              onSelect: () => void copyLastResponse(s.id),
-              testid: 'menu-copy',
-            },
-            {
-              label: 'Copy folder path',
-              icon: 'folder',
-              hint: tildify(s.cwd, host.value?.home),
-              onSelect: () => void copyText(s.cwd).then((ok) => ok && toast('Copied', 'check')),
-            },
-          ],
-        },
-        {
-          items: [
-            {
-              label: 'Delete session',
-              icon: 'trash',
-              destructive: true,
-              onSelect: () => void deleteSession(s),
-              testid: 'menu-delete',
-            },
-          ],
-        },
-      ],
-      { testid: 'chat-menu' },
-    );
+  const agent = s ? agentShortLabel(s, host.value) : agentShortLabel({ agent: draft.value.harness }, host.value);
+  const loaded = chat?.loaded.value ?? true;
+  const first = starting.value;
+  const empty = !chat || (loaded && chat.ids.value.length === 0 && chat.pending.value.length === 0);
 
   return (
-    <div class="screen chat-screen" ref={screenRef} data-testid="screen-chat" data-session-id={sessionId}>
+    <div
+      class="screen chat-screen"
+      ref={screenRef}
+      data-testid="screen-chat"
+      data-session-id={sessionId ?? ''}
+      data-draft={!s}
+    >
       <div class="scroll chat-scroll" ref={scrollRef}>
-        {!loaded ? (
+        {!s ? (
+          first ? (
+            <div class="transcript">
+              <PendingBubble p={first} onRetry={retryStart} />
+              {first.status === 'sending' && (
+                <div class="center-pad">
+                  <Spinner size={18} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <NewChatEmpty
+              onStarter={(t) => {
+                setText(t);
+                soon(() => document.querySelector<HTMLTextAreaElement>('.composer-input')?.focus());
+              }}
+            />
+          )
+        ) : !loaded ? (
           <div class="center-pad">
             <Spinner size={22} />
           </div>
         ) : empty ? (
           <div class="chat-empty">
             <Glyph kind={glyphOf(s)} size={58} />
-            <h2>{agentLabel(s, host.value)}</h2>
+            <h2>{s.title}</h2>
             <p>
               in <code class="cmd">{tildify(s.cwd, host.value?.home)}</code>
             </p>
-            <p class="chat-empty-hint">
-              Ask for a change, a review, or an explanation. It runs on your computer.
-            </p>
           </div>
         ) : (
-          <Transcript
-            chat={chat}
-            sessionId={sessionId}
-            agent={agent}
-            apiRef={apiRef}
-            scrollRef={scrollRef}
-            jump={jump}
-          />
+          chat && (
+            <Transcript
+              key={s.id}
+              chat={chat}
+              sessionId={s.id}
+              agent={agent}
+              apiRef={apiRef}
+              scrollRef={scrollRef}
+              jump={jump}
+            />
+          )
         )}
       </div>
-      <TopBar
-        fade
-        left={<BackButton />}
-        titleSlot={
-          <GlassButton class="title-capsule" onClick={menu} testid="chat-title">
-            <span class="title-main">{s.title}</span>
-            <span class={`title-sub st-${link ? s.status : 'away'}`} data-link={conn.value.status}>
-              {!link ? (
-                <span class="dot warn pulse" />
-              ) : s.status === 'running' ? (
-                <span class="dot ok pulse" />
-              ) : s.status === 'waiting' ? (
-                <span class="dot warn" />
-              ) : null}
-              {link ? STATUS_LABEL[s.status] : conn.value.status === 'offline' ? 'Offline' : 'Reconnecting…'}{' '}
-              · {modelLabel(s.model, sessionModels(s, host.value)) ?? agent}
-            </span>
-          </GlassButton>
-        }
-        right={
-          <GlassButton
-            icon="ellipsis"
-            iconSize={22}
-            label="Session menu"
-            onClick={menu}
-            testid="chat-menu-btn"
-          />
-        }
-      />
+      <TopBar fade left={left} titleSlot={<TitleCapsule s={s} />} right={right} />
       <button
         type="button"
         class={`jump glass glass-regular ${jump.value ? 'show' : ''}`}
@@ -166,11 +296,12 @@ export function ChatScreen({ sessionId, top }: { sessionId: string; top: boolean
         <Icon name="arrowDown" size={18} stroke={2.4} />
       </button>
       <div class="dock" ref={dockRef}>
-        {top && <AskBar sessionId={sessionId} agent={agent} />}
+        {s && <AskBar sessionId={s.id} agent={agent} />}
         <Composer
-          key={sessionId}
           session={s}
-          onSent={() => requestAnimationFrame(() => apiRef.current?.toBottom(true))}
+          text={text}
+          setText={setText}
+          onSent={() => soon(() => apiRef.current?.toBottom(true))}
         />
       </div>
     </div>

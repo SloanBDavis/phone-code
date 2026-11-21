@@ -211,8 +211,16 @@ export class Daemon {
 
   /** Runs the real CLI (`phonecode <args>`) against this daemon's state. */
   cli(...args: string[]): Promise<{ code: number | null; out: string }> {
+    return this.cliWith({}, ...args);
+  }
+
+  /** Like `cli`, with extra environment (e.g. a PATH holding a fake `tailscale`). */
+  cliWith(env: Record<string, string>, ...args: string[]): Promise<{ code: number | null; out: string }> {
     return new Promise((ok) => {
-      const p = spawn('bun', [CLI, ...args], { env: this.env(), stdio: ['ignore', 'pipe', 'pipe'] });
+      const p = spawn('bun', [CLI, ...args], {
+        env: { ...this.env(), ...env },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
       let out = '';
       p.stdout.on('data', (c: Buffer) => (out += c.toString()));
       p.stderr.on('data', (c: Buffer) => (out += c.toString()));

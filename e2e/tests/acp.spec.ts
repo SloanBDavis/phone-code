@@ -3,17 +3,17 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../lib/fixtures.ts';
 import { REPO } from '../lib/daemon.ts';
-import { back, createSession, lastText, row, send, shot, waitTurn } from '../lib/ui.ts';
+import { currentId, newChat, lastText, openSidebar, row, searchAll, send, shot, waitTurn } from '../lib/ui.ts';
 
 const FAKE = join(REPO, 'e2e/fakes/fake-acp.mjs');
 // The Antigravity preset runs the same fake, for its preset-specific rules.
 test.use({ daemonOptions: { env: { PHONECODE_GEMINI_BIN: FAKE, PHONECODE_ANTIGRAVITY_BIN: FAKE } } });
 
 test('streams an answer from Gemini CLI', async ({ phone }) => {
-  await phone.testId('new-session').click();
-  await expect(phone.testId('new-kind-gemini')).toContainText('Gemini CLI');
-  await phone.testId('new-session-close').click();
-  await createSession(phone, 'gemini');
+  await phone.testId('composer-harness').click();
+  await expect(phone.testId('harness-gemini')).toContainText('Gemini CLI');
+  await phone.page.keyboard.press('Escape');
+  await newChat(phone, 'gemini');
   await expect(phone.testId('composer-input')).toHaveAttribute('placeholder', 'Message Gemini CLI');
   await send(phone, 'hello gemini');
   await waitTurn(phone, 1);
@@ -23,7 +23,7 @@ test('streams an answer from Gemini CLI', async ({ phone }) => {
 });
 
 test('permissions: allow, deny (no feedback), always allow', async ({ phone }) => {
-  await createSession(phone, 'gemini');
+  await newChat(phone, 'gemini');
   const perm = phone.testId('chat-item-permission');
   await send(phone, 'run tests');
   await expect(perm.nth(0)).toHaveAttribute('data-status', 'pending');
@@ -52,7 +52,7 @@ test('edits go through the client and change the file; reads outside the folder 
   phone,
   daemon,
 }) => {
-  await createSession(phone, 'gemini', { folder: daemon.folder('edit-acp') });
+  await newChat(phone, 'gemini', { folder: daemon.folder('edit-acp') });
   const file = join(daemon.userHome, 'edit-acp', 'notes.md');
   writeFileSync(file, '# Notes\n\nhello world\n');
   await send(phone, 'edit file');
@@ -69,7 +69,7 @@ test('edits go through the client and change the file; reads outside the folder 
 });
 
 test('agent terminal, plan, interrupt and crash recovery', async ({ phone }) => {
-  await createSession(phone, 'gemini');
+  await newChat(phone, 'gemini');
   await send(phone, 'use the terminal');
   const perm = phone.testId('chat-item-permission').last();
   await perm.getByTestId('permission-allow').click();
@@ -96,7 +96,7 @@ test('agent terminal, plan, interrupt and crash recovery', async ({ phone }) => 
 test('an agent that stops reading its input: an error, and the next message restarts it', async ({
   phone,
 }) => {
-  await createSession(phone, 'gemini');
+  await newChat(phone, 'gemini');
   await send(phone, 'close input');
   await waitTurn(phone, 1);
   // Long enough that the write fails (Bun reports EPIPE only for writes it cannot finish at once).
@@ -110,7 +110,7 @@ test('an agent that stops reading its input: an error, and the next message rest
 });
 
 test('stop cancels a permission asked after the prompt ended', async ({ phone }) => {
-  await createSession(phone, 'gemini');
+  await newChat(phone, 'gemini');
   await send(phone, 'late ask');
   await waitTurn(phone, 1);
   const perm = phone.testId('chat-item-permission').last();
@@ -124,7 +124,7 @@ test('stop cancels a permission asked after the prompt ended', async ({ phone })
 });
 
 test('question form: single choice, multiple choice and free text reach the agent', async ({ phone }) => {
-  await createSession(phone, 'gemini');
+  await newChat(phone, 'gemini');
   await send(phone, 'ask me');
   const q = phone.testId('chat-item-question');
   await expect(q).toHaveAttribute('data-status', 'pending');
@@ -149,7 +149,7 @@ test('question form: single choice, multiple choice and free text reach the agen
 test('Antigravity: an executor error sent as a reply is an error, for that preset only', async ({
   phone,
 }) => {
-  await createSession(phone, 'antigravity');
+  await newChat(phone, 'antigravity');
   await send(phone, 'model error');
   await waitTurn(phone, 1, 'error');
   await expect(phone.testId('chat-item-notice').last()).toContainText(
@@ -159,10 +159,9 @@ test('Antigravity: an executor error sent as a reply is an error, for that prese
   await send(phone, 'hello');
   await waitTurn(phone, 2);
   await expect(lastText(phone)).toContainText('fake ACP agent');
-  await back(phone);
 
   // The same words from another agent are just its answer.
-  await createSession(phone, 'gemini');
+  await newChat(phone, 'gemini');
   await send(phone, 'model error');
   await waitTurn(phone, 1);
   await expect(lastText(phone)).toContainText('agent executor error');
@@ -170,16 +169,18 @@ test('Antigravity: an executor error sent as a reply is an error, for that prese
 });
 
 test('resumes a past Gemini session from history', async ({ phone, daemon }) => {
-  const id = await createSession(phone, 'gemini', { folder: daemon.folder('resume-acp') });
+  await newChat(phone, 'gemini', { folder: daemon.folder('resume-acp') });
   await send(phone, 'hello, remember the word walrus');
+  const id = await currentId(phone);
   await waitTurn(phone, 1);
-  await phone.testId('chat-menu-btn').click();
+  await phone.testId('chat-title').click();
   await phone.testId('menu-delete').click();
   await phone.testId('delete-dialog-confirm').click();
+  await openSidebar(phone);
   await expect(row(phone, id)).toHaveCount(0);
-  await phone.testId('new-session').click();
-  await phone.testId('new-kind-gemini').click();
-  await phone.testId('resume-row').filter({ hasText: 'walrus' }).click();
+  // "All chats" still finds the conversation on the computer, and continues it.
+  const rows = await searchAll(phone, 'walrus');
+  await rows.filter({ hasText: 'walrus' }).first().click();
   await expect(phone.testId('chat-item-user').first()).toContainText('walrus');
   await expect(phone.testId('chat-item-text').first()).not.toHaveText('');
   await send(phone, 'hello once more');
@@ -195,9 +196,8 @@ test('a user-defined agent from agents.json', async ({ phone, daemon }) => {
   phone.allowConsole(/WebSocket connection to .* failed/);
   await daemon.restart();
   await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open', { timeout: 20_000 });
-  await createSession(phone, 'my-agent');
+  await newChat(phone, 'my-agent');
   await expect(phone.testId('composer-input')).toHaveAttribute('placeholder', 'Message My Agent');
   await send(phone, 'hello mine');
   await waitTurn(phone, 1);
-  await back(phone);
 });

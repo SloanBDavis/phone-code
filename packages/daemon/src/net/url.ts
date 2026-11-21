@@ -1,4 +1,5 @@
 import { networkInterfaces } from 'node:os';
+import type { ConnectionInfo } from '@phone-code/protocol';
 import { log } from '../log.ts';
 import { detectTailscale, startTailscaleServe } from './tailscale.ts';
 import { isLoopbackUrl } from './transport.ts';
@@ -104,4 +105,17 @@ export async function resolvePublicUrl(opts: ResolveOptions): Promise<PublicUrl>
       return { url: ts.url, source: 'tailscale', phoneReachable: true, secure: true, helper: ts };
   }
   return local;
+}
+
+/** HostInfo.connection for a resolved URL. */
+export function connectionInfo(u: Pick<PublicUrl, 'source' | 'secure' | 'phoneReachable'>): ConnectionInfo {
+  const mode: ConnectionInfo['mode'] =
+    u.source === 'explicit'
+      ? u.phoneReachable
+        ? 'url'
+        : 'local'
+      : u.source === 'local'
+        ? 'local'
+        : u.source;
+  return { mode, secure: u.secure };
 }

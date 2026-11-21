@@ -49,7 +49,9 @@ export function imagePathsIn(text: string, cwd: string): string[] {
   };
   for (const m of text.matchAll(/!?\[[^\]\n]*\]\(([^)\n]+)\)/g)) add(m[1]);
   for (const m of text.matchAll(/`([^`\n]+)`/g)) add(m[1]);
-  for (const m of text.matchAll(/(?:^|[\s(])((?:~|\.{1,2})?\/[^\s`'"()<>]+\.(?:png|jpe?g|gif|webp))(?=$|[\s).,;:!?])/gim))
+  for (const m of text.matchAll(
+    /(?:^|[\s(])((?:~|\.{1,2})?\/[^\s`'"()<>]+\.(?:png|jpe?g|gif|webp))(?=$|[\s).,;:!?])/gim,
+  ))
     add(m[1]);
   return found;
 }
@@ -57,7 +59,10 @@ export function imagePathsIn(text: string, cwd: string): string[] {
 /** Folders an agent writes its own generated images to, besides the session folder. */
 export function artifactRoots(agent: string, env: NodeJS.ProcessEnv = process.env): string[] {
   if (agent === 'codex') {
-    const home = env['CODEX_HOME'] !== undefined && env['CODEX_HOME'] !== '' ? env['CODEX_HOME'] : path.join(os.homedir(), '.codex');
+    const home =
+      env['CODEX_HOME'] !== undefined && env['CODEX_HOME'] !== ''
+        ? env['CODEX_HOME']
+        : path.join(os.homedir(), '.codex');
     return [path.join(home, 'generated_images')];
   }
   return [];

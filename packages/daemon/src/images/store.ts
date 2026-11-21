@@ -32,7 +32,11 @@ function envMb(name: string, fallback: number): number {
 
 export const ID_RE = /^[0-9a-f]{32}$/;
 const SESSION_RE = /^[\w-]{1,128}$/;
-const EXT_TYPES: Record<string, Sniffed['mediaType']> = {
+function isExt(v: string): v is Sniffed['ext'] {
+  return v === 'png' || v === 'jpg' || v === 'gif' || v === 'webp';
+}
+
+const EXT_TYPES: Record<Sniffed['ext'], Sniffed['mediaType']> = {
   png: 'image/png',
   jpg: 'image/jpeg',
   gif: 'image/gif',
@@ -56,7 +60,7 @@ interface Entry {
 export type PutResult = { ok: true; ref: ImageRef } | { ok: false; error: string };
 
 export interface ImageFile {
-  body: Uint8Array | Blob;
+  body: Blob;
   mediaType: string;
 }
 
@@ -119,9 +123,9 @@ export class ImageStore {
         }
         const key = this.key(sessionId, m[1]);
         if (this.entries.has(key)) continue;
-        const ext = m[2] as Sniffed['ext'];
+        const ext = m[2];
+        if (!isExt(ext)) continue;
         const mediaType = EXT_TYPES[ext];
-        if (mediaType === undefined) continue;
         this.entries.set(key, {
           sessionId,
           id: m[1],
@@ -212,7 +216,12 @@ export class ImageStore {
    * is inside one of `roots` (themselves resolved). Returns undefined when the
    * file is outside, missing, not a regular file, too big or not an image.
    */
-  async putFile(sessionId: string, path: string, roots: string[], name?: string): Promise<ImageRef | undefined> {
+  async putFile(
+    sessionId: string,
+    path: string,
+    roots: string[],
+    name?: string,
+  ): Promise<ImageRef | undefined> {
     let real: string;
     try {
       real = await realpath(path);
@@ -246,8 +255,7 @@ export class ImageStore {
   async base64(sessionId: string, id: string): Promise<string | undefined> {
     const f = await this.get(sessionId, id);
     if (f === undefined) return undefined;
-    const bytes = f.body instanceof Blob ? new Uint8Array(await f.body.arrayBuffer()) : f.body;
-    return Buffer.from(bytes).toString('base64');
+    return Buffer.from(await f.body.arrayBuffer()).toString('base64');
   }
 
   async get(sessionId: string, id: string, width?: number): Promise<ImageFile | undefined> {
@@ -265,7 +273,7 @@ export class ImageStore {
       const thumb = await this.thumb(e, width);
       if (thumb !== undefined) return thumb;
     }
-    if (e.pending !== undefined) return { body: e.pending, mediaType: e.mediaType };
+    if (e.pending !== undefined) return { body: new Blob([e.pending.slice()]), mediaType: e.mediaType };
     const file = Bun.file(this.file(e));
     if (!(await file.exists())) {
       this.drop(e);
@@ -294,7 +302,7 @@ export class ImageStore {
       e.thumbBytes += out.length;
       this.total += out.length;
       this.evict(e);
-      return { body: out, mediaType: 'image/webp' };
+      return { body: new Blob([out.slice()]), mediaType: 'image/webp' };
     } catch (err) {
       log.debug(`thumbnail failed for ${e.sessionId}/${e.id}`, err);
       return undefined;
@@ -326,7 +334,9 @@ export class ImageStore {
     try {
       const names = await readdir(this.dir(e.sessionId));
       await Promise.all(
-        names.filter((n) => n.startsWith(e.id)).map((n) => rm(join(this.dir(e.sessionId), n), { force: true })),
+        names
+          .filter((n) => n.startsWith(e.id))
+          .map((n) => rm(join(this.dir(e.sessionId), n), { force: true })),
       );
     } catch {
       // already gone
@@ -336,7 +346,7 @@ export class ImageStore {
   /** Forget every image of a deleted session. */
   async removeSession(sessionId: string): Promise<void> {
     if (!SESSION_RE.test(sessionId)) return;
-    for (const e of [...this.entries.values()]) if (e.sessionId === sessionId) this.drop(e);
+    for (const e of this.entries.values()) if (e.sessionId === sessionId) this.drop(e);
     await rm(this.dir(sessionId), { recursive: true, force: true });
   }
 

@@ -11,11 +11,19 @@ import { waitForUrl, type Tunnel } from './tunnel.ts';
 
 const MAC_TAILSCALE = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
 
-function tailscaleBin(): string | undefined {
-  const found = Bun.which('tailscale');
-  if (found !== null) return found;
+/** The macOS app's bundled CLI (PHONECODE_TAILSCALE_APP overrides it, for tests on any OS). */
+export function macAppCli(): string | undefined {
+  const override = process.env['PHONECODE_TAILSCALE_APP'];
+  if (override !== undefined && override !== '') return existsSync(override) ? override : undefined;
   return process.platform === 'darwin' && existsSync(MAC_TAILSCALE) ? MAC_TAILSCALE : undefined;
 }
+
+export function tailscaleBin(): string | undefined {
+  return Bun.which('tailscale') ?? macAppCli();
+}
+
+/** Why the last `tailscale serve` did not give us a URL (shown by `phonecode setup`). */
+export let lastServeError: string | undefined;
 
 interface TailscaleInfo {
   bin: string;
@@ -86,13 +94,26 @@ export async function startTailscaleServe(port: number, timeoutMs = 15_000): Pro
     stderr: 'pipe',
   });
   const domain = info.certDomain.replaceAll('.', '\\.');
-  // Foreground serve removes its config on interrupt, like pressing Ctrl+C.
-  const tunnel = await waitForUrl(
-    'tailscale serve',
-    proc,
-    new RegExp(`https://${domain}`),
-    timeoutMs,
-    'SIGINT',
-  );
+  // Foreground serve removes its config on interrupt, like pressing Ctrl+C. When
+  // Serve is not enabled for the tailnet it prints a login.tailscale.com link and waits.
+  let tunnel;
+  try {
+    tunnel = await waitForUrl(
+      'tailscale serve',
+      proc,
+      new RegExp(`https://${domain}|https://login\\.tailscale\\.com/f/serve\\S*`),
+      timeoutMs,
+      'SIGINT',
+    );
+  } catch (err) {
+    lastServeError = err instanceof Error ? err.message : String(err);
+    throw err;
+  }
+  if (tunnel.url.startsWith('https://login.tailscale.com/')) {
+    tunnel.stop();
+    lastServeError = `Serve is not enabled on your tailnet. Enable it here: ${tunnel.url}`;
+    throw new Error(lastServeError);
+  }
+  lastServeError = undefined;
   return { ...tunnel, url: `https://${info.certDomain}` };
 }

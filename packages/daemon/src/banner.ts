@@ -70,14 +70,20 @@ const INSECURE_WARNING = [
   red('  in your terminal and chats, and can take over the session. Use only on a network you trust.'),
 ].join('\n');
 
-export async function banner(d: Daemon, showQr: boolean, interactive: boolean): Promise<string> {
+/** `help`: what to do to reach this computer from a phone (setup.ts), shown instead of the generic advice. */
+export async function banner(
+  d: Daemon,
+  showQr: boolean,
+  interactive: boolean,
+  help?: string,
+): Promise<string> {
   const home = d.home.startsWith(homedir()) ? `~${d.home.slice(homedir().length)}` : d.home;
   const lines = ['', `  ${bold('phone-code')} ${dim(`v${DAEMON_VERSION}`)}`, ''];
   if (d.insecure) lines.push(INSECURE_WARNING, '');
   if (d.phoneReachable) {
     lines.push(await pairingBlock(d.pair, showQr));
   } else {
-    lines.push(secureUrlHelp(d.port), '', `  On this computer you can open ${cyan(d.pair.pairUrl)}`);
+    lines.push(help ?? secureUrlHelp(d.port), '', `  On this computer you can open ${cyan(d.pair.pairUrl)}`);
   }
   lines.push(
     '',

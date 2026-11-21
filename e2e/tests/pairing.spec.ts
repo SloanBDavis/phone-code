@@ -1,6 +1,6 @@
 import { expect, test, type Phone } from '../lib/fixtures.ts';
 import { str } from '../lib/json.ts';
-import { shot } from '../lib/ui.ts';
+import { openComputer, shot } from '../lib/ui.ts';
 
 /** Rejected pairing attempts make the browser log the 401 response. */
 function allow401(phone: Phone): void {
@@ -17,9 +17,15 @@ test('pairs from the QR link', async ({ newPhone, daemon }) => {
   await phone.testId('pair-continue').click();
   await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open');
   expect(new URL(phone.page.url()).hash).toBe('#/');
-  // Paired for good: a reload goes straight to the sessions list.
+  // Straight into a ready-to-type chat with the first available harness.
+  await expect(phone.testId('screen-chat')).toHaveAttribute('data-draft', 'true');
+  await expect(phone.testId('new-chat-empty')).toHaveAttribute('data-state', 'ready');
+  await expect(phone.testId('composer-harness')).toHaveAttribute('data-harness', 'claude');
+  await expect(phone.testId('starter')).not.toHaveCount(0);
+  await shot(phone, 'first-chat');
+  // Paired for good: a reload goes straight back in.
   await phone.page.reload();
-  await expect(phone.testId('screen-sessions')).toBeVisible();
+  await expect(phone.testId('screen-chat')).toBeVisible();
   expect((await daemon.devices()).map((d) => d.id)).toContain(await phone.deviceId());
 });
 
@@ -84,7 +90,7 @@ test('Home Screen handoff pairs a fresh app with empty storage', async ({ newPho
   const app = await newPhone();
   await app.context.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }));
   await app.page.goto(manifest.start_url);
-  await expect(app.testId('screen-sessions')).toBeVisible();
+  await expect(app.testId('screen-chat')).toBeVisible();
   await expect(app.testId('conn-state')).toHaveAttribute('data-status', 'open');
   expect(new URL(app.page.url()).searchParams.get('h')).toBeNull();
   expect(await app.deviceId()).not.toBe(await safari.deviceId());
@@ -99,8 +105,7 @@ test('Home Screen handoff pairs a fresh app with empty storage', async ({ newPho
 test('unpairing forgets the device on the host too', async ({ phone, daemon }) => {
   const id = await phone.deviceId();
   expect((await daemon.devices()).map((d) => d.id)).toContain(id);
-  await phone.testId('open-settings').click();
-  await expect(phone.testId('screen-settings')).toBeVisible();
+  await openComputer(phone);
   await shot(phone, 'settings');
   await phone.testId('settings-unpair').click();
   await phone.testId('unpair-dialog-confirm').click();

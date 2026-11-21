@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../lib/fixtures.ts';
-import { createSession, lastText, row, send, shot, waitTurn } from '../lib/ui.ts';
+import { lastText, newChat, openSidebar, row, searchAll, send, shot, startChat, waitTurn } from '../lib/ui.ts';
 
 test('streams a markdown answer', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await send(phone, 'hello there');
   await expect(phone.testId('chat-item-user')).toContainText('hello there');
   await waitTurn(phone, 1);
@@ -15,7 +15,7 @@ test('streams a markdown answer', async ({ phone }) => {
 });
 
 test('Bash permission: allow, deny, deny with feedback, always allow', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   const perm = phone.testId('chat-item-permission');
 
   await send(phone, 'run tests please');
@@ -60,7 +60,7 @@ test('Bash permission: allow, deny, deny with feedback, always allow', async ({ 
 });
 
 test('Edit shows a diff and really changes the file', async ({ phone, daemon }) => {
-  await createSession(phone, 'claude', { folder: daemon.folder('edit-claude') });
+  await newChat(phone, 'claude', { folder: daemon.folder('edit-claude') });
   const file = join(daemon.userHome, 'edit-claude', 'notes.md');
   await send(phone, 'edit file');
   const perm = phone.testId('chat-item-permission').last();
@@ -85,7 +85,7 @@ test('Edit shows a diff and really changes the file', async ({ phone, daemon }) 
 });
 
 test('question card is answered', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await send(phone, 'ask me something');
   const q = phone.testId('chat-item-question');
   await expect(q).toHaveAttribute('data-status', 'pending');
@@ -101,7 +101,7 @@ test('question card is answered', async ({ phone }) => {
 });
 
 test('todo list updates live', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await send(phone, 'make a todo list');
   const todo = phone.testId('chat-item-todo').last();
   await expect(todo).toBeVisible();
@@ -110,7 +110,7 @@ test('todo list updates live', async ({ phone }) => {
 });
 
 test('interrupting a long stream', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await send(phone, 'tell me something long');
   const text = lastText(phone);
   await expect(text).toHaveAttribute('data-streaming', 'true');
@@ -126,7 +126,7 @@ test('interrupting a long stream', async ({ phone }) => {
 });
 
 test('a crash shows an error and the next message recovers', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await send(phone, 'please crash now');
   const notice = phone.testId('chat-item-notice').last();
   await expect(notice).toContainText(/exited unexpectedly/);
@@ -140,7 +140,7 @@ test('a crash shows an error and the next message recovers', async ({ phone }) =
 });
 
 test('a CLI that stops reading its input: an error, and the next message restarts it', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await send(phone, 'close input');
   await waitTurn(phone, 1);
   // Long enough that the write fails (Bun reports EPIPE only for writes it cannot finish at once).
@@ -155,7 +155,7 @@ test('a CLI that stops reading its input: an error, and the next message restart
 });
 
 test('stop cancels a permission asked after the turn ended', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await send(phone, 'late ask');
   await waitTurn(phone, 1);
   const perm = phone.testId('chat-item-permission').last();
@@ -171,7 +171,7 @@ test('stop cancels a permission asked after the turn ended', async ({ phone }) =
 });
 
 test('thinking text is streamed', async ({ phone }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await send(phone, 'think first');
   await waitTurn(phone, 1);
   const thinking = phone.testId('chat-item-thinking');
@@ -181,18 +181,19 @@ test('thinking text is streamed', async ({ phone }) => {
 });
 
 test('resuming restores the sub-agent tool calls inside the agent card', async ({ phone, daemon }) => {
-  const id = await createSession(phone, 'claude', { folder: daemon.folder('resume-agent') });
-  await send(phone, 'start an agent for the walrus');
+  const id = await startChat(phone, 'claude', 'start an agent for the walrus', {
+    folder: daemon.folder('resume-agent'),
+  });
   await waitTurn(phone, 1);
   const task = phone.testId('chat-item-task');
   await expect(task.locator('.task-count')).toHaveText('1 steps');
-  await phone.testId('chat-menu-btn').click();
+  await phone.testId('chat-title').click();
   await phone.testId('menu-delete').click();
   await phone.testId('delete-dialog-confirm').click();
+  await openSidebar(phone);
   await expect(row(phone, id)).toHaveCount(0);
 
-  await phone.testId('new-session').click();
-  await phone.testId('resume-row').filter({ hasText: 'walrus' }).click();
+  await (await searchAll(phone, 'walrus')).filter({ hasText: 'walrus' }).first().click();
   await expect(phone.testId('screen-chat')).toBeVisible();
   await expect(task.locator('.task-count')).toHaveText('1 steps');
   const nested = task.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
@@ -202,7 +203,7 @@ test('resuming restores the sub-agent tool calls inside the agent card', async (
 });
 
 test('switching permission mode and model', async ({ phone, daemon }) => {
-  await createSession(phone, 'claude', { folder: daemon.folder('modes-claude') });
+  await newChat(phone, 'claude', { folder: daemon.folder('modes-claude') });
   await phone.testId('composer-mode').click();
   await phone.testId('mode-menu').getByTestId('mode-acceptEdits').click();
   await expect(phone.testId('composer-mode')).toHaveText(/Edits/);
@@ -215,7 +216,6 @@ test('switching permission mode and model', async ({ phone, daemon }) => {
   await phone.testId('composer-model').click();
   await phone.testId('model-menu').getByTestId('model-opus').click();
   await expect(phone.testId('composer-model')).toHaveText('Opus Fake');
-  await expect(phone.testId('chat-title')).toContainText('Opus Fake');
   await send(phone, 'hello with opus');
   await waitTurn(phone, 2);
   await expect(phone.testId('composer-model')).toHaveText('Opus Fake');
@@ -229,7 +229,7 @@ const PNG = Buffer.from(
 );
 
 test('attaching a photo', async ({ phone, daemon }) => {
-  await createSession(phone, 'claude');
+  await newChat(phone, 'claude');
   await phone.testId('composer-file').setInputFiles({ name: 'shot.png', mimeType: 'image/png', buffer: PNG });
   await expect(phone.testId('composer').locator('.att img')).toBeVisible();
   await send(phone, 'what is in this photo');

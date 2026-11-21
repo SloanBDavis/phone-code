@@ -150,12 +150,21 @@ export function spawnAgent(
   };
 }
 
-/** Run `bin args` and return trimmed stdout, or undefined on any failure. */
-export function runQuick(bin: string, args: string[], timeoutMs = 5000): Promise<string | undefined> {
+/**
+ * Run `bin args` and return trimmed stdout, or undefined on any failure
+ * (with `evenOnExitCode`, a non-zero exit still returns what it printed).
+ */
+export function runQuick(
+  bin: string,
+  args: string[],
+  timeoutMs = 5000,
+  evenOnExitCode = false,
+): Promise<string | undefined> {
   return new Promise((resolve) => {
     try {
       execFile(bin, args, { timeout: timeoutMs, encoding: 'utf8' }, (err, stdout) => {
-        resolve(err ? undefined : stdout.trim());
+        const exitedNonZero = err !== null && typeof err.code === 'number' && !err.killed;
+        resolve(err && !(evenOnExitCode && exitedNonZero) ? undefined : stdout.trim());
       });
     } catch {
       resolve(undefined);

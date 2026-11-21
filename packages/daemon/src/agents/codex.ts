@@ -27,18 +27,19 @@
 import { randomUUID } from 'node:crypto';
 import type {
   ModelOption,
-  Attachment,
   ChatItem,
   NoticeItem,
   PermissionDecision,
   PermissionItem,
   PermissionMode,
   QuestionItem,
+  ImageRef,
   ResumableSession,
+  SlashCommand,
   ToolItem,
   TurnItem,
 } from '@phone-code/protocol';
-import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
+import type { AgentAdapter, AgentAttachment, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
 import { fileChangeDetail, mapThreadItem, unwrapShell } from './codex-map.ts';
 import { listCodexResumable } from './codex-history.ts';
 import {
@@ -59,6 +60,34 @@ import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc
 
 const CLIENT_VERSION = '0.1.0';
 const DEFAULT_MODELS: ModelOption[] = [{ id: 'gpt-5-codex' }, { id: 'gpt-5' }];
+
+/**
+ * The app-server has no slash commands of its own (they are a TUI feature),
+ * so phone-code maps these onto its stable methods. Skills reported by
+ * `skills/list` are added per session and sent the way the TUI's composer
+ * does, as a `$skill` mention in the text.
+ */
+const CODEX_COMMANDS: SlashCommand[] = [
+  { name: 'compact', description: 'Summarize the conversation to free up context', source: 'builtin' },
+  {
+    name: 'review',
+    description: 'Review the uncommitted changes in this folder',
+    argumentHint: '[instructions]',
+    source: 'builtin',
+  },
+];
+
+/** `/name rest` -> [name, rest] */
+function slashCommand(text: string): [string, string] | undefined {
+  const m = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+  return m?.[1] === undefined ? undefined : [m[1], m[2]?.trim() ?? ''];
+}
+
+/** Base64 bytes of a `data:image/...;base64,` URL. */
+function dataUrlBytes(url: string | undefined): string | undefined {
+  const m = url === undefined ? null : /^data:image\/[\w.+-]+;base64,(.+)$/s.exec(url);
+  return m?.[1];
+}
 
 export function codexBin(env: NodeJS.ProcessEnv = process.env): string {
   return env.PHONECODE_CODEX_BIN || 'codex';
@@ -147,6 +176,7 @@ class CodexSession implements AgentSession {
   private noticeSeq = 0;
   private overridesDirty = false;
   private readonly fileChanges = new Map<string, unknown>();
+  private skills: SlashCommand[] = [];
 
   constructor(
     private readonly opts: AgentStartOptions,
@@ -216,6 +246,7 @@ class CodexSession implements AgentSession {
       if (resumeId && loadHistory && this.threadId) await this.loadHistory(this.threadId);
       this.overridesDirty = false;
       void this.discoverModels();
+      void this.discoverSkills();
     } catch (e) {
       if (this.proc === proc && !this.disposed) {
         this.notice('error', `Could not start Codex: ${errorMessage(e)}`);
@@ -239,6 +270,59 @@ class CodexSession implements AgentSession {
     }
   }
 
+  /** `skills/list` for this folder (recent codex-cli; an older one just has none). */
+  private async discoverSkills(): Promise<void> {
+    try {
+      const r = rec(await this.call('skills/list', { cwds: [this.opts.cwd] }, 10_000));
+      const skills: SlashCommand[] = [];
+      for (const entry of arr(r.data).map(rec)) {
+        for (const sk of arr(entry.skills).map(rec)) {
+          const name = str(sk.name);
+          if (!name || skills.some((x) => x.name === name)) continue;
+          const description = str(sk.shortDescription) ?? str(sk.description);
+          const scope = str(sk.scope);
+          skills.push({
+            name,
+            ...(description ? { description } : {}),
+            source: scope === 'repo' ? 'project' : scope === 'system' ? 'builtin' : 'user',
+          });
+        }
+      }
+      this.skills = skills;
+    } catch {
+      this.skills = [];
+    }
+    this.events.meta({ commands: [...CODEX_COMMANDS, ...this.skills] });
+  }
+
+  /** Images in a thread item: MCP / dynamic tool image results, and the file an `imageView` looked at. */
+  private attachImages(raw: Rec, mapped: ChatItem): void {
+    if (mapped.kind !== 'tool') return;
+    const refs: ImageRef[] = [];
+    const add = (ref: ImageRef | undefined): void => {
+      if (ref && !refs.some((r) => r.id === ref.id) && !mapped.images?.some((r) => r.id === ref.id))
+        refs.push(ref);
+    };
+    for (const c of arr(rec(raw.result).content).map(rec)) {
+      const data = str(c.data);
+      if (c.type === 'image' && data) add(this.events.image(data));
+    }
+    for (const c of arr(raw.contentItems).map(rec)) {
+      const data = dataUrlBytes(str(c.imageUrl) ?? str(c.image_url));
+      if (data) add(this.events.image(data));
+    }
+    if (refs.length) mapped.images = [...(mapped.images ?? []), ...refs];
+    const p = raw.type === 'imageView' ? str(raw.path) : undefined;
+    if (p) {
+      void this.events.imageFile(p).then((ref) => {
+        const cur = this.items.get(mapped.id);
+        if (!ref || cur?.kind !== 'tool' || cur.images?.some((r) => r.id === ref.id)) return undefined;
+        this.upsertItem({ ...cur, images: [...(cur.images ?? []), ref] });
+        return undefined;
+      });
+    }
+  }
+
   private async loadHistory(threadId: string): Promise<void> {
     try {
       const res = rec(
@@ -256,6 +340,7 @@ class CodexSession implements AgentSession {
           const ts = num(rec(it).startedAtMs) ?? (started || Date.now());
           const mapped = mapThreadItem(it, this.opts.cwd, { ts, history: true });
           if (mapped) {
+            this.attachImages(rec(it), mapped);
             if (mapped.kind === 'tool' && mapped.status === 'running') mapped.status = 'error';
             this.items.set(mapped.id, mapped);
             this.events.upsert(mapped);
@@ -442,6 +527,8 @@ class CodexSession implements AgentSession {
           mapped.status !== 'running'
         )
           mapped.status = 'denied';
+        if (prev?.kind === 'tool' && mapped.kind === 'tool' && prev.images) mapped.images = prev.images;
+        if (method === 'item/completed') this.attachImages(it, mapped);
         this.upsertItem(mapped);
         return;
       }
@@ -837,7 +924,7 @@ class CodexSession implements AgentSession {
 
   // ------------------------------------------------------------- actions
 
-  async send(text: string, attachments?: Attachment[]): Promise<void> {
+  async send(text: string, attachments?: AgentAttachment[]): Promise<void> {
     if (this.disposed) throw new Error('Session is closed');
     if (!this.proc) {
       // Crashed earlier: start a fresh app-server on the same thread.
@@ -853,9 +940,17 @@ class CodexSession implements AgentSession {
       this.failTurn('Could not send: Codex has no conversation open.');
       return;
     }
+    const cmd = attachments?.length ? undefined : slashCommand(text);
+    if (cmd && (await this.runCommand(cmd[0], cmd[1]))) return;
+    let message = text;
+    // A skill: the TUI sends a dollar mention of it in the text and the core loads the skill.
+    if (cmd && this.skills.some((sk) => sk.name === cmd[0]))
+      message = ['$', cmd[0], cmd[1] ? ` ${cmd[1]}` : ''].join('');
     const input: Rec[] = [];
     for (const a of attachments ?? []) {
-      if (a.mediaType.startsWith('image/'))
+      // Stored images reach Codex as local files (UserInput localImage), like images pasted into the TUI.
+      if (a.mediaType.startsWith('image/') && a.path) input.push({ type: 'localImage', path: a.path });
+      else if (a.mediaType.startsWith('image/'))
         input.push({ type: 'image', url: `data:${a.mediaType};base64,${a.data}` });
       else {
         const body = Buffer.from(a.data, 'base64').toString('utf8');
@@ -866,7 +961,7 @@ class CodexSession implements AgentSession {
         });
       }
     }
-    input.push({ type: 'text', text, text_elements: [] });
+    input.push({ type: 'text', text: message, text_elements: [] });
     const { approvalPolicy, sandbox } = policyFor(this.mode);
     const params: Rec = { threadId: this.threadId, input };
     if (this.overridesDirty) {
@@ -884,6 +979,23 @@ class CodexSession implements AgentSession {
       if (this.proc !== proc) return; // lost the process: lost() ended the turn
       this.failTurn(`Codex rejected the message: ${errorMessage(e)}`);
     }
+  }
+
+  /** Built-in commands mapped to app-server methods. True when `name` was one of them. */
+  private async runCommand(name: string, args: string): Promise<boolean> {
+    if (!this.threadId || (name !== 'compact' && name !== 'review')) return false;
+    if (!this.status.turnActive) this.beginTurn();
+    try {
+      if (name === 'compact') await this.call('thread/compact/start', { threadId: this.threadId });
+      else
+        await this.call('review/start', {
+          threadId: this.threadId,
+          target: args ? { type: 'custom', instructions: args } : { type: 'uncommittedChanges' },
+        });
+    } catch (e) {
+      this.failTurn(`Codex could not run /${name}: ${errorMessage(e)}`);
+    }
+    return true;
   }
 
   /** A message that never started a turn: say why and end it as an error (the core shows it running). */
@@ -968,8 +1080,14 @@ export function createCodexAdapter(): AgentAdapter {
   return {
     kind: 'codex',
     async detect() {
-      const out = await runQuick(codexBin(), ['--version']);
-      if (out === undefined) return { available: false };
+      const [out, login] = await Promise.all([
+        runQuick(codexBin(), ['--version']),
+        runQuick(codexBin(), ['login', 'status'], 4000, true),
+      ]);
+      if (out === undefined)
+        return { available: false, setupHint: 'Not installed. On your computer run: npm i -g @openai/codex' };
+      // `codex login status`: "Logged in using ..." or "Not logged in" (exit 1).
+      const loggedOut = login !== undefined && /not logged in/i.test(login);
       const version = /\d+\.\d+\.\d+[\w.-]*/.exec(out)?.[0];
       discoveredModels ??= await probeModels();
       const options = discoveredModels ?? DEFAULT_MODELS;
@@ -978,6 +1096,8 @@ export function createCodexAdapter(): AgentAdapter {
         ...(version ? { version } : {}),
         models: options.map((o) => o.id),
         modelOptions: options,
+        commands: CODEX_COMMANDS,
+        ...(loggedOut ? { setupHint: 'Not logged in. On your computer run `codex login`.' } : {}),
       };
     },
     async start(opts, events) {

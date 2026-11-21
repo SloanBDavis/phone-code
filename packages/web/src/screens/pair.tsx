@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import '../styles/pair.css';
 import { ApiError, parsePairing } from '../lib/api';
 import { autoCode, handoffCode, mode, pairReason, redeem, startDemo } from '../lib/boot';
-import { creds } from '../lib/storage';
+import { creds, markSeen } from '../lib/storage';
 import { haptic, isIOS } from '../lib/util';
 import { Icon, Spinner } from '../ui/icons';
 import { lazy } from '../ui/lazy';
@@ -200,6 +200,10 @@ export function InstallCoach(): JSX.Element {
   // Service workers, push and the camera only exist in a secure context (https).
   const secure = window.isSecureContext;
   const name = creds.value?.host.name ?? 'your computer';
+  // What plain http leaves out is said here, once; the first chat does not repeat it.
+  useEffect(() => {
+    if (!secure) markSeen('http');
+  }, [secure]);
   return (
     <div class="pair-scroll" data-testid="pair-install">
       <div class="pair-hero">

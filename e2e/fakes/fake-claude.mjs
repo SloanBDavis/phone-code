@@ -20,6 +20,13 @@ const arg = (name) => {
   const eq = argv.find((a) => a.startsWith(`${name}=`));
   return eq ? eq.slice(name.length + 1) : undefined;
 };
+// `claude auth status` prints JSON like 2.1.330 does (FAKE_CLAUDE_LOGGED_OUT=1: logged out, exit 1).
+if (argv[0] === 'auth' && argv[1] === 'status') {
+  const loggedOut = process.env.FAKE_CLAUDE_LOGGED_OUT === '1';
+  const auth = { loggedIn: !loggedOut, authMethod: loggedOut ? 'none' : 'oauth_token' };
+  process.stdout.write(`${JSON.stringify(auth, null, 2)}\n`);
+  process.exit(loggedOut ? 1 : 0);
+}
 if (argv.includes('--version') || argv.includes('-v')) {
   process.stdout.write('2.1.330 (Claude Code)\n');
   process.exit(0);
@@ -226,12 +233,19 @@ function onControl(msg) {
   switch (req.subtype) {
     case 'initialize':
       return respond(msg.request_id, {
+        // Shaped like 2.1.330's list: built-ins flagged, skills and custom commands tagged in the description.
         commands: [
           {
             name: 'compact',
             description: 'Clear conversation history but keep a summary in context',
-            argumentHint: '',
+            argumentHint: '<optional custom summarization instructions>',
+            builtin: true,
           },
+          { name: 'usage', description: 'Show usage', argumentHint: '', aliases: ['cost'], builtin: true },
+          { name: 'context', description: 'Show current context usage', argumentHint: '', builtin: true },
+          { name: 'release-notes', description: 'Write release notes (user)', argumentHint: '[version]' },
+          { name: 'deploy', description: 'Deploy this project (project)', argumentHint: '' },
+          { name: '__internal', description: 'hidden', argumentHint: '', builtin: true },
         ],
         agents: [],
         output_style: 'default',
@@ -584,6 +598,51 @@ async function gate(t, name, input, toolUseId, suggestions) {
 
 const scenarios = [];
 const scenario = (re, fn) => scenarios.push({ re, fn });
+
+/** Images in the current user message: "image/png" per image block. */
+let turnImages = [];
+
+// A local slash command, like the real CLI: one synthetic assistant message, no model call.
+scenario(/^\/(?:cost|usage|context)\b/, async (t, text) => {
+  const body = text.startsWith('/context')
+    ? '## Context Usage\n\n**Model:** fake  \n**Tokens:** 1.2k / 200k (1%)'
+    : 'Estimated cost:        $0.0000\nTotal duration (API):  0s\nUsage:                 0 input, 0 output';
+  const entry = {
+    type: 'assistant',
+    message: {
+      model: '<synthetic>',
+      id: randomUUID(),
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'text', text: body }],
+      stop_reason: 'end_turn',
+      usage: usage(0, 0),
+    },
+    parent_tool_use_id: null,
+    session_id: sessionId,
+    uuid: randomUUID(),
+  };
+  out(entry);
+  persist({ type: 'assistant', message: entry.message, uuid: entry.uuid });
+  return body;
+});
+
+// A 1x1 PNG, returned the way Read returns an image file: an image block in the tool result.
+const TINY_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+scenario(/screenshot/i, async (t) => {
+  t.newMessage();
+  const file = path.join(cwd, 'shot.png');
+  const id = await t.toolUse('Read', { file_path: file });
+  t.endMessage('tool_use');
+  t.newMessage();
+  t.toolResult(id, [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: TINY_PNG } }], {
+    structured: { type: 'image', file: { base64: TINY_PNG, type: 'image/png', originalSize: 70 } },
+  });
+  await t.text('That is a one-pixel screenshot.');
+  t.endMessage('end_turn');
+  return 'image';
+});
 
 // The process stops reading stdin after this turn but keeps running (a wedged CLI).
 let closeInputAfterTurn = false;
@@ -940,7 +999,8 @@ scenario(/rate limit/i, async (t) => {
 
 scenario(/./s, async (t, text) => {
   t.newMessage();
-  await t.text(`You said: ${text.slice(0, 200)}`);
+  const images = turnImages.length ? ` [with ${turnImages.length} image(s): ${turnImages.join(', ')}]` : '';
+  await t.text(`You said: ${text.slice(0, 200)}${images}`);
   t.endMessage('end_turn');
   return 'echo';
 });
@@ -959,6 +1019,10 @@ function promptText(msg) {
 let turnIndex = 0;
 async function runTurn(msg) {
   const text = promptText(msg);
+  const c = msg.message?.content;
+  turnImages = Array.isArray(c)
+    ? c.filter((b) => b.type === 'image' && b.source?.type === 'base64').map((b) => b.source.media_type)
+    : [];
   const started = Date.now();
   current = { aborted: false, onAbort: new Set() };
   out({

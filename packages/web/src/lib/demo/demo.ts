@@ -1,5 +1,7 @@
 import {
   PROTOCOL_VERSION,
+  type ImageRef,
+  type ResumableSession,
   type ChatItem,
   type ClientMessage,
   type ServerMessage,
@@ -9,7 +11,17 @@ import {
   type ToolItem,
 } from '@phone-code/protocol';
 import type { Transport, TransportEvents } from '../transport';
-import { buildDemo, demoHost, fsList, history, HOME, longSession } from './data';
+import {
+  buildDemo,
+  demoHost,
+  demoSvg,
+  fsList,
+  history,
+  HISTORY_TEXT,
+  HOME,
+  longSession,
+  SESSION_COMMANDS,
+} from './data';
 import { DemoShell } from './shell';
 
 interface Sim {
@@ -86,6 +98,72 @@ export class DemoTransport implements Transport {
 
   retryNow(): void {
     // Always connected.
+  }
+
+  buffered(): number {
+    return 0;
+  }
+
+  /** Photos sent in the demo, and drawn pictures for the scripted sessions. */
+  private images = new Map<string, Blob>();
+
+  image(_sessionId: string, imageId: string, width?: number): Promise<Blob> {
+    const sent = this.images.get(imageId);
+    if (sent) return Promise.resolve(sent);
+    if (!imageId.startsWith('img-')) return Promise.reject(new Error('Image not found'));
+    const svg = demoSvg(imageId === 'img-chart' ? 'chart' : 'phone', width ?? 900);
+    return new Promise((resolve) => {
+      setTimeout(() => resolve(new Blob([svg], { type: 'image/svg+xml' })), 120);
+    });
+  }
+
+  /** "All chats": past conversations plus this host's sessions, searched like the daemon does. */
+  private search(agent: string | undefined, q: { text?: string; limit?: number; before?: number }): ResumableSession[] {
+    const text = q.text?.trim().toLowerCase() ?? '';
+    const past = history();
+    const known = new Set(past.map((h) => h.sessionId).filter(Boolean));
+    const live: Array<ResumableSession & { body: string }> = [...this.sims.values()]
+      .filter((x) => x.info.kind === 'agent' && !known.has(x.info.id))
+      .map((x) => ({
+        agent: x.info.agent ?? 'claude',
+        agentName: x.info.agentName,
+        resumeId: `s:${x.info.id}`,
+        cwd: x.info.cwd,
+        title: x.info.title,
+        updatedAt: x.info.updatedAt,
+        messageCount: x.items.filter((i) => i.kind === 'user' || i.kind === 'text').length,
+        sessionId: x.info.id,
+        ...(x.info.archived ? { archived: true } : {}),
+        body: x.items.map((i) => (i.kind === 'user' || i.kind === 'text' ? i.text : '')).join(' \n '),
+      }));
+    const all = [
+      ...past.map((h) => ({
+        ...h,
+        ...(h.sessionId && this.sims.get(h.sessionId)
+          ? { archived: this.sims.get(h.sessionId)?.info.archived ?? false }
+          : {}),
+        body: HISTORY_TEXT[h.resumeId] ?? '',
+      })),
+      ...live,
+    ];
+    const snippet = (body: string): string | undefined => {
+      const at = body.toLowerCase().indexOf(text);
+      if (at < 0) return undefined;
+      const from = Math.max(0, at - 40);
+      return `${from > 0 ? '…' : ''}${body.slice(from, at + text.length + 60).trim()}…`;
+    };
+    return all
+      .filter((h) => !agent || h.agent === agent)
+      .filter((h) => !q.before || h.updatedAt < q.before)
+      .map(({ body, ...h }) => {
+        if (!text) return h;
+        if (h.title.toLowerCase().includes(text) || h.cwd.toLowerCase().includes(text)) return h;
+        const sn = snippet(body);
+        return sn ? { ...h, snippet: sn } : null;
+      })
+      .filter((h): h is ResumableSession => h !== null)
+      .toSorted((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, Math.min(200, q.limit ?? 50));
   }
 
   send(msg: ClientMessage): boolean {
@@ -521,11 +599,24 @@ export class DemoTransport implements Transport {
         this.ok(msg.id, fsList(msg.path));
         return;
       case 'history.list':
-        this.ok(
-          msg.id,
-          history().filter((h) => !msg.agent || h.agent === msg.agent),
-        );
+        this.ok(msg.id, this.search(msg.agent, msg.query ?? {}));
         return;
+      case 'session.archive': {
+        const sim = this.sims.get(msg.sessionId);
+        if (!sim) return this.fail(msg.id, 'Session not found');
+        if (msg.archived) sim.abort?.();
+        sim.info = { ...sim.info, archived: msg.archived };
+        this.pushSessions();
+        this.ok(msg.id, sim.info);
+        return;
+      }
+      case 'session.commands': {
+        const sim = this.sims.get(msg.sessionId);
+        if (!sim) return this.fail(msg.id, 'Session not found');
+        const own = demoHost.agentCatalog?.find((a) => a.id === (sim.info.agent ?? 'claude'))?.commands ?? [];
+        this.ok(msg.id, sim.info.agent === 'claude' || !sim.info.agent ? [...SESSION_COMMANDS, ...own] : own);
+        return;
+      }
       case 'sub': {
         const sim = this.sims.get(msg.sessionId);
         if (!sim) {
@@ -572,20 +663,20 @@ export class DemoTransport implements Transport {
         const sim = this.sims.get(msg.sessionId);
         if (!sim) return this.fail(msg.id, 'Session not found');
         const itemId = this.nid('u');
+        const images: ImageRef[] = (msg.attachments ?? []).map((a) => {
+          const id = this.nid('up');
+          const bytes = Uint8Array.from(atob(a.data), (c) => c.charCodeAt(0));
+          this.images.set(id, new Blob([bytes], { type: a.mediaType }));
+          return { id, mediaType: a.mediaType, ...(a.name ? { name: a.name } : {}), bytes: bytes.length };
+        });
+        // Sending brings an archived chat back to the sidebar.
+        if (sim.info.archived) sim.info = { ...sim.info, archived: false };
         this.put(sim, {
           id: itemId,
           ts: Date.now(),
           kind: 'user',
           text: msg.text,
-          ...(msg.attachments?.length
-            ? {
-                attachments: msg.attachments.map((a) => ({
-                  mediaType: a.mediaType,
-                  name: a.name,
-                  data: a.data,
-                })),
-              }
-            : {}),
+          ...(images.length ? { images } : {}),
         });
         this.touch(sim, { preview: msg.text.slice(0, 90) });
         if (sim.info.title === 'New session') this.touch(sim, { title: msg.text.slice(0, 40) });

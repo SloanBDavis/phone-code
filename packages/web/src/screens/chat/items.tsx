@@ -5,28 +5,24 @@ import type { ChatItem } from '@phone-code/protocol';
 import { client } from '../../lib/client';
 import type { PendingSend } from '../../lib/state';
 import { duration } from '../../lib/util';
+import { picsOf, type Pic } from '../../lib/images';
 import { Icon } from '../../ui/icons';
+import { Thumbs } from '../../ui/thumbs';
 import { Markdown } from './md';
 
-function Images({ urls }: { urls: string[] }): JSX.Element | null {
-  if (!urls.length) return null;
-  return (
-    <div class="bubble-images">
-      {urls.map((u) => (
-        <img key={u} src={u} alt="Attached" loading="lazy" decoding="async" />
-      ))}
-    </div>
-  );
-}
+const srcPics = (urls: string[]): Pic[] => urls.map((src, i) => ({ key: `${i}:${src.slice(-24)}`, src }));
 
-export function UserBubble({ item }: { item: Signal<ChatItem> }): JSX.Element | null {
+export function UserBubble({ item, sessionId }: { item: Signal<ChatItem>; sessionId: string }): JSX.Element | null {
   const u = item.value;
   if (u.kind !== 'user') return null;
-  const urls = (u.attachments ?? []).filter((a) => a.data).map((a) => `data:${a.mediaType};base64,${a.data}`);
-  const missing = (u.attachments ?? []).filter((a) => !a.data).length;
+  // Newer daemons send refs; older ones inline the bytes (or drop them: say how many).
+  const pics = u.images?.length
+    ? picsOf(sessionId, u.images)
+    : srcPics((u.attachments ?? []).filter((a) => a.data).map((a) => `data:${a.mediaType};base64,${a.data}`));
+  const missing = u.images?.length ? 0 : (u.attachments ?? []).filter((a) => !a.data).length;
   return (
     <div class="msg-user" data-testid="chat-item-user">
-      <Images urls={urls} />
+      <Thumbs pics={pics} variant="bubble" />
       {missing > 0 && (
         <div class="bubble-att-note">
           <Icon name="photo" size={14} /> {missing} photo{missing > 1 ? 's' : ''}
@@ -37,13 +33,26 @@ export function UserBubble({ item }: { item: Signal<ChatItem> }): JSX.Element | 
   );
 }
 
-export function PendingBubble({ p, sessionId }: { p: PendingSend; sessionId: string }): JSX.Element {
+export function PendingBubble({
+  p,
+  sessionId,
+  onRetry,
+}: {
+  p: PendingSend;
+  sessionId?: string;
+  onRetry?: () => void;
+}): JSX.Element {
+  const progress = p.status === 'sending' && p.images.length > 0 ? (p.progress ?? 0) : null;
   return (
     <div class={`msg-user pending ${p.status}`} data-testid="chat-item-pending" data-status={p.status}>
-      <Images urls={p.images} />
+      <Thumbs pics={srcPics(p.images)} variant="bubble" progress={progress} />
       {p.text && <div class="bubble">{p.text}</div>}
       {p.status === 'failed' && (
-        <button type="button" class="bubble-retry" onClick={() => client.retrySend(sessionId, p.localId)}>
+        <button
+          type="button"
+          class="bubble-retry"
+          onClick={() => (onRetry ? onRetry() : sessionId && client.retrySend(sessionId, p.localId))}
+        >
           <Icon name="warn" size={14} stroke={2.2} /> Not sent. Tap to retry
         </button>
       )}
@@ -51,12 +60,13 @@ export function PendingBubble({ p, sessionId }: { p: PendingSend; sessionId: str
   );
 }
 
-export function TextBlock({ item }: { item: Signal<ChatItem> }): JSX.Element | null {
+export function TextBlock({ item, sessionId }: { item: Signal<ChatItem>; sessionId: string }): JSX.Element | null {
   const t = item.value;
   if (t.kind !== 'text') return null;
   return (
     <div class="msg-text" data-testid="chat-item-text" data-streaming={t.streaming}>
       <Markdown text={t.text} streaming={t.streaming} />
+      {t.images?.length ? <Thumbs pics={picsOf(sessionId, t.images)} variant="inline" /> : null}
     </div>
   );
 }

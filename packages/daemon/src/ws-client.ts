@@ -284,7 +284,21 @@ export class Connection implements Subscriber {
         this.rpc(msg.id, () => listDirectory(msg.path));
         return;
       case 'history.list':
-        this.rpc(msg.id, () => manager.history(msg.agent));
+        this.rpc(msg.id, () => manager.history(msg.agent, msg.query));
+        return;
+      case 'session.archive':
+        this.rpc(msg.id, async () => {
+          const info = await manager.archive(msg.sessionId, msg.archived);
+          if (info === undefined) throw new RpcError('session not found');
+          return info;
+        });
+        return;
+      case 'session.commands':
+        this.rpc(msg.id, async () => {
+          const list = await manager.commands(msg.sessionId);
+          if (list === undefined) throw new RpcError('session not found');
+          return list;
+        });
         return;
       case 'sub': {
         const s = manager.get(msg.sessionId);

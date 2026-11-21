@@ -7,6 +7,7 @@ import type {
   Attachment,
   ClientMessage,
   CreateSessionParams,
+  HistoryQuery,
   PermissionDecision,
   PermissionMode,
   SessionKind,
@@ -94,6 +95,21 @@ function attachments(v: unknown): Attachment[] | undefined {
   });
 }
 
+function historyQuery(v: unknown): HistoryQuery | undefined {
+  if (v === undefined || v === null) return undefined;
+  const q = obj(v, 'query');
+  const out: HistoryQuery = {};
+  const text = optStr(q, 'text', 500);
+  if (text !== undefined && text.trim() !== '') out.text = text;
+  const cwd = optStr(q, 'cwd', 4096);
+  if (cwd !== undefined && cwd !== '') out.cwd = cwd;
+  const limit = optInt(q, 'limit', 1, 200);
+  if (limit !== undefined) out.limit = limit;
+  const before = optInt(q, 'before', 0, Number.MAX_SAFE_INTEGER);
+  if (before !== undefined) out.before = before;
+  return out;
+}
+
 function createParams(v: unknown): CreateSessionParams {
   const p = obj(v, 'params');
   const out: CreateSessionParams = { kind: oneOf(p, 'kind', KINDS) };
@@ -143,8 +159,21 @@ function parseObject(o: Obj): ClientMessage {
     }
     case 'history.list': {
       const agent = optAgent(o, 'agent');
-      return { t, id: str(o, 'id', ID_MAX, 1), ...(agent === undefined ? {} : { agent }) };
+      const query = historyQuery(o['query']);
+      return {
+        t,
+        id: str(o, 'id', ID_MAX, 1),
+        ...(agent === undefined ? {} : { agent }),
+        ...(query === undefined ? {} : { query }),
+      };
     }
+    case 'session.archive': {
+      const archived = o['archived'];
+      if (typeof archived !== 'boolean') throw new Invalid('archived must be a boolean');
+      return { t, id: str(o, 'id', ID_MAX, 1), sessionId: str(o, 'sessionId', ID_MAX, 1), archived };
+    }
+    case 'session.commands':
+      return { t, id: str(o, 'id', ID_MAX, 1), sessionId: str(o, 'sessionId', ID_MAX, 1) };
     case 'sub': {
       const afterSeq = optInt(o, 'afterSeq', 0, Number.MAX_SAFE_INTEGER);
       return {

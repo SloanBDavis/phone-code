@@ -31,6 +31,7 @@ import type {
   PermissionMode,
   QuestionItem,
   ResumableSession,
+  SlashCommand,
   TurnItem,
 } from '@phone-code/protocol';
 import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
@@ -69,6 +70,8 @@ export function claudeBin(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 let discoveredModels: ModelOption[] | undefined;
+/** Commands from the last initialize response (built-ins, user skills, plugins; no project ones from a probe). */
+let discoveredCommands: SlashCommand[] | undefined;
 /** Whether the installed CLI accepts `--permission-mode auto` (from `claude --help`). */
 let autoModeSupported: boolean | undefined;
 
@@ -94,6 +97,42 @@ function parseModels(v: unknown): ModelOption[] {
       ...(description ? { description } : {}),
       ...(resolved ? { resolved } : {}),
       ...(id === 'default' ? { isDefault: true } : {}),
+    });
+  }
+  return out;
+}
+
+const SOURCE_SUFFIX = /\s*\((user|project|plugin[^)]*|claude\.ai sync|MCP|dynamic workflow)\)$/i;
+
+/**
+ * The `commands` of the CLI's initialize response (2.1.330):
+ * [{name, description, argumentHint, aliases?, builtin?}, ...]. Skills and
+ * custom commands mark where they come from at the end of the description,
+ * "(user)", "(project)", "(plugin:x)"; names starting with "__" are internal.
+ */
+export function parseCommands(v: unknown): SlashCommand[] {
+  const out: SlashCommand[] = [];
+  const seen = new Set<string>();
+  for (const c of arr(v).map(rec)) {
+    const name = str(c.name)?.replace(/^\//, '');
+    if (!name || name.startsWith('__') || seen.has(name)) continue;
+    seen.add(name);
+    let description = str(c.description)?.trim();
+    const tag = description ? SOURCE_SUFFIX.exec(description)?.[1]?.toLowerCase() : undefined;
+    if (tag && description) description = description.replace(SOURCE_SUFFIX, '');
+    let source: SlashCommand['source'];
+    if (c.builtin === true || tag === 'dynamic workflow') source = 'builtin';
+    else if (tag === 'project') source = 'project';
+    else if (tag?.startsWith('plugin') || name.includes(':'))
+      source = name.startsWith('mcp__') ? 'mcp' : 'plugin';
+    else if (tag === 'mcp' || name.startsWith('mcp__')) source = 'mcp';
+    else source = 'user';
+    const argumentHint = str(c.argumentHint)?.trim();
+    out.push({
+      name,
+      ...(description ? { description } : {}),
+      ...(argumentHint ? { argumentHint } : {}),
+      source,
     });
   }
   return out;
@@ -160,7 +199,7 @@ class ClaudeSession implements AgentSession {
       try {
         const file = await findSessionFile(this.opts.resumeId, this.opts.cwd, this.opts.env ?? process.env);
         if (file) {
-          const items = await loadClaudeTranscript(file, this.opts.cwd);
+          const items = await loadClaudeTranscript(file, this.opts.cwd, 2000, (d) => this.events.image(d));
           for (const item of items) {
             if (item.kind === 'tool') {
               this.mapper.tools.set(item.id, item);
@@ -233,7 +272,10 @@ class ClaudeSession implements AgentSession {
       }
       const mode = asMode(res.current_permission_mode);
       if (mode) this.mode = mode;
+      const commands = parseCommands(res.commands);
+      if (commands.length) discoveredCommands ??= commands;
       this.events.meta({
+        ...(commands.length ? { commands } : {}),
         ...(options.length ? { models: options.map((o) => o.id), modelOptions: options } : {}),
         permissionModes: permissionModesFor(auto),
         ...(mode ? { permissionMode: mode } : {}),
@@ -388,8 +430,9 @@ class ClaudeSession implements AgentSession {
         if (str(msg.error)) this.onAssistantError(msg);
         return;
       case 'user':
-        // The core already shows the prompt; only tool results matter live.
+        // The core already shows the prompt; tool results and local command output matter live.
         this.mapper.onToolResults(msg);
+        this.mapper.onLocalCommandOutput(msg);
         return;
       case 'result':
         this.onResult(msg);
@@ -863,7 +906,7 @@ function asMode(v: unknown): PermissionMode | undefined {
     : undefined;
 }
 
-/** Ask a short-lived CLI for its models (initialize only: no prompt, no session saved, no usage). */
+/** Ask a short-lived CLI for its models and commands (initialize only: no prompt, no session saved, no usage). */
 async function probeModels(bin: string): Promise<ModelOption[] | undefined> {
   const { promise: done, resolve } = Promise.withResolvers<ModelOption[] | undefined>();
   const proc = spawnAgent(
@@ -884,6 +927,8 @@ async function probeModels(bin: string): Promise<ModelOption[] | undefined> {
         const r = rec(m.response);
         if (m.type !== 'control_response' || r.request_id !== 'probe') return;
         const options = parseModels(rec(r.response).models);
+        const commands = parseCommands(rec(r.response).commands);
+        if (commands.length) discoveredCommands ??= commands;
         resolve(options.length ? options : undefined);
       },
     },
@@ -895,6 +940,16 @@ async function probeModels(bin: string): Promise<ModelOption[] | undefined> {
   clearTimeout(timer);
   await proc.kill(200);
   return options;
+}
+
+/** `claude auth status` prints JSON with `loggedIn`; anything else (older CLIs) tells us nothing. */
+function authLoggedOut(out: string | undefined): boolean {
+  if (out === undefined) return false;
+  try {
+    return rec(JSON.parse(out)).loggedIn === false;
+  } catch {
+    return false;
+  }
 }
 
 function buildContent(text: string, attachments: Attachment[] | undefined): string | Rec[] {
@@ -923,12 +978,18 @@ export function createClaudeAdapter(): AgentAdapter {
     async detect() {
       const bin = claudeBin();
       // In parallel, well inside the host's detection timeout: version, accepted modes, models.
-      const [out, help, probed] = await Promise.all([
+      const [out, help, probed, auth] = await Promise.all([
         runQuick(bin, ['--version']),
         runQuick(bin, ['--help']),
         discoveredModels ? Promise.resolve(discoveredModels) : probeModels(bin),
+        runQuick(bin, ['auth', 'status'], 4000, true),
       ]);
-      if (out === undefined) return { available: false };
+      if (out === undefined)
+        return {
+          available: false,
+          setupHint: 'Not installed. On your computer run: npm i -g @anthropic-ai/claude-code',
+        };
+      const loggedOut = authLoggedOut(auth);
       const version = /\d+\.\d+\.\d+/.exec(out)?.[0] ?? out.split(/\s/)[0];
       // `--permission-mode <mode> ... (choices: "acceptEdits", "auto", ...)`
       autoModeSupported = /--permission-mode[\s\S]{0,200}?"auto"/.test(help ?? '');
@@ -940,6 +1001,13 @@ export function createClaudeAdapter(): AgentAdapter {
         models: options.map((o) => o.id),
         modelOptions: options,
         permissionModes: permissionModesFor(autoModeSupported),
+        ...(discoveredCommands ? { commands: discoveredCommands } : {}),
+        ...(loggedOut
+          ? {
+              setupHint:
+                'Not logged in. On your computer run `claude auth login` (or start `claude` and log in).',
+            }
+          : {}),
       };
     },
     async start(opts, events) {

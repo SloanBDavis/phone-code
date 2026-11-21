@@ -447,7 +447,19 @@ async function askMe(c) {
   await c.say(`Received: ${JSON.stringify(r.content)}`);
 }
 
+const COMMANDS = [
+  { name: 'init', description: 'Create AGENTS.md' },
+  { name: 'help', description: 'List the commands', input: null },
+  { name: 'review', description: 'Review the changes', input: { hint: 'what to focus on' } },
+];
+
 const SCENARIOS = [
+  [
+    /^\/help\b/,
+    async (c) => {
+      await c.say(`Commands: ${COMMANDS.map((x) => `/${x.name}`).join(', ')}`);
+    },
+  ],
   [
     /close (?:your )?input/i,
     async (c) => {
@@ -534,7 +546,12 @@ async function prompt(id, params) {
   try {
     const found = SCENARIOS.find(([re]) => re.test(text));
     if (found) await found[1](c);
-    else await c.say(`You said: ${text}`);
+    else {
+      const images = (params.prompt ?? []).filter((b) => b.type === 'image').map((b) => b.mimeType);
+      await c.say(
+        `You said: ${text}${images.length ? ` [with ${images.length} image(s): ${images.join(', ')}]` : ''}`,
+      );
+    }
     if (current.aborted) stopReason = 'cancelled';
   } catch (e) {
     if (e instanceof Aborted) stopReason = 'cancelled';
@@ -633,7 +650,7 @@ async function onMessage(msg) {
         s,
         {
           sessionUpdate: 'available_commands_update',
-          availableCommands: [{ name: 'init', description: 'Create AGENTS.md' }],
+          availableCommands: COMMANDS,
         },
         { keep: false },
       );
@@ -652,7 +669,13 @@ async function onMessage(msg) {
           await sleep(2);
         }
       }
-      return result(id, sessionState(stored));
+      result(id, sessionState(stored));
+      update(
+        stored,
+        { sessionUpdate: 'available_commands_update', availableCommands: COMMANDS },
+        { keep: false },
+      );
+      return undefined;
     }
     case 'session/list':
       return result(id, {
