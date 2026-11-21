@@ -64,7 +64,7 @@ struct MarkdownView: View {
     // Code spans: monospaced on a tinted background.
     for run in a.runs where run.inlinePresentationIntent?.contains(.code) == true {
       a[run.range].font = Font.body.monospaced()
-      a[run.range].backgroundColor = Color.secondary.opacity(0.15)
+      a[run.range].backgroundColor = Theme.inlineCode
     }
     return a
   }
@@ -94,7 +94,8 @@ struct MarkdownTable: View {
       }
       .padding(12)
     }
-    .background(.fill.quaternary, in: .rect(cornerRadius: 10))
+    .background(Theme.card, in: .rect(cornerRadius: 12))
+    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
     .axContainer("markdown-table")
   }
 
@@ -142,7 +143,8 @@ struct CodeBlock: View {
           .padding(12)
       }
     }
-    .background(.fill.quaternary, in: .rect(cornerRadius: 12))
+    .background(Theme.codeBackground, in: .rect(cornerRadius: 12))
+    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
     .axContainer("code-block")
   }
 }
@@ -163,7 +165,8 @@ struct CodeText: View {
         .textSelection(.enabled)
         .padding(8)
     }
-    .background(.fill.tertiary, in: .rect(cornerRadius: 8))
+    .background(Theme.codeBackground, in: .rect(cornerRadius: 8))
+    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.hairline))
   }
 
   static func highlight(_ code: String, language: String?) -> AttributedString {
@@ -171,11 +174,11 @@ struct CodeText: View {
     for t in Syntax.tokens(code, language: language) {
       var part = AttributedString(t.text)
       switch t.kind {
-      case .keyword: part.foregroundColor = Color.pink
-      case .string: part.foregroundColor = Color.orange
-      case .comment: part.foregroundColor = Color.gray
-      case .number: part.foregroundColor = Color.purple
-      case .type: part.foregroundColor = Color.teal
+      case .keyword: part.foregroundColor = Theme.codeKeyword
+      case .string: part.foregroundColor = Theme.codeString
+      case .comment: part.foregroundColor = Theme.codeComment
+      case .number: part.foregroundColor = Theme.codeNumber
+      case .type: part.foregroundColor = Color.accentColor
       case .plain: break
       }
       out += part

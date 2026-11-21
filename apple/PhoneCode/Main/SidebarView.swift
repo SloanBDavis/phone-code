@@ -15,7 +15,12 @@ struct SidebarView: View {
 
   var body: some View {
     list
-      .navigationTitle(model.creds?.hostName ?? "phone-code")
+      .navigationTitle(Self.displayName(model.creds?.hostName))
+      #if os(iOS)
+        // Compact: the computer's name between the two buttons, not a
+        // large title eating the top of the screen.
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
       .searchable(text: $query, placement: .sidebar, prompt: "Search all chats")
       .searchFocused($searchFocused)
       .toolbar {
@@ -82,17 +87,21 @@ struct SidebarView: View {
             ForEach(groups.needsYou) { row($0) }
           } header: {
             Label("Needs you", systemImage: "bell.badge.fill")
-              .foregroundStyle(.orange)
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(Theme.attention)
           }
           .axContainer("section-needs-you")
         }
         Section {
           ForEach(groups.chats) { row($0) }
         } header: {
-          if !groups.needsYou.isEmpty { Text("Chats") }
+          if !groups.needsYou.isEmpty { Text("Chats").font(.footnote.weight(.semibold)) }
         }
       }
       .listStyle(.sidebar)
+      #if os(iOS)
+        .listSectionSpacing(.compact)
+      #endif
       .overlay {
         if model.client.sessionsLoaded && groups.needsYou.isEmpty && groups.chats.isEmpty {
           ContentUnavailableView("No chats yet", systemImage: "bubble.left.and.text.bubble.right", description: Text("Start one with the composer."))
@@ -114,7 +123,11 @@ struct SidebarView: View {
       SessionRow(session: s, selected: selected)
     }
     .buttonStyle(.plain)
-    .listRowBackground(selected ? Color.accentColor.opacity(0.18) : nil)
+    .listRowBackground(
+      RoundedRectangle(cornerRadius: 10)
+        .fill(selected ? Theme.selection : .clear)
+        .padding(.horizontal, 6)
+    )
     #if os(macOS)
       .draggable(DragPayload.session(s.id).string)
     #endif
@@ -157,14 +170,32 @@ struct SidebarView: View {
   }
 }
 
+extension SidebarView {
+  /// "Sloans-MacBook-Pro.local" reads as "Sloans-MacBook-Pro".
+  static func displayName(_ host: String?) -> String {
+    guard let host, !host.isEmpty else { return "phone-code" }
+    return host.hasSuffix(".local") ? String(host.dropLast(6)) : host
+  }
+}
+
 struct SessionRow: View {
   @Environment(AppModel.self) private var model
   let session: SessionInfo
   var selected = false
 
+  // The web app's row: 15pt title, 14pt preview. iOS's body/subheadline
+  // (17/15) read a size too big; the Mac's (13/11) already fit.
+  #if os(iOS)
+    static let titleFont = Font.subheadline
+    static let previewFont = Font.footnote
+  #else
+    static let titleFont = Font.body
+    static let previewFont = Font.subheadline
+  #endif
+
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
-      HarnessGlyph(id: session.isTerminal ? "terminal" : (session.agent ?? "claude"))
+      HarnessGlyph(id: session.isTerminal ? "terminal" : (session.agent ?? "claude"), size: 28)
         .overlay(alignment: .topTrailing) {
           if session.isUnread && !selected {
             Circle().fill(Color.accentColor).frame(width: 9, height: 9).offset(x: 3, y: -3)
@@ -173,7 +204,7 @@ struct SessionRow: View {
       VStack(alignment: .leading, spacing: 3) {
         HStack(alignment: .firstTextBaseline) {
           Text(session.title)
-            .font(.body.weight(session.isUnread ? .semibold : .regular))
+            .font(Self.titleFont.weight(session.isUnread || selected ? .semibold : .medium))
             .lineLimit(1)
           Spacer(minLength: 4)
           Text(Date.short(session.updatedAt))
@@ -182,8 +213,8 @@ struct SessionRow: View {
         }
         HStack(spacing: 6) {
           StatusDot(status: session.status)
-          Text(session.preview ?? tildePath(session.cwd, home: model.client.host?.home))
-            .font(.subheadline)
+          Text(session.preview.map(Markdown.plain) ?? tildePath(session.cwd, home: model.client.host?.home))
+            .font(Self.previewFont)
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
@@ -203,7 +234,7 @@ struct StatusDot: View {
     case .running:
       ProgressView().controlSize(.mini)
     case .waiting:
-      Image(systemName: "hand.raised.fill").font(.caption2).foregroundStyle(.orange)
+      Image(systemName: "hand.raised.fill").font(.caption2).foregroundStyle(Theme.attention)
     case .error:
       Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.red)
     default:
@@ -238,11 +269,17 @@ struct HarnessGlyph: View {
   }
 
   var body: some View {
+    // The web app's glyphs: a gradient squircle with a white mark (the
+    // terminal's mark is mint on graphite).
     Image(systemName: Self.symbol(id))
-      .font(.system(size: size * 0.48, weight: .semibold))
-      .foregroundStyle(Self.tint(id))
+      .font(.system(size: size * 0.46, weight: .bold))
+      .foregroundStyle(id == "terminal" ? Theme.terminalMark : .white)
       .frame(width: size, height: size)
-      .background(Self.tint(id).opacity(0.15), in: .rect(cornerRadius: size * 0.28))
+      .background(
+        LinearGradient(colors: Theme.agentGradient(id), startPoint: .topLeading, endPoint: .bottomTrailing),
+        in: .rect(cornerRadius: size * 0.3, style: .continuous)
+      )
+      .overlay(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).strokeBorder(.white.opacity(0.12)))
   }
 }
 

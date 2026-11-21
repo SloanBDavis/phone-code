@@ -15,16 +15,16 @@ struct TerminalScreen: View {
   let session: SessionInfo
   var embedded = false
   @State private var bridge = TerminalBridge()
+  @Environment(\.colorScheme) private var scheme
 
   var body: some View {
     VStack(spacing: 0) {
       ConnectionBanner()
-      TerminalHost(bridge: bridge, fontSize: model.termFontSize)
-        .background(Color.black)
-        .accessibilityIdentifier("terminal-view")
-      #if os(iOS)
-        KeyBar { bridge.send($0) }
-      #endif
+      TerminalHost(bridge: bridge, fontSize: model.termFontSize, palette: .forScheme(scheme))
+        // Breathing room around the grid, in the terminal's own color.
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(TerminalPalette.forScheme(scheme).background))
       if let code = bridge.exitCode {
         Text("Process exited\(code.map { " with code \($0)" } ?? "")")
           .font(.footnote)
@@ -94,8 +94,23 @@ final class TerminalBridge: TerminalSink {
   }
 }
 
+extension TerminalView {
+  /// The web app's terminal look: its palette, a blinking bar caret.
+  @MainActor func apply(_ p: TerminalPalette) {
+    installColors(p.ansi.map { v in
+      SwiftTerm.Color(red8: UInt16((v >> 16) & 0xFF), green8: UInt16((v >> 8) & 0xFF), blue8: UInt16(v & 0xFF))
+    })
+    nativeBackgroundColor = p.background
+    nativeForegroundColor = p.foreground
+    caretColor = p.caret
+    selectedTextBackgroundColor = p.selection
+  }
+}
+
 final class TerminalDelegateProxy: NSObject, TerminalViewDelegate {
   let bridge: TerminalBridge
+  /// The palette's background last applied (palettes are static, so identity tells them apart).
+  var appliedBackground: PlatformColor?
   init(bridge: TerminalBridge) { self.bridge = bridge }
 
   func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) { bridge.resized(cols: newCols, rows: newRows) }
@@ -110,14 +125,19 @@ final class TerminalDelegateProxy: NSObject, TerminalViewDelegate {
   struct TerminalHost: UIViewRepresentable {
     let bridge: TerminalBridge
     let fontSize: Double
+    let palette: TerminalPalette
 
     func makeCoordinator() -> TerminalDelegateProxy { TerminalDelegateProxy(bridge: bridge) }
 
     func makeUIView(context: Context) -> TerminalView {
       let v = TerminalView(frame: .zero, font: UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular))
       v.terminalDelegate = context.coordinator
-      v.nativeBackgroundColor = .black
-      v.nativeForegroundColor = UIColor(white: 0.92, alpha: 1)
+      v.apply(palette)
+      context.coordinator.appliedBackground = palette.background
+      // Steady: a caret that blinks forever keeps the app from ever being
+      // idle (battery, and UI tests wait on it).
+      v.setCursorStyle(.steadyBar)
+      v.accessibilityIdentifier = "terminal-view"
       bridge.view = v
       DispatchQueue.main.async { _ = v.becomeFirstResponder() }
       return v
@@ -125,50 +145,33 @@ final class TerminalDelegateProxy: NSObject, TerminalViewDelegate {
 
     func updateUIView(_ v: TerminalView, context: Context) {
       if v.font.pointSize != fontSize { v.font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular) }
-    }
-  }
-
-  /// Keys a phone keyboard lacks (SwiftTerm adds its own esc/ctrl/arrow row above the keyboard).
-  struct KeyBar: View {
-    var send: (String) -> Void
-    private let keys: [(String, String)] = [
-      ("esc", "\u{1b}"), ("tab", "\t"), ("^C", "\u{03}"), ("^D", "\u{04}"), ("^Z", "\u{1a}"), ("^L", "\u{0c}"),
-      ("^R", "\u{12}"), ("↑", "\u{1b}[A"), ("↓", "\u{1b}[B"), ("←", "\u{1b}[D"), ("→", "\u{1b}[C"), ("home", "\u{1b}[H"),
-      ("end", "\u{1b}[F"), ("pgup", "\u{1b}[5~"), ("pgdn", "\u{1b}[6~"),
-    ]
-
-    var body: some View {
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 6) {
-          ForEach(keys, id: \.0) { k in
-            Button(k.0) {
-              send(k.1)
-              Haptics.play(.select)
-            }
-            .font(.callout.monospaced())
-            .buttonStyle(.glass)
-            .controlSize(.small)
-            .accessibilityIdentifier("key-\(k.0)")
-          }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+      if context.coordinator.appliedBackground !== palette.background {
+        v.apply(palette)
+        context.coordinator.appliedBackground = palette.background
       }
-      .axContainer("key-bar")
     }
   }
+
 #else
   struct TerminalHost: NSViewRepresentable {
     let bridge: TerminalBridge
     let fontSize: Double
+    let palette: TerminalPalette
 
     func makeCoordinator() -> TerminalDelegateProxy { TerminalDelegateProxy(bridge: bridge) }
 
     func makeNSView(context: Context) -> TerminalView {
       let v = TerminalView(frame: .zero, font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular))
       v.terminalDelegate = context.coordinator
-      v.nativeBackgroundColor = .black
-      v.nativeForegroundColor = NSColor(white: 0.92, alpha: 1)
+      v.apply(palette)
+      context.coordinator.appliedBackground = palette.background
+      v.setCursorStyle(.blinkBar)
+      // SwiftTerm's AppKit view is not an accessibility element at all:
+      // expose it as a text area so VoiceOver (and UI tests) can find it.
+      v.setAccessibilityElement(true)
+      v.setAccessibilityRole(.textArea)
+      v.setAccessibilityLabel("Terminal")
+      v.setAccessibilityIdentifier("terminal-view")
       bridge.view = v
       DispatchQueue.main.async { v.window?.makeFirstResponder(v) }
       return v
@@ -176,6 +179,10 @@ final class TerminalDelegateProxy: NSObject, TerminalViewDelegate {
 
     func updateNSView(_ v: TerminalView, context: Context) {
       if v.font.pointSize != fontSize { v.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular) }
+      if context.coordinator.appliedBackground !== palette.background {
+        v.apply(palette)
+        context.coordinator.appliedBackground = palette.background
+      }
     }
   }
 #endif

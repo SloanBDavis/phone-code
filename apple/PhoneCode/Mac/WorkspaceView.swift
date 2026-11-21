@@ -48,6 +48,7 @@
     @State private var store = WorkspaceStore(Workspace())
     @State private var loaded = false
     @State private var columns: NavigationSplitViewVisibility = .all
+    @State private var pairingPhone = false
 
     var body: some View {
       NavigationSplitView(columnVisibility: $columns) {
@@ -64,6 +65,11 @@
               Button("Split down", systemImage: "rectangle.split.1x2") { store.splitFocused(.bottom) }
                 .help("Split down (⇧⌘D)")
                 .accessibilityIdentifier("split-down")
+              if model.hub.isLocal(model.creds) {
+                Button("Pair a phone", systemImage: "qrcode") { pairingPhone = true }
+                  .help("Show the QR code your phone scans")
+                  .accessibilityIdentifier("pair-phone")
+              }
               SettingsLink {
                 Label("This computer", systemImage: "desktopcomputer")
               }
@@ -72,10 +78,11 @@
           }
       }
       .focusedSceneValue(\.workspace, store)
+      .sheet(isPresented: $pairingPhone) { PairPhoneView() }
       .onAppear {
         guard !loaded else { return }
         loaded = true
-        store.layout = WorkspaceStore.restore(saved)
+        store.layout = model.didReset ? Workspace() : WorkspaceStore.restore(saved)
         store.onChange = { w in
           let d = try? JSONEncoder().encode(w)
           saved = d
@@ -179,7 +186,8 @@
 
     var body: some View {
       VStack(spacing: 0) {
-        titleBar
+        // One tile: the window's title already says what it is.
+        if store.layout.tiles.count > 1 { titleBar }
         ChatScreen(route: route, embedded: true)
           .id(route)
       }
@@ -187,7 +195,7 @@
       .overlay {
         if store.layout.tiles.count > 1 {
           RoundedRectangle(cornerRadius: 0)
-            .strokeBorder(focused ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1.5)
+            .strokeBorder(focused ? Color.accentColor.opacity(0.55) : .clear, lineWidth: 1)
             .allowsHitTesting(false)
         }
       }
@@ -202,7 +210,7 @@
     private var titleBar: some View {
       let s = tile.sessionId.flatMap { model.client.session($0) }
       return HStack(spacing: 8) {
-        HarnessGlyph(id: s.map { $0.isTerminal ? "terminal" : ($0.agent ?? "claude") } ?? model.draft.harness, size: 20)
+        HarnessGlyph(id: s.map { $0.isTerminal ? "terminal" : ($0.agent ?? "claude") } ?? model.draft.harness, size: 18)
         Text(s?.title ?? "New chat")
           .font(.callout.weight(focused ? .semibold : .regular))
           .lineLimit(1)
@@ -232,8 +240,10 @@
         .accessibilityIdentifier("tile-close")
       }
       .padding(.horizontal, 10)
-      .frame(height: 30)
-      .background(focused ? Color.accentColor.opacity(0.08) : Color.clear)
+      .frame(height: 32)
+      .foregroundStyle(focused ? .primary : .secondary)
+      .background(focused ? Theme.selection.opacity(0.6) : Theme.card)
+      .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
       .contentShape(.rect)
       .draggable(DragPayload.tile(tile.id).string) {
         Label(s?.title ?? "New chat", systemImage: "rectangle.on.rectangle")

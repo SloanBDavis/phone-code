@@ -2,11 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- No App Sandbox: the Mac app is phone-code's hub. It reads the local
+	     daemon's control file in ~/.phonecode and can start `phonecode`. -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.network.client</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-only</key>
-	<true/>
+	<false/>
 </dict>
 </plist>

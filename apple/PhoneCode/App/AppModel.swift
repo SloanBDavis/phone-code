@@ -51,6 +51,13 @@ final class AppModel {
   /// Sessions shown somewhere right now (to skip notifications for them).
   var visibleSessions: Set<String> = []
   var isActive = true
+  /// Launched with -PCResetState (UI tests): start from nothing, including
+  /// state the system restores per window.
+  let didReset = ProcessInfo.processInfo.arguments.contains("-PCResetState")
+  #if os(macOS)
+    /// phone-code on this Mac: connects to it without a code, pairs phones.
+    let hub = MacHub()
+  #endif
 
   private var attention = AttentionTracker()
 
@@ -63,7 +70,7 @@ final class AppModel {
   }
 
   init() {
-    if ProcessInfo.processInfo.arguments.contains("-PCResetState") {
+    if didReset {
       Keychain.delete()
       for k in ["pc.lastChat", "pc.draftPrefs", "pc.notifications", "pc.termFontSize", "pc.workspace"] {
         UserDefaults.standard.removeObject(forKey: k)
@@ -77,6 +84,9 @@ final class AppModel {
     client.onUnauthorized = { [weak self] why in self?.unpair(reason: why, tellHost: false) }
     client.onSessions = { [weak self] list in self?.sessionsChanged(list) }
     if let c = Keychain.load() { connect(c) }
+    #if os(macOS)
+      hub.run(self)
+    #endif
     NotificationRouter.shared.attach { [weak self] id in self?.route = .session(id) }
   }
 
@@ -93,6 +103,11 @@ final class AppModel {
   /// Redeems a pairing code with the daemon at `origin`.
   func pair(_ link: PairingLink, origin: URL) async throws {
     let c = try await PairingClient().pair(origin: origin, code: link.code, deviceName: Device.name)
+    adopt(c)
+  }
+
+  /// Stores and connects with credentials from a redeemed code.
+  func adopt(_ c: HostCredentials) {
     Keychain.save(c)
     pairReason = nil
     pendingLink = nil
@@ -102,6 +117,10 @@ final class AppModel {
 
   func unpair(reason: String? = nil, tellHost: Bool = true) {
     if tellHost, let c = creds { Task { try? await PairingClient().unpair(c) } }
+    #if os(macOS)
+      // Chosen by the user: do not reconnect to this Mac's phone-code right away.
+      if tellHost { hub.paused = true }
+    #endif
     client.stop()
     Keychain.delete()
     creds = nil

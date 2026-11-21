@@ -14,6 +14,9 @@ final class PhoneCodeUITests: XCTestCase {
   private var env: [String: String] { ProcessInfo.processInfo.environment }
   private var daemon: String { env["PC_UITEST_DAEMON"] ?? "http://127.0.0.1:7777" }
   private var code: String { env["PC_UITEST_CODE"] ?? "UITEST-PAIR-01" }
+  /// The daemon's PHONECODE_HOME. The Mac app finds the daemon there and
+  /// connects by itself, as it does with `~/.phonecode` for a real user.
+  private var stateHome: String? { env["PC_UITEST_HOME"] }
 
   // MARK: helpers
 
@@ -51,7 +54,10 @@ final class PhoneCodeUITests: XCTestCase {
   private func launch(reset: Bool = true) {
     continueAfterFailure = false
     app = XCUIApplication()
+    // -PCResetState also makes the Mac workspace ignore the layout the
+    // system restores per window, so each test starts in a new chat.
     app.launchArguments = reset ? ["-PCResetState"] : []
+    if let stateHome { app.launchEnvironment["PHONECODE_HOME"] = stateHome }
     app.launch()
   }
 
@@ -66,8 +72,15 @@ final class PhoneCodeUITests: XCTestCase {
     e.typeText(text)
   }
 
-  /// Pairs by typing the address and code, as a user without a camera would.
+  /// iPhone: pairs by typing the address and code, as a user without a camera
+  /// would. Mac: the app connects to the daemon on this Mac by itself.
   private func pair() {
+    #if os(macOS)
+      if stateHome != nil {
+        wait("composer-input", 30)
+        return
+      }
+    #endif
     wait("pair-address")
     shot("01-pairing")
     type("pair-address", daemon)
@@ -177,7 +190,7 @@ final class PhoneCodeUITests: XCTestCase {
     launch()
     pair()
     press(wait("picker-harness"))
-    let terminal = app.buttons["Terminal"].exists ? app.buttons["Terminal"] : app.menuItems["Terminal"]
+    let terminal = el("picker-terminal")
     XCTAssertTrue(terminal.waitForExistence(timeout: 5))
     press(terminal)
     let view = wait("terminal-view", 30)
@@ -188,6 +201,17 @@ final class PhoneCodeUITests: XCTestCase {
   }
 
   #if os(macOS)
+    func test07MacPairAPhone() throws {
+      try XCTSkipIf(stateHome == nil, "needs PC_UITEST_HOME")
+      launch()
+      pair()
+      press(wait("pair-phone"))
+      wait("pair-phone-qr", 15)
+      let code = el("pair-phone-code")
+      XCTAssertFalse(code.label.isEmpty && (code.value as? String ?? "").isEmpty, "no pairing code shown")
+      shot("18-mac-pair-a-phone")
+    }
+
     func test06MacWorkspaceThreeTiles() throws {
       launch()
       pair()

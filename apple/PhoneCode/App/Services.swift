@@ -81,7 +81,7 @@ final class Notifier {
       content.body = "Needs you: approve or answer to continue."
     case .finished:
       content.title = s.title
-      content.body = s.preview ?? "Finished."
+      content.body = s.preview.map(Markdown.plain) ?? "Finished."
     case .failed:
       content.title = s.title
       content.body = "Stopped with an error."

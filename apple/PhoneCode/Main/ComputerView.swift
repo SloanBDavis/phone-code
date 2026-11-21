@@ -64,8 +64,13 @@ struct ComputerView: View {
         LabeledContent("Name", value: Device.name)
         LabeledContent("Device ID", value: model.client.deviceId ?? model.creds?.deviceId ?? "—")
           .textSelection(.enabled)
-        Button("Unpair this device", role: .destructive) { confirmUnpair = true }
-          .accessibilityIdentifier("unpair")
+        #if os(macOS)
+          Button("Disconnect", role: .destructive) { confirmUnpair = true }
+            .accessibilityIdentifier("unpair")
+        #else
+          Button("Unpair this device", role: .destructive) { confirmUnpair = true }
+            .accessibilityIdentifier("unpair")
+        #endif
       }
     }
     .formStyle(.grouped)
@@ -130,7 +135,12 @@ struct ComputerView: View {
           if model.isPaired {
             ComputerView()
           } else {
-            ContentUnavailableView("Not paired", systemImage: "link", description: Text("Pair from the main window."))
+            ContentUnavailableView("Not connected", systemImage: "link", description: Text("Start phone-code from the main window."))
+          }
+        }
+        if model.hub.isLocal(model.creds) {
+          Tab("Phones", systemImage: "iphone") {
+            PhonesView()
           }
         }
         Tab("Terminal", systemImage: "apple.terminal") {

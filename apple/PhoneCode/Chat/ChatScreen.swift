@@ -178,6 +178,10 @@ struct TranscriptView: View {
   @Environment(AppModel.self) private var model
   let chat: ChatState
   let session: SessionInfo
+  @State private var position = ScrollPosition(edge: .bottom)
+  /// Whether the reader is at (or near) the end; new items only pull the
+  /// view down then, so scrolling up to read is never interrupted.
+  @State private var atBottom = true
 
   var body: some View {
     ScrollView {
@@ -203,15 +207,41 @@ struct TranscriptView: View {
       .frame(maxWidth: 860)
       .frame(maxWidth: .infinity)
     }
+    .scrollPosition($position)
     .defaultScrollAnchor(.bottom)
     .defaultScrollAnchor(.bottom, for: .sizeChanges)
     .scrollDismissesKeyboard(.interactively)
+    .onScrollGeometryChange(for: Bool.self) { g in
+      g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 120
+    } action: { _, near in
+      atBottom = near
+    }
+    // Follow new items (an answer, a permission, a question) while at the
+    // end, and always after the user sends.
+    .onChange(of: chat.ids.last) { _, _ in
+      if atBottom { scrollToEnd() }
+    }
+    .onChange(of: chat.pending.count) { old, new in
+      if new > old { scrollToEnd() }
+    }
+    .onChange(of: session.status) { _, _ in
+      if atBottom { scrollToEnd() }
+    }
     .overlay {
       if !chat.loaded {
         ProgressView()
       }
     }
     .axContainer("transcript")
+  }
+}
+
+extension TranscriptView {
+  private func scrollToEnd() {
+    // After layout, so the new row has a height.
+    Task { @MainActor in
+      withAnimation(.easeOut(duration: 0.25)) { position.scrollTo(edge: .bottom) }
+    }
   }
 }
 

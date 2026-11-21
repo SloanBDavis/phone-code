@@ -28,7 +28,11 @@ struct RootView: View {
           PhoneMainView()
         #endif
       } else {
-        PairingView()
+        #if os(macOS)
+          MacSetupView()
+        #else
+          PairingView()
+        #endif
       }
     }
     .overlay(alignment: .bottom) { ToastView() }

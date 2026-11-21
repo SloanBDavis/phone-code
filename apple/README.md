@@ -37,11 +37,18 @@ the computer.
    conflict).
 6. In the toolbar, choose the **PhoneCode** scheme and **My Mac** as the
    destination, then press **⌘R**.
-7. Pair: on the computer running `phonecode`, the banner shows a link and a
-   code. In the app, type the computer's address and the code, or copy the
-   pairing link and click **Paste pairing link**. When the daemon runs on the
-   same Mac, the address is `http://127.0.0.1:7777`. A fresh code any time:
-   `phonecode pair`.
+7. That's it: the Mac is the hub. The app finds `phonecode` running on this
+   Mac (through `~/.phonecode/control.json`, the same local endpoint
+   `phonecode pair` uses) and connects by itself, with no code to type. If
+   phone-code is installed but not running, the app offers **Start
+   phone-code**; if it is not installed, it shows the install command.
+8. Pair your phone from the Mac: click the QR-code button in the toolbar
+   (**Pair a phone**) and scan it with the iPhone app. **Settings > Phones**
+   lists paired devices and revokes them.
+
+The Mac app is not sandboxed: it reads `~/.phonecode` and can launch
+`phonecode`. To drive phone-code on a *different* computer instead, use
+**Connect to another computer…** on the first screen.
 
 ## Run it on your iPhone
 
@@ -54,8 +61,8 @@ the computer.
 5. With a free account, the first launch is refused: on the iPhone open
    **Settings > General > VPN & Device Management**, tap your Apple Account
    under "Developer App", and tap **Trust**. Then run again.
-6. Pair: tap **Scan QR code** and point the camera at the QR code `phonecode`
-   shows. The phone must be able to reach the computer, which in practice
+6. Pair: tap **Scan QR code** and point the camera at the QR code the Mac app
+   shows (**Pair a phone**), or the one the `phonecode` banner prints. The phone must be able to reach the computer, which in practice
    means Tailscale (`phonecode setup` walks you through it).
 
 ### Free account ("Personal Team") limits
@@ -142,6 +149,7 @@ apple/
       POSIXWebSocket.swift a small RFC 6455 client for Linux (tests)
       Store.swift         PhoneCodeClient: sessions, transcripts (one observable box per item), sends
       Pairing.swift       pairing links, POST /api/pair, handoff, unpair
+      LocalDaemon.swift   the daemon on this computer via its control endpoint (Mac hub)
       Images.swift        image fetch with the bearer token, LRU cache
       Markdown.swift      markdown blocks, code highlighting, unified diffs
       Workspace.swift     the Mac tiling layout as a split tree
@@ -200,10 +208,11 @@ Project policy is end-to-end tests only. Two suites:
 
 | Feature | Linux end-to-end | Compiled in CI | UI-tested in simulator / on macOS | On a device |
 | ------- | ---------------- | -------------- | --------------------------------- | ----------- |
-| Core protocol client, store, pairing, images, workspace model | yes | pending | n/a | never run |
-| App (all screens) | n/a | pending | pending | never run |
+| Core protocol client, store, pairing, images, workspace model, local hub | yes | yes (macOS) | n/a | never run |
+| App (all screens) | n/a | yes | yes: macOS 27 (Xcode 27.2), iOS 26.2 simulator | never run |
 
-This table is updated as CI rounds come back.
+Verified on a Mac with Xcode 27.2: `swift test` (13 tests) and the UI tests on
+macOS and the iOS simulator, against the real daemon with the fake agents.
 
 ## Troubleshooting
 

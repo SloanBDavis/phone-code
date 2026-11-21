@@ -162,6 +162,7 @@ jobs:
           status=0
           TEST_RUNNER_PC_UITEST_DAEMON="http://127.0.0.1:$DAEMON_PORT" \
           TEST_RUNNER_PC_UITEST_CODE="$PHONECODE_PAIR_CODE" \
+          TEST_RUNNER_PC_UITEST_HOME="$RUNNER_TEMP/pc/state" \
           xcodebuild test-without-building \
             -project apple/PhoneCode.xcodeproj -scheme PhoneCode \
             -destination "${{ steps.dest.outputs.destination }}" \

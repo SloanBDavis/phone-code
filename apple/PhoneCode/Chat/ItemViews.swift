@@ -40,7 +40,7 @@ struct UserBubble: View {
           .textSelection(.enabled)
           .padding(.horizontal, 14)
           .padding(.vertical, 10)
-          .background(Color.accentColor.opacity(0.2), in: .rect(cornerRadius: 20))
+          .background(Theme.bubble, in: .rect(cornerRadius: 20))
       }
     }
     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -58,7 +58,7 @@ struct PendingBubble: View {
       Text(pending.text)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: 20))
+        .background(Theme.bubble.opacity(0.6), in: .rect(cornerRadius: 20))
       if pending.status == .failed {
         HStack {
           Label(pending.error ?? "Not sent", systemImage: "exclamationmark.circle")
@@ -197,8 +197,8 @@ struct ToolCard: View {
             .truncationMode(.middle)
           Spacer(minLength: 6)
           if case .diff(_, _, let added, let removed) = tool.detail {
-            Text("+\(added)").foregroundStyle(.green).font(.caption.monospaced())
-            Text("−\(removed)").foregroundStyle(.red).font(.caption.monospaced())
+            Text("+\(added)").foregroundStyle(Theme.diffAddText).font(.caption.monospaced())
+            Text("−\(removed)").foregroundStyle(Theme.diffDelText).font(.caption.monospaced())
           }
           ToolStatusIcon(status: tool.status)
           Image(systemName: "chevron.right")
@@ -232,8 +232,8 @@ struct ToolCard: View {
         .padding(10)
       }
     }
-    .background(.fill.quinary, in: .rect(cornerRadius: 14))
-    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
+    .background(Theme.card, in: .rect(cornerRadius: 14))
+    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.hairline))
     .axContainer("chat-item-tool")
   }
 
@@ -393,9 +393,9 @@ struct DiffView: View {
 
   private func background(_ k: DiffLine.Kind) -> Color {
     switch k {
-    case .added: .green.opacity(0.16)
-    case .removed: .red.opacity(0.16)
-    case .hunk: .blue.opacity(0.08)
+    case .added: Theme.diffAdd
+    case .removed: Theme.diffDel
+    case .hunk: Theme.diffHunk
     default: .clear
     }
   }
@@ -423,11 +423,12 @@ struct PermissionCard: View {
       HStack(spacing: 6) {
         Image(systemName: item.status == "allowed" ? "checkmark" : "xmark")
         Text(item.status == "allowed" ? "Allowed" : item.status == "denied" ? "Denied" : "Cancelled")
-        Text(item.toolName).bold()
-        Text(item.title).font(.caption.monospaced()).lineLimit(1)
+        // The title already names the tool ("Bash: npm test").
+        Text(item.title).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
       }
       .font(.footnote)
       .foregroundStyle(.secondary)
+      .accessibilityElement(children: .contain)
       .accessibilityIdentifier("chat-item-permission")
       .accessibilityValue(item.status)
     } else {
@@ -435,7 +436,7 @@ struct PermissionCard: View {
         HStack(alignment: .top, spacing: 10) {
           Image(systemName: "checkmark.shield")
             .font(.title3)
-            .foregroundStyle(.orange)
+            .foregroundStyle(Theme.attention)
           VStack(alignment: .leading, spacing: 2) {
             Text("\(Agents.shortLabel(session, model.client.host)) wants to \(verb)").font(.headline)
             Text(item.title).font(.callout.monospaced()).foregroundStyle(.secondary).lineLimit(3)
@@ -465,7 +466,8 @@ struct PermissionCard: View {
         }
       }
       .padding(14)
-      .glassEffect(.regular.tint(.orange.opacity(0.12)), in: .rect(cornerRadius: 18))
+      .background(Theme.attention.opacity(0.07), in: .rect(cornerRadius: 18))
+      .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.attention.opacity(0.35)))
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("chat-item-permission")
       .accessibilityValue("pending")
@@ -533,6 +535,7 @@ struct QuestionCard: View {
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .contain)
       .accessibilityIdentifier("chat-item-question")
       .accessibilityValue(item.status)
     } else {
@@ -575,7 +578,8 @@ struct QuestionCard: View {
           .accessibilityIdentifier("question-submit")
       }
       .padding(14)
-      .glassEffect(.regular.tint(Color.accentColor.opacity(0.10)), in: .rect(cornerRadius: 18))
+      .background(Theme.card, in: .rect(cornerRadius: 18))
+      .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.hairline))
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("chat-item-question")
       .accessibilityValue("pending")

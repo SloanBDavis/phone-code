@@ -27,6 +27,30 @@ public struct MarkdownListItem: Hashable, Sendable {
 public enum MarkdownAlignment: String, Hashable, Sendable { case leading, center, trailing }
 
 public enum Markdown {
+  /// Markdown flattened to one line of plain text, for previews (sidebar rows,
+  /// notifications): no emphasis markers, code ticks, headings, list markers,
+  /// table pipes or rules.
+  public static func plain(_ source: String) -> String {
+    var s = source
+    let rules: [(String, String)] = [
+      ("(?m)^\\s*\\|?\\s*:?-{2,}:?\\s*(\\|\\s*:?-{2,}:?\\s*)*\\|?\\s*$", " "),  // table separator rows
+      ("(?m)^\\s{0,3}(#{1,6}|>|[-*+]|\\d+[.)])\\s+", ""),  // headings, quotes, list markers
+      ("(?m)^\\s*(-{3,}|\\*{3,}|_{3,})\\s*$", " "),  // rules
+      ("\\|\\s*:?-{3,}:?\\s*(?=\\|)", "|"),  // separator cells inside a flattened row
+      ("```[A-Za-z0-9_+-]*", " "),  // code fences
+      ("\\*\\*|__|~~|`", ""),  // bold, strikethrough, code ticks
+      ("(?<![\\w*])\\*(?=\\S)|(?<=\\S)\\*(?![\\w*])", ""),  // *italic*
+      ("\\[([^\\]]*)\\]\\([^)]*\\)", "$1"),  // [text](url)
+      ("\\s*\\|(\\s*\\|)*\\s*", " · "),  // table cells
+      ("\\s+", " "),
+      ("^( · )+|( · )+$|(?<=:) · ", " "),
+    ]
+    for (pattern, template) in rules {
+      s = s.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+    }
+    return s.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
   public static func blocks(_ source: String) -> [MarkdownBlock] {
     let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
     var out: [MarkdownBlock] = []

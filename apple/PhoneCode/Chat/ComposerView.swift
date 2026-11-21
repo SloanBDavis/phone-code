@@ -47,9 +47,11 @@ struct ComposerView: View {
         if !attachments.isEmpty { attachmentStrip }
         HStack(alignment: .bottom, spacing: 10) {
           PhotosPicker(selection: $photoItems, maxSelectionCount: 6, matching: .images) {
-            Image(systemName: "photo.on.rectangle")
-              .font(.title3)
-              .frame(width: 36, height: 36)
+            Image(systemName: "plus")
+              .font(.body.weight(.semibold))
+              .foregroundStyle(.secondary)
+              .frame(width: 32, height: 32)
+              .background(Theme.selection, in: .circle)
           }
           .buttonStyle(.plain)
           .accessibilityLabel("Add photos")
@@ -110,8 +112,8 @@ struct ComposerView: View {
         Haptics.play(.deny)
       } label: {
         Image(systemName: "stop.fill")
-          .font(.headline)
-          .frame(width: 36, height: 36)
+          .font(.subheadline.weight(.bold))
+          .frame(width: 32, height: 32)
       }
       .buttonStyle(.glassProminent)
       .buttonBorderShape(.circle)
@@ -123,11 +125,13 @@ struct ComposerView: View {
         send()
       } label: {
         Image(systemName: "arrow.up")
-          .font(.headline)
-          .frame(width: 36, height: 36)
+          .font(.subheadline.weight(.bold))
+          .foregroundStyle(canSend ? Theme.onAccent : Color.secondary)
+          .frame(width: 32, height: 32)
+          .background(canSend ? Color.accentColor : Theme.selection, in: .circle)
+          .animation(.easeOut(duration: 0.15), value: canSend)
       }
-      .buttonStyle(.glassProminent)
-      .buttonBorderShape(.circle)
+      .buttonStyle(.plain)
       .disabled(!canSend)
       .keyboardShortcut(.return, modifiers: .command)
       .accessibilityLabel("Send")
@@ -180,17 +184,18 @@ struct ComposerView: View {
   private var harnessMenu: some View {
     let d = model.draft
     let agents = Agents.pickerList(model.client.host)
+    let ready = agents.filter(\.available)
+    let missing = agents.filter { !$0.available }
+    // Installed agents, then the terminal; agents that are not installed sit
+    // in a submenu instead of burying the terminal under a dozen dead rows.
     return Menu {
-      ForEach(agents) { a in
+      ForEach(ready) { a in
         Button {
           model.pickHarness(a.id)
           Haptics.play(.select)
         } label: {
           if a.id == d.harness {
             Label(a.name, systemImage: "checkmark")
-          } else if !a.available {
-            Text(a.name)
-            Text(a.setupHint ?? "Not installed")
           } else {
             Text(a.name)
           }
@@ -201,6 +206,20 @@ struct ComposerView: View {
         Task { await model.openTerminal() }
       } label: {
         Label("Terminal", systemImage: "apple.terminal")
+      }
+      .accessibilityIdentifier("picker-terminal")
+      if !missing.isEmpty {
+        Divider()
+        Menu("Not installed") {
+          ForEach(missing) { a in
+            Button {
+              model.pickHarness(a.id)
+            } label: {
+              Text(a.name)
+              Text(a.setupHint ?? "Not installed")
+            }
+          }
+        }
       }
     } label: {
       Label(Agents.find(model.client.host, d.harness)?.name ?? d.harness, systemImage: HarnessGlyph.symbol(d.harness))
