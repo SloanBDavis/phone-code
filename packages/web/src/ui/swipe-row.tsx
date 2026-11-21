@@ -1,6 +1,6 @@
 import type { ComponentChildren, JSX, TargetedPointerEvent } from 'preact';
 import { signal } from '@preact/signals';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { haptic } from '../lib/util';
 import { Icon, type IconName } from './icons';
 
@@ -86,7 +86,11 @@ export function SwipeRow({
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       s.mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
       if (s.mode === 'h') {
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // the window listeners still see the release
+        }
         if (openRow.value !== id) openRow.value = null;
       }
     }
@@ -104,7 +108,12 @@ export function SwipeRow({
     s.x = x;
     set(x, false);
   };
-  const onUp = (): void => {
+  /**
+   * Ends the gesture on release or on any kind of cancel (pointercancel,
+   * touchcancel without a pointer event, lost capture): the row always settles
+   * open or closed. A cancelled full swipe never fires the destructive action.
+   */
+  const onUp = (cancelled = false): void => {
     const s = gestureRef.current;
     gestureRef.current = null;
     if (!s || s.mode !== 'h') return;
@@ -116,6 +125,11 @@ export function SwipeRow({
     if (pastFullRef.current) {
       pastFullRef.current = false;
       wrapRef.current?.classList.remove('full');
+      if (cancelled) {
+        openRow.value = id;
+        set(-width, true);
+        return;
+      }
       openRow.value = null;
       set(0, true);
       actions[actions.length - 1]?.onAction();
@@ -125,6 +139,27 @@ export function SwipeRow({
     openRow.value = open ? id : null;
     set(open ? -width : 0, true);
   };
+
+  // Releases that never reach the row (a system gesture took the touch).
+  const endRef = useRef(onUp);
+  useLayoutEffect(() => {
+    endRef.current = onUp;
+  });
+  useEffect(() => {
+    const up = (): void => endRef.current(false);
+    const cancel = (): void => endRef.current(true);
+    const opts = { capture: true, passive: true };
+    addEventListener('pointerup', up, opts);
+    addEventListener('touchend', up, opts);
+    addEventListener('pointercancel', cancel, opts);
+    addEventListener('touchcancel', cancel, opts);
+    return () => {
+      removeEventListener('pointerup', up, opts);
+      removeEventListener('touchend', up, opts);
+      removeEventListener('pointercancel', cancel, opts);
+      removeEventListener('touchcancel', cancel, opts);
+    };
+  }, []);
 
   return (
     <div class="swipe" ref={wrapRef} data-open={isOpen}>
@@ -154,8 +189,12 @@ export function SwipeRow({
         ref={contentRef}
         onPointerDown={onDown}
         onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerCancel={onUp}
+        onPointerUp={() => onUp(false)}
+        onPointerCancel={() => onUp(true)}
+        onLostPointerCapture={(e) => {
+          // Only the capture this row took; the implicit one on a child moving here is not an end.
+          if (e.target === e.currentTarget) onUp(true);
+        }}
         onClickCapture={(e) => {
           if (suppressClickRef.current || openRow.value === id) {
             e.stopPropagation();

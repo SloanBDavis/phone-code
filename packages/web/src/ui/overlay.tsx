@@ -142,7 +142,11 @@ function Sheet({
         return;
       }
       d.active = true;
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // the window listeners still see the release
+      }
     }
     d.dy = dy;
     setY(dy > 0 ? dy : dy / 4, false);
@@ -159,6 +163,22 @@ function Sheet({
     } else setY(0, true);
   };
 
+  // A drag can end without reaching the sheet (touchcancel only, lost capture):
+  // any release anywhere settles it, open or dismissed.
+  const upRef = useRef(onPointerUp);
+  useLayoutEffect(() => {
+    upRef.current = onPointerUp;
+  });
+  useEffect(() => {
+    const up = (): void => upRef.current();
+    const lo = { capture: true, passive: true };
+    const types = ['pointerup', 'pointercancel', 'touchend', 'touchcancel'] as const;
+    for (const t of types) addEventListener(t, up, lo);
+    return () => {
+      for (const t of types) removeEventListener(t, up, lo);
+    };
+  }, []);
+
   const state = closing ? 'out' : entered ? 'in' : 'pre';
   return (
     <div class={`sheet-layer ${state}`}>
@@ -174,6 +194,10 @@ function Sheet({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onLostPointerCapture={(e) => {
+          // Only the capture the sheet took; a child's implicit capture moving here is not an end.
+          if (e.target === e.currentTarget) onPointerUp();
+        }}
       >
         <div class="sheet-grabber" aria-hidden="true" />
         {children}
@@ -203,21 +227,20 @@ export interface MenuSection {
 
 /** Opens a glass context menu anchored to an element. */
 export function openMenu(anchor: Element, sections: MenuSection[], opts: { testid?: string } = {}): void {
-  const rect = anchor.getBoundingClientRect();
   haptic('light');
   addLayer((close, closing) => (
-    <Menu rect={rect} sections={sections} close={close} closing={closing} testid={opts.testid} />
+    <Menu anchor={anchor} sections={sections} close={close} closing={closing} testid={opts.testid} />
   ));
 }
 
 function Menu({
-  rect,
+  anchor,
   sections,
   close,
   closing,
   testid,
 }: {
-  rect: DOMRect;
+  anchor: Element;
   sections: MenuSection[];
   close: () => void;
   closing: boolean;
@@ -227,36 +250,76 @@ function Menu({
   const [pos, setPos] = useState<{ x: number; y: number; ox: string; oy: string } | null>(null);
   const [entered, setEntered] = useState(false);
 
+  // Anchored to the element, not to where it was at open: on iPhone the keyboard
+  // often closes right after the tap (the app shell grows back to full height and
+  // the composer moves down), so the menu follows every viewport change.
   useLayoutEffect(() => {
     const el = menuRef.current;
     if (!el) return undefined;
     const root = document.querySelector<HTMLElement>('.app');
-    const app = root?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
-    const vw = app.width;
-    const vh = app.height;
-    const a = {
-      left: rect.left - app.left,
-      right: rect.right - app.left,
-      top: rect.top - app.top,
-      bottom: rect.bottom - app.top,
+    let last = anchor.getBoundingClientRect();
+    const place = (): void => {
+      if (anchor.isConnected) last = anchor.getBoundingClientRect();
+      const rect = last;
+      const app = root?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
+      const vw = app.width;
+      const vh = app.height;
+      const a = {
+        left: rect.left - app.left,
+        right: rect.right - app.left,
+        top: rect.top - app.top,
+        bottom: rect.bottom - app.top,
+      };
+      // Natural size first, then fit the side with more room; a long list scrolls inside.
+      el.style.removeProperty('--menu-max');
+      const w = el.offsetWidth;
+      let h = el.offsetHeight;
+      const margin = 10;
+      const topLimit = margin + 40; // clear of the status bar
+      const above = a.top - 8 - topLimit;
+      const below = vh - margin - (a.bottom + 8);
+      const openUp = h > below && above > below;
+      const room = Math.max(120, openUp ? above : below);
+      if (h > room) {
+        el.style.setProperty('--menu-max', `${room}px`);
+        h = room;
+      }
+      const alignRight = a.left + rect.width / 2 > vw / 2;
+      let x = alignRight ? a.right - w : a.left;
+      x = Math.max(margin, Math.min(vw - w - margin, x));
+      let y = openUp ? a.top - h - 8 : a.bottom + 8;
+      y = Math.max(topLimit, Math.min(vh - h - margin, y));
+      setPos((p) =>
+        p && p.x === x && p.y === y
+          ? p
+          : { x, y, ox: alignRight ? 'right' : 'left', oy: openUp ? 'bottom' : 'top' },
+      );
     };
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    const margin = 10;
-    const openUp = a.bottom + h + margin > vh && a.top - h - margin > 0;
-    const alignRight = a.left + rect.width / 2 > vw / 2;
-    let x = alignRight ? a.right - w : a.left;
-    x = Math.max(margin, Math.min(vw - w - margin, x));
-    let y = openUp ? a.top - h - 8 : a.bottom + 8;
-    y = Math.max(margin + 40, Math.min(vh - h - margin, y));
-    setPos({ x, y, ox: alignRight ? 'right' : 'left', oy: openUp ? 'bottom' : 'top' });
+    place();
+    el.querySelector('.menu-item.checked')?.scrollIntoView({ block: 'nearest' });
+    let pending = (): void => undefined;
+    const schedule = (): void => {
+      pending();
+      pending = soon(place);
+    };
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', schedule);
+    vv?.addEventListener('scroll', schedule);
+    addEventListener('resize', schedule);
+    const ro = new ResizeObserver(schedule);
+    if (root) ro.observe(root);
     const off = attachRefraction(el);
     const cancel = soon(() => setEntered(true));
     return () => {
       off();
       cancel();
+      pending();
+      ro.disconnect();
+      vv?.removeEventListener('resize', schedule);
+      vv?.removeEventListener('scroll', schedule);
+      removeEventListener('resize', schedule);
     };
-  }, [rect]);
+  }, [anchor]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -286,33 +349,35 @@ function Menu({
             : { visibility: 'hidden' }
         }
       >
-        {sections.map((s) => (
-          <div class="menu-section" key={s.title ?? s.items[0]?.label}>
-            {s.title && <div class="menu-title">{s.title}</div>}
-            {s.items.map((it) => (
-              <button
-                key={it.label}
-                type="button"
-                role="menuitem"
-                class={`menu-item ${it.destructive ? 'destructive' : ''}`}
-                disabled={it.disabled}
-                data-testid={it.testid}
-                onClick={() => {
-                  haptic('light');
-                  close();
-                  it.onSelect();
-                }}
-              >
-                <span class="menu-check">{it.checked && <Icon name="check" size={16} stroke={2.4} />}</span>
-                <span class="menu-label">
-                  {it.label}
-                  {it.hint && <small>{it.hint}</small>}
-                </span>
-                {it.icon && <Icon name={it.icon} size={19} />}
-              </button>
-            ))}
-          </div>
-        ))}
+        <div class="menu-scroll">
+          {sections.map((s) => (
+            <div class="menu-section" key={s.title ?? s.items[0]?.label}>
+              {s.title && <div class="menu-title">{s.title}</div>}
+              {s.items.map((it) => (
+                <button
+                  key={it.label}
+                  type="button"
+                  role="menuitem"
+                  class={`menu-item ${it.destructive ? 'destructive' : ''} ${it.checked ? 'checked' : ''}`}
+                  disabled={it.disabled}
+                  data-testid={it.testid}
+                  onClick={() => {
+                    haptic('light');
+                    close();
+                    it.onSelect();
+                  }}
+                >
+                  <span class="menu-check">{it.checked && <Icon name="check" size={16} stroke={2.4} />}</span>
+                  <span class="menu-label">
+                    {it.label}
+                    {it.hint && <small>{it.hint}</small>}
+                  </span>
+                  {it.icon && <Icon name={it.icon} size={19} />}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

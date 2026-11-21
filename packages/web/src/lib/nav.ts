@@ -8,7 +8,7 @@ export interface Entry {
   route: Route;
 }
 
-export type NavAnim = 'push' | 'pop' | 'pop-done' | 'none';
+export type NavAnim = 'push' | 'pop' | 'none';
 
 let nextKey = 1;
 
@@ -46,8 +46,6 @@ export const lastAnim = signal<NavAnim>('none');
 export const leaving = signal<Entry | null>(null);
 
 let started = false;
-/** Set when the UI already animated a pop (swipe-back) before history caught up. */
-let popAnimated = false;
 
 export function startNav(): void {
   if (started) return;
@@ -74,11 +72,10 @@ function onHashChange(): void {
   const idx = s.findLastIndex((e) => same(e.route, r));
   if (idx >= 0) {
     batch(() => {
-      lastAnim.value = popAnimated ? 'pop-done' : 'pop';
-      leaving.value = popAnimated || reducedMotion() ? null : (top ?? null);
+      lastAnim.value = 'pop';
+      leaving.value = reducedMotion() ? null : (top ?? null);
       stack.value = s.slice(0, idx + 1);
     });
-    popAnimated = false;
     return;
   }
   batch(() => {
@@ -94,9 +91,20 @@ export function push(r: Route): void {
   location.hash = routeHash(r);
 }
 
-export function pop(alreadyAnimated = false): void {
-  if (stack.value.length < 2) return;
-  popAnimated = alreadyAnimated;
+/**
+ * Back one screen. The stack changes synchronously (the UI never waits for
+ * `hashchange`); history follows, and its hashchange then finds the stack
+ * already there and does nothing.
+ */
+export function pop(): void {
+  const s = stack.value;
+  const top = s[s.length - 1];
+  if (s.length < 2 || !top) return;
+  batch(() => {
+    lastAnim.value = 'pop';
+    leaving.value = reducedMotion() ? null : top;
+    stack.value = s.slice(0, -1);
+  });
   history.back();
 }
 

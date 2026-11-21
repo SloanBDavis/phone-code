@@ -1485,6 +1485,11 @@
   color: var(--info);
 }
 
+.chip.mode-auto {
+  background: var(--attention-soft);
+  color: var(--attention);
+}
+
 .chip.mode-bypassPermissions {
   background: var(--danger-soft);
   color: var(--danger);

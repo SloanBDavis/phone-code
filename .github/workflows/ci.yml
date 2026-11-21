@@ -61,15 +61,16 @@ jobs:
         id: pw-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
-      - name: Install Chromium
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
+      # WebKit runs the Safari smoke project (e2e/tests/webkit.spec.ts).
+      - name: Install Chromium and WebKit
         if: steps.pw-cache.outputs.cache-hit != 'true'
         working-directory: e2e
-        run: bunx playwright install --with-deps chromium
-      - name: Install Chromium system dependencies
+        run: bunx playwright install --with-deps chromium webkit
+      - name: Install browser system dependencies
         if: steps.pw-cache.outputs.cache-hit == 'true'
         working-directory: e2e
-        run: bunx playwright install-deps chromium
+        run: bunx playwright install-deps chromium webkit
       - run: bun run e2e
       - name: Upload test results
         if: failure()

@@ -29,6 +29,8 @@ permission), `demo-billing` (running Codex), `demo-chart` (pending question),
 | `pair-manual`                                   | manual pairing screen                                          |
 | `pair-reason`                                   | why we are pairing again (e.g. device revoked)                 |
 | `pair-scan`                                     | open the QR scanner                                            |
+| `pair-scan-unavailable`                         | why there is no scanner (plain http)                           |
+| `pair-insecure`                                 | install coach: what plain http leaves out                      |
 | `scanner-sheet`, `scanner`, `scanner-close`     | scanner sheet                                                  |
 | `pair-input`, `pair-submit`, `pair-input-error` | paste link or code                                             |
 | `pair-demo`                                     | "Try the demo"                                                 |
@@ -52,6 +54,8 @@ permission), `demo-billing` (running Codex), `demo-chart` (pending question),
 | `delete-dialog`, `delete-dialog-confirm`                        | delete confirmation                                                                     |
 | `toast`                                                         | transient toast                                                                         |
 | `nav-back`                                                      | back button on pushed screens                                                           |
+| `edge-swipe`                                                    | left-edge strip for swipe-back on pushed screens                                        |
+| `lazy-loading`, `lazy-failed`                                   | a code-split view loading / failed to load (with retry)                                 |
 
 ## New session sheet
 
@@ -106,12 +110,13 @@ permission), `demo-billing` (running Codex), `demo-chart` (pending question),
 
 ## Settings
 
-| id                                                                    | element                    |
-| --------------------------------------------------------------------- | -------------------------- |
-| `settings-notifications`                                              | notifications switch       |
-| `theme-system`, `theme-dark`, `theme-light`                           | theme segments             |
-| `settings-font-smaller`, `settings-font-size`, `settings-font-larger` | terminal text size         |
-| `settings-unpair`, `unpair-dialog`, `unpair-dialog-confirm`           | unpair                     |
-| `settings-exit-demo`                                                  | exit demo (demo mode only) |
-| `settings-source`                                                     | source link                |
-| `settings-agent`                                                      | agent row [`data-agent`]   |
+| id                                                                    | element                             |
+| --------------------------------------------------------------------- | ----------------------------------- |
+| `settings-notifications`                                              | notifications switch                |
+| `notifications-note`                                                  | why notifications are (un)available |
+| `theme-system`, `theme-dark`, `theme-light`                           | theme segments                      |
+| `settings-font-smaller`, `settings-font-size`, `settings-font-larger` | terminal text size                  |
+| `settings-unpair`, `unpair-dialog`, `unpair-dialog-confirm`           | unpair                              |
+| `settings-exit-demo`                                                  | exit demo (demo mode only)          |
+| `settings-source`                                                     | source link                         |
+| `settings-agent`                                                      | agent row [`data-agent`]            |

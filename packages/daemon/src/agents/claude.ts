@@ -21,8 +21,10 @@
  *   us -> cli  {type:'user', message:{role:'user', content}, parent_tool_use_id:null, session_id:''}
  */
 import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
 import type {
   Attachment,
+  ModelOption,
   NoticeItem,
   PermissionDecision,
   PermissionItem,
@@ -50,7 +52,15 @@ import {
 } from './shared/common.ts';
 import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
 
-const DEFAULT_MODELS = ['default', 'opus', 'sonnet', 'haiku'];
+/** Shown until the CLI has told us its real list (initialize response). */
+const DEFAULT_MODELS: ModelOption[] = [
+  { id: 'default', name: 'Default', isDefault: true },
+  { id: 'opus', name: 'Opus' },
+  { id: 'sonnet', name: 'Sonnet' },
+  { id: 'haiku', name: 'Haiku' },
+];
+/** The modes every Claude Code accepts; `auto` is added when the installed CLI offers it. */
+const BASE_MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
 /** Env vars that make a nested `claude` think it runs inside another Claude Code / SDK host. */
 const DROP_ENV = ['CLAUDECODE', 'CLAUDE_CODE_SSE_PORT', 'NODE_OPTIONS'];
 
@@ -58,7 +68,36 @@ export function claudeBin(env: NodeJS.ProcessEnv = process.env): string {
   return env.PHONECODE_CLAUDE_BIN || 'claude';
 }
 
-let discoveredModels: string[] | undefined;
+let discoveredModels: ModelOption[] | undefined;
+/** Whether the installed CLI accepts `--permission-mode auto` (from `claude --help`). */
+let autoModeSupported: boolean | undefined;
+
+function permissionModesFor(auto: boolean): PermissionMode[] {
+  return auto ? ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'] : BASE_MODES;
+}
+
+/**
+ * The `models` of the CLI's initialize response (2.1.330):
+ * [{value:'default', resolvedModel, displayName:'Default (recommended)', description:'Opus 4.7', supportsAutoMode, ...}, ...]
+ */
+function parseModels(v: unknown): ModelOption[] {
+  const out: ModelOption[] = [];
+  for (const m of arr(v).map(rec)) {
+    const id = str(m.value);
+    if (!id || out.some((o) => o.id === id)) continue;
+    const name = str(m.displayName);
+    const description = str(m.description);
+    const resolved = str(m.resolvedModel);
+    out.push({
+      id,
+      ...(name ? { name } : {}),
+      ...(description ? { description } : {}),
+      ...(resolved ? { resolved } : {}),
+      ...(id === 'default' ? { isDefault: true } : {}),
+    });
+  }
+  return out;
+}
 
 interface PendingPermission {
   requestId: string;
@@ -83,6 +122,7 @@ class ClaudeSession implements AgentSession {
   private readonly control = new Map<string, ControlWaiter>();
   private sessionId: string | undefined;
   private model: string | undefined;
+  private modelOptions: ModelOption[] = discoveredModels ?? [];
   private mode: PermissionMode;
   private turnsQueued = 0;
   private interruptRequested = false;
@@ -185,10 +225,20 @@ class ClaudeSession implements AgentSession {
     this.request({ subtype: 'set_max_thinking_tokens', thinking_display: 'summarized' }).catch(() => {});
     try {
       const res = await init;
-      const models = arr(res.models)
-        .map((m) => str(rec(m).value))
-        .filter((m): m is string => !!m);
-      if (models.length) discoveredModels = models;
+      const options = parseModels(res.models);
+      const auto = autoModeSupported ?? arr(res.models).some((m) => rec(m).supportsAutoMode === true);
+      if (options.length) {
+        discoveredModels = options;
+        this.modelOptions = options;
+      }
+      const mode = asMode(res.current_permission_mode);
+      if (mode) this.mode = mode;
+      this.events.meta({
+        ...(options.length ? { models: options.map((o) => o.id), modelOptions: options } : {}),
+        permissionModes: permissionModesFor(auto),
+        ...(mode ? { permissionMode: mode } : {}),
+        ...(this.model ? { model: this.model } : {}),
+      });
     } catch {
       // the exit handler reports a dead process
     }
@@ -363,7 +413,8 @@ class ClaudeSession implements AgentSession {
           this.sessionId = sid;
           this.events.nativeSessionId(sid);
         } else if (sid) this.sessionId = sid;
-        const model = str(msg.model);
+        // `model` is the concrete id; keep the alias the user picked when it stands for it.
+        const model = this.aliasFor(str(msg.model));
         const mode = asMode(msg.permissionMode);
         if (model) this.model = model;
         if (mode) this.mode = mode;
@@ -782,11 +833,20 @@ class ClaudeSession implements AgentSession {
       return;
     }
     try {
-      const res = await this.request({ subtype: 'set_model', model });
-      this.events.meta({ model: str(res.model) ?? model });
+      // The CLI answers with the concrete id ("claude-opus-4-7"); the phone keeps the alias it chose.
+      await this.request({ subtype: 'set_model', model });
+      this.events.meta({ model });
     } catch (e) {
       this.notice('warn', `Could not switch model to ${model}: ${errorMessage(e)}`);
     }
+  }
+
+  /** The model id to show for a concrete model id the CLI reports. */
+  private aliasFor(resolved: string | undefined): string | undefined {
+    if (!resolved) return undefined;
+    const cur = this.modelOptions.find((o) => o.id === (this.model ?? 'default'));
+    if (cur && (cur.id === resolved || cur.resolved === resolved)) return cur.id;
+    return resolved;
   }
 
   private notice(level: NoticeItem['level'], text: string, key?: string): void {
@@ -798,7 +858,43 @@ class ClaudeSession implements AgentSession {
 }
 
 function asMode(v: unknown): PermissionMode | undefined {
-  return v === 'default' || v === 'acceptEdits' || v === 'plan' || v === 'bypassPermissions' ? v : undefined;
+  return v === 'default' || v === 'acceptEdits' || v === 'plan' || v === 'auto' || v === 'bypassPermissions'
+    ? v
+    : undefined;
+}
+
+/** Ask a short-lived CLI for its models (initialize only: no prompt, no session saved, no usage). */
+async function probeModels(bin: string): Promise<ModelOption[] | undefined> {
+  const { promise: done, resolve } = Promise.withResolvers<ModelOption[] | undefined>();
+  const proc = spawnAgent(
+    bin,
+    [
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--input-format',
+      'stream-json',
+      '--no-session-persistence',
+    ],
+    {
+      cwd: homedir(),
+      env: { ...childEnv(undefined, DROP_ENV), CLAUDE_CODE_ENTRYPOINT: 'sdk-ts' },
+      onLine: (v) => {
+        const m = rec(v);
+        const r = rec(m.response);
+        if (m.type !== 'control_response' || r.request_id !== 'probe') return;
+        const options = parseModels(rec(r.response).models);
+        resolve(options.length ? options : undefined);
+      },
+    },
+  );
+  proc.writeJson({ type: 'control_request', request_id: 'probe', request: { subtype: 'initialize' } });
+  const timer = setTimeout(() => resolve(undefined), 3000);
+  void proc.exited.then(() => resolve(undefined));
+  const options = await done;
+  clearTimeout(timer);
+  await proc.kill(200);
+  return options;
 }
 
 function buildContent(text: string, attachments: Attachment[] | undefined): string | Rec[] {
@@ -826,10 +922,25 @@ export function createClaudeAdapter(): AgentAdapter {
     kind: 'claude',
     async detect() {
       const bin = claudeBin();
-      const out = await runQuick(bin, ['--version']);
+      // In parallel, well inside the host's detection timeout: version, accepted modes, models.
+      const [out, help, probed] = await Promise.all([
+        runQuick(bin, ['--version']),
+        runQuick(bin, ['--help']),
+        discoveredModels ? Promise.resolve(discoveredModels) : probeModels(bin),
+      ]);
       if (out === undefined) return { available: false };
       const version = /\d+\.\d+\.\d+/.exec(out)?.[0] ?? out.split(/\s/)[0];
-      return { available: true, ...(version ? { version } : {}), models: discoveredModels ?? DEFAULT_MODELS };
+      // `--permission-mode <mode> ... (choices: "acceptEdits", "auto", ...)`
+      autoModeSupported = /--permission-mode[\s\S]{0,200}?"auto"/.test(help ?? '');
+      discoveredModels ??= probed;
+      const options = discoveredModels ?? DEFAULT_MODELS;
+      return {
+        available: true,
+        ...(version ? { version } : {}),
+        models: options.map((o) => o.id),
+        modelOptions: options,
+        permissionModes: permissionModesFor(autoModeSupported),
+      };
     },
     async start(opts, events) {
       const session = new ClaudeSession(opts, events);

@@ -65,6 +65,8 @@ async function detectAll(adapters: AdapterRegistry): Promise<AgentInfo[]> {
     };
     if (d.version !== undefined) info.version = d.version;
     if (d.models !== undefined) info.models = d.models;
+    if (d.modelOptions !== undefined) info.modelOptions = d.modelOptions;
+    if (d.permissionModes !== undefined) info.permissionModes = d.permissionModes;
     if (impl === 'acp') info.source = a.source ?? 'builtin';
     return info;
   });

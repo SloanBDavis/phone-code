@@ -28,6 +28,12 @@ function freePort(): Promise<number> {
 export interface DaemonOptions {
   /** Extra environment for the daemon (and through it, the fake agents). */
   env?: Record<string, string>;
+  /**
+   * Serve plain http on the network (`--insecure`), so the phone loads the app
+   * from the machine's LAN address: a non-secure context, like an iPhone on
+   * Wi-Fi without https (no service worker, push or camera).
+   */
+  insecure?: boolean;
 }
 
 export class Daemon {
@@ -91,7 +97,8 @@ export class Daemon {
   }
 
   private async launch(): Promise<void> {
-    const proc = spawn('bun', [CLI, '--local', '--port', String(this.port)], {
+    const mode = this.opts.insecure === true ? ['--insecure', '--no-qr'] : ['--local'];
+    const proc = spawn('bun', [CLI, ...mode, '--port', String(this.port)], {
       cwd: this.userHome,
       env: this.env(),
       stdio: ['ignore', 'pipe', 'pipe'],

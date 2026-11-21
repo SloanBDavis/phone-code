@@ -10,6 +10,7 @@ import type {
   AgentKind,
   Attachment,
   ChatItem,
+  ModelOption,
   PermissionDecision,
   PermissionMode,
   ResumableSession,
@@ -41,6 +42,8 @@ export interface AgentEvents {
     title?: string;
     /** Models the agent offers for this session (ACP agents report them per session). */
     models?: string[];
+    /** `models` with display names, same order. */
+    modelOptions?: ModelOption[];
     /** Permission modes the agent can switch to (absent: all four). */
     permissionModes?: PermissionMode[];
   }): void;
@@ -72,7 +75,15 @@ export interface AgentAdapter {
   /** Where an ACP agent's entry comes from. */
   source?: 'builtin' | 'config';
   /** Is the CLI installed? Cheap; called at startup and cached. */
-  detect(): Promise<{ available: boolean; version?: string; models?: string[] }>;
+  detect(): Promise<{
+    available: boolean;
+    version?: string;
+    models?: string[];
+    /** `models` with display names. */
+    modelOptions?: ModelOption[];
+    /** Permission modes the agent accepts (absent: default, acceptEdits, plan, bypassPermissions). */
+    permissionModes?: PermissionMode[];
+  }>;
   /**
    * Start (or resume) a conversation. Must not throw for "CLI missing" style
    * problems after returning; report those via a NoticeItem + status('error').

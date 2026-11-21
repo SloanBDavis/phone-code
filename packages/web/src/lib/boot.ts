@@ -36,6 +36,7 @@ export function startHost(): void {
   client.start(new WsTransport(c.token));
   mode.value = 'app';
   void refreshHandoff();
+  keepHandoffFresh();
 }
 
 export async function startDemo(): Promise<void> {
@@ -75,8 +76,34 @@ export async function redeem(code: string): Promise<void> {
   client.start(new WsTransport(res.token));
   if (isIOS() && !isStandalone()) {
     await refreshHandoff();
+    keepHandoffFresh();
     mode.value = 'install';
   } else mode.value = 'app';
+}
+
+/** Handoff codes live 5 minutes on the host; mint a new one well before that. */
+const HANDOFF_FRESH_MS = 3 * 60_000;
+let handoffAt = 0;
+let keeping = false;
+
+function checkHandoff(): void {
+  if (document.visibilityState !== 'visible' || !creds.value) return;
+  if (Date.now() - handoffAt > HANDOFF_FRESH_MS) void refreshHandoff();
+}
+
+/**
+ * The user may add the app to the Home Screen long after pairing (Safari
+ * stays open, or comes back from the background). While this page is visible
+ * in iOS Safari, keep the code in the manifest link and the URL fresh. Timers
+ * are frozen in a backgrounded tab, so returning to the page checks at once.
+ */
+function keepHandoffFresh(): void {
+  if (keeping || !isIOS() || isStandalone()) return;
+  keeping = true;
+  setInterval(checkHandoff, 20_000);
+  document.addEventListener('visibilitychange', checkHandoff);
+  addEventListener('pageshow', checkHandoff);
+  addEventListener('focus', checkHandoff);
 }
 
 /**
@@ -89,6 +116,7 @@ export async function refreshHandoff(): Promise<void> {
   if (!c || !isIOS() || isStandalone()) return;
   try {
     const { code } = await handoff(c.token);
+    handoffAt = Date.now();
     handoffCode.value = code;
     const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
     if (link) link.href = `/manifest.webmanifest?h=${encodeURIComponent(code)}`;

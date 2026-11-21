@@ -76,6 +76,17 @@
   backdrop-filter: var(--lg,) var(--glass-filter-refract);
 }
 
+/*
+ * Safari and other engines without refraction: a blur alone lets text behind a
+ * menu or sheet read through as soft shapes that fight its own labels, so
+ * surfaces that carry text get a nearly opaque tint (as iOS menus do).
+ */
+:root:not(.refract) .menu,
+:root:not(.refract) .sheet,
+:root:not(.refract) .alert {
+  background: var(--glass-tint-opaque);
+}
+
 .glass-clear {
   background: var(--glass-tint-clear);
 }

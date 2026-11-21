@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import '../styles/pair.css';
 import { ApiError, parsePairing } from '../lib/api';
-import { autoCode, handoffCode, mode, pairReason, redeem, refreshHandoff, startDemo } from '../lib/boot';
+import { autoCode, handoffCode, mode, pairReason, redeem, startDemo } from '../lib/boot';
 import { creds } from '../lib/storage';
 import { haptic, isIOS } from '../lib/util';
 import { Icon, Spinner } from '../ui/icons';
@@ -92,6 +92,8 @@ function ManualPair(): JSX.Element {
     setBusy(false);
   };
 
+  // The camera (getUserMedia) only exists on https.
+  const secure = window.isSecureContext;
   const scan = (): void => {
     void Scanner.preload();
     openSheet(
@@ -135,10 +137,17 @@ function ManualPair(): JSX.Element {
         </li>
       </ol>
       <div class="pair-actions">
-        <button type="button" class="btn btn-primary btn-block" onClick={scan} data-testid="pair-scan">
-          <Icon name="qr" size={20} stroke={2} />
-          Scan QR code
-        </button>
+        {secure ? (
+          <button type="button" class="btn btn-primary btn-block" onClick={scan} data-testid="pair-scan">
+            <Icon name="qr" size={20} stroke={2} />
+            Scan QR code
+          </button>
+        ) : (
+          <p class="pair-text small center" data-testid="pair-scan-unavailable">
+            The in-app scanner needs an https connection. Scan the QR code with the Camera app, or paste the
+            link below.
+          </p>
+        )}
         <form
           class="pair-paste"
           onSubmit={(e) => {
@@ -187,11 +196,9 @@ function ManualPair(): JSX.Element {
 
 /** "Add to Home Screen" coach, shown in iOS Safari right after pairing. */
 export function InstallCoach(): JSX.Element {
-  useEffect(() => {
-    // Handoff codes are short-lived; keep a fresh one in the manifest while this is open.
-    const t = setInterval(() => void refreshHandoff(), 4 * 60_000);
-    return () => clearInterval(t);
-  }, []);
+  // The handoff code in the manifest is kept fresh by boot.ts while this page is visible.
+  // Service workers, push and the camera only exist in a secure context (https).
+  const secure = window.isSecureContext;
   const name = creds.value?.host.name ?? 'your computer';
   return (
     <div class="pair-scroll" data-testid="pair-install">
@@ -201,9 +208,21 @@ export function InstallCoach(): JSX.Element {
         </span>
         <h1 class="pair-title">Paired with {name}</h1>
         <p class="pair-text">
-          Add phone-code to your Home Screen for full screen, notifications and instant launch.
+          {secure
+            ? 'Add phone-code to your Home Screen for full screen, notifications and instant launch.'
+            : 'Add phone-code to your Home Screen for full screen and instant launch.'}
         </p>
       </div>
+      {!secure && (
+        <div class="pair-reason" data-testid="pair-insecure">
+          <Icon name="info" size={18} />
+          <span>
+            This connection is plain http, so notifications, opening without a connection and the in-app QR
+            scanner are not available. They need an https address for your computer, for example with
+            Tailscale.
+          </span>
+        </div>
+      )}
       <ol class="coach">
         <li>
           <span class="coach-icon">

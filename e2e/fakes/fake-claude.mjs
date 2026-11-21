@@ -24,6 +24,23 @@ if (argv.includes('--version') || argv.includes('-v')) {
   process.stdout.write('2.1.330 (Claude Code)\n');
   process.exit(0);
 }
+// The part of `claude --help` the daemon reads (the permission modes this CLI accepts), as 2.1.330 prints it.
+const PERMISSION_MODES = ['acceptEdits', 'auto', 'bypassPermissions', 'default', 'dontAsk', 'plan'];
+if (argv.includes('--help') || argv.includes('-h')) {
+  process.stdout.write(
+    [
+      'Usage: claude [options] [command] [prompt]',
+      '',
+      'Options:',
+      '  --permission-mode <mode>              Permission mode to use for the session',
+      '                                        (choices: "acceptEdits", "auto",',
+      '                                        "bypassPermissions", "manual",',
+      '                                        "dontAsk", "plan")',
+      '',
+    ].join('\n'),
+  );
+  process.exit(0);
+}
 const MODEL_ALIASES = {
   sonnet: 'claude-sonnet-fake',
   opus: 'claude-opus-fake',
@@ -224,20 +241,29 @@ function onControl(msg) {
             value: 'default',
             resolvedModel: 'claude-sonnet-fake',
             displayName: 'Default (recommended)',
-            description: 'Fake Sonnet',
+            description: 'Sonnet Fake',
+            supportsAutoMode: true,
           },
-          { value: 'opus', resolvedModel: 'claude-opus-fake', displayName: 'Opus', description: 'Fake Opus' },
+          {
+            value: 'opus',
+            resolvedModel: 'claude-opus-fake',
+            displayName: 'Opus Fake',
+            description: 'Best for everyday, complex tasks',
+            supportsAutoMode: true,
+          },
           {
             value: 'sonnet',
             resolvedModel: 'claude-sonnet-fake',
-            displayName: 'Sonnet',
-            description: 'Fake Sonnet',
+            displayName: 'Sonnet Fake',
+            description: 'Efficient for routine tasks',
+            supportsAutoMode: true,
           },
           {
             value: 'haiku',
             resolvedModel: 'claude-haiku-fake',
-            displayName: 'Haiku',
-            description: 'Fake Haiku',
+            displayName: 'Haiku Fake',
+            description: 'Fastest for quick answers',
+            supportsAutoMode: true,
           },
         ],
         account: { subscriptionType: 'fake' },
@@ -248,6 +274,15 @@ function onControl(msg) {
         capabilities: [],
       });
     case 'set_permission_mode':
+      if (!PERMISSION_MODES.includes(req.mode))
+        return out({
+          type: 'control_response',
+          response: {
+            subtype: 'error',
+            request_id: msg.request_id,
+            error: `Cannot set permission mode: must be one of ${PERMISSION_MODES.join(', ')}`,
+          },
+        });
       mode = req.mode;
       respond(msg.request_id, { mode });
       return out({
@@ -361,6 +396,8 @@ function canUseTool(toolName, input, toolUseId, suggestions = []) {
 
 function needsPermission(toolName, input) {
   if (mode === 'bypassPermissions') return false;
+  // auto: the real CLI's classifier approves routine actions; the fake approves everything but `rm`.
+  if (mode === 'auto') return toolName === 'Bash' && /\brm\b/.test(String(input.command));
   if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(toolName)) {
     if (mode === 'acceptEdits') return false;
     return !allowRules.includes(`${toolName}(*)`) && !allowRules.includes('Edit(*)');

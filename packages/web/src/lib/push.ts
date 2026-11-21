@@ -3,9 +3,12 @@ import { vapidKey } from './state';
 import { updateSettings } from './storage';
 import { isIOS, isStandalone } from './util';
 
-export type PushSupport = 'ok' | 'needs-install' | 'unsupported' | 'no-key' | 'denied';
+export type PushSupport = 'ok' | 'needs-install' | 'needs-https' | 'unsupported' | 'no-key' | 'denied';
 
 export function pushSupport(): PushSupport {
+  // Service workers, push and notifications only exist on https (or localhost):
+  // over plain http they are missing whatever the browser can do.
+  if (!window.isSecureContext) return 'needs-https';
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   if (!supported) return isIOS() && !isStandalone() ? 'needs-install' : 'unsupported';
   if (Notification.permission === 'denied') return 'denied';

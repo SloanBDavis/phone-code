@@ -64,7 +64,7 @@ function optAgent(o: Obj, key: string): AgentId | undefined {
   return v;
 }
 const KINDS: readonly SessionKind[] = ['terminal', 'agent'];
-const MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+const MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
 const DECISIONS: readonly PermissionDecision[] = ['allow', 'allowAlways', 'deny'];
 
 const ID_MAX = 128;

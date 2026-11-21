@@ -39,6 +39,8 @@ export class Phone {
       this.errors.push(`console.error: ${msg.text()}`);
     });
     page.on('pageerror', (err) => this.errors.push(`pageerror: ${err.message}`));
+    // WebKit reports the viewport meta's Chrome-only `interactive-widget` key as an error; Safari ignores it too.
+    if (context.browser()?.browserType().name() === 'webkit') this.allowConsole(/interactive-widget/);
   }
 
   /** Tolerate console errors matching `re` for the rest of the test. */

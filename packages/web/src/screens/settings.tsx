@@ -33,13 +33,15 @@ function NotificationsRow(): JSX.Element {
     ? 'Not available in the demo.'
     : support === 'needs-install'
       ? 'On iPhone, notifications work in the Home Screen app. Add phone-code to your Home Screen, open it from there, then turn this on.'
-      : support === 'unsupported'
-        ? 'This browser does not support web notifications.'
-        : support === 'denied'
-          ? 'Notifications are blocked for this app. Allow them in Settings > Notifications.'
-          : support === 'no-key'
-            ? 'This host does not offer notifications yet. Update phone-code on your computer.'
-            : 'Get a notification when an agent finishes or needs your approval.';
+      : support === 'needs-https'
+        ? 'Notifications need an https address for this computer (for example Tailscale). This connection is plain http.'
+        : support === 'unsupported'
+          ? 'This browser does not support web notifications.'
+          : support === 'denied'
+            ? 'Notifications are blocked for this app. Allow them in Settings > Notifications.'
+            : support === 'no-key'
+              ? 'This host does not offer notifications yet. Update phone-code on your computer.'
+              : 'Get a notification when an agent finishes or needs your approval.';
   return (
     <>
       <div class="list">
@@ -68,7 +70,9 @@ function NotificationsRow(): JSX.Element {
           />
         </label>
       </div>
-      <p class="footnote">{note}</p>
+      <p class="footnote" data-testid="notifications-note">
+        {note}
+      </p>
     </>
   );
 }

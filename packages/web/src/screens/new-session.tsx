@@ -9,7 +9,7 @@ import type {
 } from '@phone-code/protocol';
 import '../styles/new-session.css';
 import '../styles/settings.css';
-import { agentCatalog } from '../lib/agents';
+import { CLASSIC_MODES, agentCatalog, modelLabel, modelOptions } from '../lib/agents';
 import { client } from '../lib/client';
 import { now } from '../lib/clock';
 import { push } from '../lib/nav';
@@ -161,12 +161,15 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
   const [cwd, setCwd] = useState<string>(recents[0] ?? h?.home ?? '~');
   const [picking, setPicking] = useState(false);
   const [model, setModel] = useState<string | undefined>(undefined);
-  const [perm, setPerm] = useState<PermissionMode>('default');
+  const [chosenPerm, setPerm] = useState<PermissionMode>('default');
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<ResumableSession[] | null>(null);
 
   const agentInfo = kind === 'terminal' ? undefined : agents.find((a) => a.id === kind);
-  const models = agentInfo?.models ?? [];
+  const models = modelOptions(agentInfo);
+  const offeredModes = agentInfo?.permissionModes ?? CLASSIC_MODES;
+  // A mode the chosen agent does not offer (e.g. Auto after switching to Codex) falls back to asking.
+  const perm: PermissionMode = offeredModes.includes(chosenPerm) ? chosenPerm : 'default';
 
   useEffect(() => {
     setModel(undefined);
@@ -287,12 +290,16 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                     openMenu(e.currentTarget, [
                       {
                         title: 'Model',
+                        // "Default" sends no model: the agent's own default (which may follow its settings).
                         items: [
-                          { label: 'Default', checked: !model, onSelect: () => setModel(undefined) },
+                          ...(models.some((m) => m.isDefault)
+                            ? []
+                            : [{ label: 'Default', checked: !model, onSelect: () => setModel(undefined) }]),
                           ...models.map((m) => ({
-                            label: m,
-                            checked: m === model,
-                            onSelect: () => setModel(m),
+                            label: m.name ?? m.id,
+                            ...(m.description ? { hint: m.description } : {}),
+                            checked: m.isDefault ? !model : m.id === model,
+                            onSelect: () => setModel(m.isDefault ? undefined : m.id),
                           })),
                         ],
                       },
@@ -303,7 +310,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                     <Icon name="sparkle" size={16} stroke={2.1} />
                   </span>
                   <span class="cell-main cell-title">Model</span>
-                  <span class="cell-value">{model ?? 'Default'}</span>
+                  <span class="cell-value">{modelLabel(model, models) ?? 'Default'}</span>
                   <Icon name="down" size={14} stroke={2.4} class="cell-chev" />
                 </button>
                 <button
@@ -314,7 +321,7 @@ export default function NewSessionSheet({ close }: { close: () => void }): JSX.E
                     openMenu(e.currentTarget, [
                       {
                         title: 'Permissions',
-                        items: MODES.map((m) => ({
+                        items: MODES.filter((m) => offeredModes.includes(m.mode)).map((m) => ({
                           label: m.label,
                           hint: m.hint,
                           icon: m.icon,

@@ -26,6 +26,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type {
+  ModelOption,
   Attachment,
   ChatItem,
   NoticeItem,
@@ -57,13 +58,31 @@ import {
 import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
 
 const CLIENT_VERSION = '0.1.0';
-const DEFAULT_MODELS = ['gpt-5-codex', 'gpt-5'];
+const DEFAULT_MODELS: ModelOption[] = [{ id: 'gpt-5-codex' }, { id: 'gpt-5' }];
 
 export function codexBin(env: NodeJS.ProcessEnv = process.env): string {
   return env.PHONECODE_CODEX_BIN || 'codex';
 }
 
-let discoveredModels: string[] | undefined;
+let discoveredModels: ModelOption[] | undefined;
+
+/** `model/list` result data: [{id, displayName, description, hidden, isDefault, ...}]. */
+function parseModels(data: unknown): ModelOption[] {
+  const out: ModelOption[] = [];
+  for (const m of arr(data).map(rec)) {
+    const id = str(m.id) ?? str(m.model);
+    if (!id || m.hidden === true || out.some((o) => o.id === id)) continue;
+    const name = str(m.displayName);
+    const description = str(m.description);
+    out.push({
+      id,
+      ...(name && name !== id ? { name } : {}),
+      ...(description ? { description } : {}),
+      ...(m.isDefault === true ? { isDefault: true } : {}),
+    });
+  }
+  return out;
+}
 
 type ApprovalPolicy = 'untrusted' | 'on-request' | 'never';
 type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
@@ -72,6 +91,8 @@ const POLICY: Record<PermissionMode, { approvalPolicy: ApprovalPolicy; sandbox: 
   default: { approvalPolicy: 'untrusted', sandbox: 'workspace-write' },
   acceptEdits: { approvalPolicy: 'on-request', sandbox: 'workspace-write' },
   plan: { approvalPolicy: 'untrusted', sandbox: 'read-only' },
+  // Not offered for Codex (Claude Code's classifier mode); if asked for, Codex's own "Auto" preset.
+  auto: { approvalPolicy: 'on-request', sandbox: 'workspace-write' },
   bypassPermissions: { approvalPolicy: 'never', sandbox: 'danger-full-access' },
 };
 
@@ -208,12 +229,11 @@ class CodexSession implements AgentSession {
   private async discoverModels(): Promise<void> {
     try {
       const r = await this.call('model/list', {});
-      const ids = arr(rec(r).data)
-        .map(rec)
-        .filter((m) => m.hidden !== true)
-        .map((m) => str(m.id))
-        .filter((m): m is string => !!m);
-      if (ids.length) discoveredModels = ids;
+      const options = parseModels(rec(r).data);
+      if (options.length) {
+        discoveredModels = options;
+        this.events.meta({ models: options.map((o) => o.id), modelOptions: options });
+      }
     } catch {
       // optional
     }
@@ -914,20 +934,16 @@ class CodexSession implements AgentSession {
 }
 
 /** Ask a short-lived app-server for its model list (works without credentials). */
-async function probeModels(): Promise<string[] | undefined> {
-  const { promise: done, resolve: resolveIds } = Promise.withResolvers<string[] | undefined>();
+async function probeModels(): Promise<ModelOption[] | undefined> {
+  const { promise: done, resolve: resolveIds } = Promise.withResolvers<ModelOption[] | undefined>();
   const proc = spawnAgent(codexBin(), ['app-server'], {
     cwd: process.cwd(),
     env: childEnv(undefined, []),
     onLine: (v) => {
       const m = rec(v);
       if (m.id !== 2) return;
-      const ids = arr(rec(m.result).data)
-        .map(rec)
-        .filter((x) => x.hidden !== true)
-        .map((x) => str(x.id))
-        .filter((x): x is string => !!x);
-      resolveIds(ids.length ? ids : undefined);
+      const options = parseModels(rec(m.result).data);
+      resolveIds(options.length ? options : undefined);
     },
   });
   proc.writeJson({
@@ -956,7 +972,13 @@ export function createCodexAdapter(): AgentAdapter {
       if (out === undefined) return { available: false };
       const version = /\d+\.\d+\.\d+[\w.-]*/.exec(out)?.[0];
       discoveredModels ??= await probeModels();
-      return { available: true, ...(version ? { version } : {}), models: discoveredModels ?? DEFAULT_MODELS };
+      const options = discoveredModels ?? DEFAULT_MODELS;
+      return {
+        available: true,
+        ...(version ? { version } : {}),
+        models: options.map((o) => o.id),
+        modelOptions: options,
+      };
     },
     async start(opts, events) {
       const session = new CodexSession(opts, events);

@@ -41,6 +41,7 @@ import type {
   NoticeItem,
   PermissionDecision,
   PermissionItem,
+  ModelOption,
   PermissionMode,
   QuestionItem,
   ResumableSession,
@@ -1322,17 +1323,22 @@ class AcpSession implements AgentSession {
     const permissionModes: PermissionMode[] = this.modes
       ? PERMISSION_MODE_ORDER.filter((m) => this.modeMap.has(m))
       : ['default'];
-    let models: string[] | undefined;
+    let modelOptions: ModelOption[] | undefined;
     if (this.models) {
-      models = this.models.choices.map((c) => c.id).slice(0, MAX_MODELS);
+      modelOptions = this.models.choices.slice(0, MAX_MODELS).map((c) => {
+        const o: ModelOption = { id: c.id };
+        if (c.name && c.name !== c.id) o.name = c.name;
+        if (c.description) o.description = c.description;
+        return o;
+      });
       const cur = this.models.current;
-      if (cur !== undefined && !models.includes(cur)) models.unshift(cur);
+      if (cur !== undefined && !modelOptions.some((o) => o.id === cur)) modelOptions.unshift({ id: cur });
     }
     this.events.meta({
       ...(this.models?.current !== undefined ? { model: this.models.current } : {}),
       ...(permissionMode !== undefined ? { permissionMode } : {}),
       permissionModes,
-      ...(models !== undefined ? { models } : {}),
+      ...(modelOptions !== undefined ? { models: modelOptions.map((o) => o.id), modelOptions } : {}),
     });
   }
 

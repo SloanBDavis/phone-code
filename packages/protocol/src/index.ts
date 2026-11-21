@@ -47,6 +47,13 @@ export interface AgentInfo {
   version?: string;
   /** Models known before a session starts (ACP agents report theirs per session, see SessionInfo.models). */
   models?: string[];
+  /** `models` with display names, same order. Absent from older daemons. */
+  modelOptions?: ModelOption[];
+  /**
+   * Permission modes a new session of this agent can start in. Absent means
+   * default, acceptEdits, plan and bypassPermissions.
+   */
+  permissionModes?: PermissionMode[];
   /** Built into phone-code, or defined by the user in `agents.json`. */
   source?: 'builtin' | 'config';
 }
@@ -60,8 +67,28 @@ export interface AgentInfo {
  */
 export type SessionStatus = 'idle' | 'running' | 'waiting' | 'exited' | 'error';
 
-/** How much the agent may do without asking. Mirrors Claude Code's modes. */
-export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+/**
+ * A model an agent offers. `id` is what `chat.setModel` / `CreateSessionParams.model`
+ * take (an alias such as "opus" or a full model id); the rest is for display.
+ */
+export interface ModelOption {
+  id: string;
+  /** Display name, e.g. "Opus 4.7" or "Default (recommended)". */
+  name?: string;
+  /** One line under the name, e.g. "Best for everyday, complex tasks". */
+  description?: string;
+  /** The concrete model an alias currently stands for, e.g. "claude-opus-4-7". */
+  resolved?: string;
+  /** The model used when none is chosen. */
+  isDefault?: boolean;
+}
+
+/**
+ * How much the agent may do without asking. Mirrors Claude Code's modes.
+ * `auto`: Claude Code decides per action with a safety classifier, asking only
+ * for risky ones (Claude Code only; see SessionInfo.permissionModes).
+ */
+export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions';
 
 export interface SessionInfo {
   id: string;
@@ -81,11 +108,14 @@ export interface SessionInfo {
   permissionMode?: PermissionMode;
   /**
    * Permission modes this session's agent can actually switch to (ACP agents
-   * advertise their own modes). Absent means all four.
+   * advertise their own modes). Absent means the four that every agent had
+   * before `auto`: default, acceptEdits, plan, bypassPermissions.
    */
   permissionModes?: PermissionMode[];
-  /** Models this session's agent offers, when it reports them per session (ACP). */
+  /** Models this session's agent offers, when it reports them per session (Claude Code, ACP). */
   models?: string[];
+  /** `models` with display names, same order. Absent from older daemons. */
+  modelOptions?: ModelOption[];
   /** True while there is activity the user has not seen (no subscriber when it happened). */
   unread?: boolean;
 }

@@ -35,7 +35,8 @@
   left: 8px;
   right: 8px;
   bottom: 8px;
-  max-height: calc(100% - var(--safe-top) - 40px);
+  /* Starts below the top bar, so its buttons are not cut in half by the sheet's edge. */
+  max-height: calc(100% - var(--safe-top) - var(--bar-h) - 16px);
   display: flex;
   flex-direction: column;
   border-radius: var(--r-sheet);
@@ -53,7 +54,7 @@
 }
 
 .sheet.sheet-large {
-  height: calc(100% - var(--safe-top) - 40px);
+  height: calc(100% - var(--safe-top) - var(--bar-h) - 16px);
 }
 
 .sheet-layer.in .sheet {
@@ -167,6 +168,19 @@
   transition:
     transform 220ms var(--ease-out),
     opacity 180ms;
+}
+
+/* Set when the list is taller than the room next to its anchor: it scrolls inside the glass. */
+.menu-scroll {
+  max-height: calc(var(--menu-max, 100vh) - 12px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 20px;
+  scrollbar-width: none;
+}
+
+.menu-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .menu-section + .menu-section {

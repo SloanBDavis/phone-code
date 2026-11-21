@@ -104,7 +104,8 @@ test('model and mode switching', async ({ phone }) => {
   await createSession(phone, 'codex');
   await phone.testId('composer-model').click();
   const items = phone.testId('model-menu').getByRole('menuitem');
-  const second = (await items.nth(1).innerText()).trim();
+  // The label's first line (a description may follow).
+  const second = (await items.nth(1).innerText()).split('\n')[0]?.trim() ?? '';
   await items.nth(1).click();
   await expect(phone.testId('composer-model')).toContainText(second);
   await phone.testId('composer-mode').click();

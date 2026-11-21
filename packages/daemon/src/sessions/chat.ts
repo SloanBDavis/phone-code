@@ -239,6 +239,7 @@ export class ChatSession implements LiveSession {
         if (meta.permissionMode !== undefined) this.info.permissionMode = meta.permissionMode;
         if (meta.permissionModes !== undefined) this.info.permissionModes = meta.permissionModes;
         if (meta.models !== undefined) this.info.models = meta.models;
+        if (meta.modelOptions !== undefined) this.info.modelOptions = meta.modelOptions;
         if (meta.title !== undefined && meta.title.trim() !== '' && !this.titleLocked) {
           this.info.title = oneLine(meta.title, 100);
           this.autoTitle = false;

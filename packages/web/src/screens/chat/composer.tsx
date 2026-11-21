@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Attachment, PermissionMode, SessionInfo } from '@phone-code/protocol';
-import { agentShortLabel, findAgent } from '../../lib/agents';
+import { CLASSIC_MODES, agentShortLabel, currentModel, modelLabel, sessionModels } from '../../lib/agents';
 import { client } from '../../lib/client';
 import { downscaleImage } from '../../lib/image';
 import { host } from '../../lib/state';
@@ -33,6 +33,13 @@ export const MODES: Array<{
     hint: 'Edits apply, commands still ask',
   },
   { mode: 'plan', label: 'Plan only', short: 'Plan', icon: 'list', hint: 'Read and plan, change nothing' },
+  {
+    mode: 'auto',
+    label: 'Auto',
+    short: 'Auto',
+    icon: 'shieldAuto',
+    hint: 'Claude approves safe actions, asks for risky ones',
+  },
   {
     mode: 'bypassPermissions',
     label: 'Bypass permissions',
@@ -117,11 +124,11 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
   };
 
   const mode = modeInfo(session.permissionMode);
-  // ACP agents report their models per session; native ones up front in the host info.
-  const models = session.models ?? findAgent(host.value, session.agent ?? 'claude')?.models ?? [];
-  const modes = session.permissionModes
-    ? MODES.filter((m) => session.permissionModes?.includes(m.mode))
-    : MODES;
+  // Agents report their models (with names) per session; before that, the host's list.
+  const models = sessionModels(session, host.value);
+  const current = currentModel(session.model, models);
+  const offered = session.permissionModes ?? CLASSIC_MODES;
+  const modes = MODES.filter((m) => offered.includes(m.mode));
 
   return (
     <GlassSurface class="composer" data-testid="composer">
@@ -222,10 +229,11 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
                   {
                     title: 'Model',
                     items: models.map((m) => ({
-                      label: m,
-                      checked: m === session.model,
-                      testid: `model-${m}`,
-                      onSelect: () => client.send({ t: 'chat.setModel', sessionId: session.id, model: m }),
+                      label: m.name ?? m.id,
+                      ...(m.description ? { hint: m.description } : {}),
+                      checked: m.id === current?.id,
+                      testid: `model-${m.id}`,
+                      onSelect: () => client.send({ t: 'chat.setModel', sessionId: session.id, model: m.id }),
                     })),
                   },
                 ],
@@ -233,7 +241,7 @@ export function Composer({ session, onSent }: { session: SessionInfo; onSent: ()
               )
             }
           >
-            <span class="chip-text">{session.model ?? 'Model'}</span>
+            <span class="chip-text">{modelLabel(session.model, models) ?? 'Model'}</span>
             <Icon name="down" size={12} stroke={2.6} />
           </button>
         )}

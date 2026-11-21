@@ -214,11 +214,11 @@ test('switching permission mode and model', async ({ phone, daemon }) => {
 
   await phone.testId('composer-model').click();
   await phone.testId('model-menu').getByTestId('model-opus').click();
-  await expect(phone.testId('composer-model')).toHaveText(/opus/);
-  await expect(phone.testId('chat-title')).toContainText('opus');
+  await expect(phone.testId('composer-model')).toHaveText('Opus Fake');
+  await expect(phone.testId('chat-title')).toContainText('Opus Fake');
   await send(phone, 'hello with opus');
   await waitTurn(phone, 2);
-  await expect(phone.testId('composer-model')).toHaveText(/opus/);
+  await expect(phone.testId('composer-model')).toHaveText('Opus Fake');
   await expect(phone.testId('composer-mode')).toHaveText(/Edits/);
 });
 
