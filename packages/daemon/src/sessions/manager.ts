@@ -79,6 +79,10 @@ export class SessionManager implements SessionHost {
           : TerminalSession.restore(raw, m.terminalDeps());
       m.sessions.set(raw.info.id, s);
     }
+    // Record the restored (jumped) seqs before any client can see them. Otherwise a
+    // crash before the next write restores the same seqs again, over a transcript
+    // that changed in between, and `afterSeq` resumes replay onto a stale base.
+    if (m.sessions.size > 0) await m.writer.flush();
     return m;
   }
 
