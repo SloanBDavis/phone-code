@@ -3,11 +3,13 @@
  *  1. stage packages/web/dist into dist/web, with brotli-precompressed siblings
  *  2. `bun build --compile` the CLI and the screen worker, embedding dist/web
  *
- * Usage: bun scripts/build.ts [--target=bun-darwin-arm64|bun-linux-x64|...]
+ * Usage: bun scripts/build.ts [--target=bun-darwin-arm64|bun-linux-x64|...] [--outfile=path]
+ *
+ * scripts/build-release.ts at the repo root calls this once per release target.
  */
 import { existsSync } from 'node:fs';
 import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { brotliCompressSync, constants } from 'node:zlib';
 
 const root = join(import.meta.dir, '..');
@@ -56,7 +58,9 @@ async function stageWeb(): Promise<boolean> {
 const TARGETS = [
   'bun-darwin-arm64',
   'bun-darwin-x64',
+  'bun-darwin-x64-baseline',
   'bun-linux-x64',
+  'bun-linux-x64-baseline',
   'bun-linux-arm64',
   'bun-linux-x64-musl',
   'bun-linux-arm64-musl',
@@ -69,8 +73,10 @@ if (rawTarget !== undefined && !isTarget(rawTarget)) {
   process.exit(1);
 }
 const targetArg = isTarget(rawTarget) ? rawTarget : undefined;
+const outArg = process.argv.find((a) => a.startsWith('--outfile='))?.slice('--outfile='.length);
+const outfile = outArg === undefined ? join(root, 'dist', 'phonecode') : resolve(outArg);
 const hasWeb = await stageWeb();
-await mkdir(join(root, 'dist'), { recursive: true });
+await mkdir(dirname(outfile), { recursive: true });
 process.chdir(root);
 
 const result = await Bun.build({
@@ -79,7 +85,7 @@ const result = await Bun.build({
   sourcemap: 'none',
   bytecode: true,
   compile: {
-    outfile: './dist/phonecode',
+    outfile,
     ...(targetArg === undefined ? {} : { target: targetArg }),
     ...(hasWeb ? { assets: ['./dist/web'] } : {}),
   },
@@ -88,5 +94,6 @@ if (!result.success) {
   for (const entry of result.logs) console.error(entry);
   process.exit(1);
 }
-const size = (await stat(join(root, 'dist', 'phonecode'))).size;
-console.log(`built dist/phonecode (${(size / 1024 / 1024).toFixed(1)} MB)`);
+const size = (await stat(outfile)).size;
+const label = `${relative(process.cwd(), outfile)}${targetArg === undefined ? '' : ` for ${targetArg}`}`;
+console.log(`built ${label} (${(size / 1024 / 1024).toFixed(1)} MB)`);
