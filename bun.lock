@@ -24,7 +24,7 @@
     },
     "packages/daemon": {
       "name": "phone-code",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "phonecode": "./dist/phonecode",
       },
@@ -44,14 +44,14 @@
     },
     "packages/protocol": {
       "name": "@phone-code/protocol",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "typescript": "^5.6.0",
       },
     },
     "packages/web": {
       "name": "@phone-code/web",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@phone-code/protocol": "workspace:*",
         "@preact/signals": "^2.11.4",
