@@ -20,11 +20,11 @@ import { Icon } from '../ui/icons';
 import { openMenu, toast } from '../ui/overlay';
 
 const DARK: ITheme = {
-  background: '#0a0b0d',
-  foreground: '#e7e9ee',
-  cursor: '#3be0a8',
-  cursorAccent: '#0a0b0d',
-  selectionBackground: 'rgba(59,224,168,0.3)',
+  background: '#0c0c0e',
+  foreground: '#e4e4e7',
+  cursor: '#f4f4f5',
+  cursorAccent: '#0c0c0e',
+  selectionBackground: 'rgba(255,255,255,0.2)',
   black: '#2a2d33',
   red: '#ff6b6b',
   green: '#5fe3a1',
@@ -44,11 +44,11 @@ const DARK: ITheme = {
 };
 
 const LIGHT: ITheme = {
-  background: '#fbfbfc',
-  foreground: '#1d1f24',
-  cursor: '#00a676',
-  cursorAccent: '#fbfbfc',
-  selectionBackground: 'rgba(0,166,118,0.22)',
+  background: '#fafafa',
+  foreground: '#18181b',
+  cursor: '#18181b',
+  cursorAccent: '#fafafa',
+  selectionBackground: 'rgba(0,0,0,0.12)',
   black: '#1d1f24',
   red: '#c8302b',
   green: '#13854e',

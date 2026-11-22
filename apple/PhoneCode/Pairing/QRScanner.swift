@@ -30,7 +30,7 @@
               .font(.headline)
               .frame(width: 44, height: 44)
           }
-          .buttonStyle(.glass)
+          .buttonStyle(.graphite)
           .accessibilityLabel("Close")
         }
         .padding()

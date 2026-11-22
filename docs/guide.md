@@ -12,7 +12,7 @@ phonecode devices          list paired phones
 phonecode revoke <id>      remove a paired phone
 ```
 
-Options: `--port <n>` (default 7777), `--url <https url>`, `--tunnel`, `--local`, `--insecure`, `--host <addr>`, `--no-qr`. Run `phonecode --help` for details. State (paired devices, chats, images, push keys) lives in `~/.phonecode`, or `$PHONECODE_HOME`.
+Options: `--port <n>` (default 7777, or `$PHONECODE_PORT`), `--url <https url>`, `--tunnel`, `--local`, `--insecure`, `--host <addr>`, `--no-qr`. Run `phonecode --help` for details. State (paired devices, chats, images, push keys) lives in `~/.phonecode`, or `$PHONECODE_HOME`.
 
 Pairing codes expire after 5 minutes and work once. Press Enter in the `phonecode` window for a fresh one.
 

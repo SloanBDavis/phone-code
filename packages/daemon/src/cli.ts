@@ -49,6 +49,7 @@ Options
 
 Environment
   PHONECODE_HOME        state directory (default ~/.phonecode)
+  PHONECODE_PORT        port when --port is not given (default 7777)
   PHONECODE_ECHO_AGENT  1 = use a built-in fake agent (development)
   PHONECODE_LOG         debug | info | warn | error
 `;
@@ -134,7 +135,9 @@ async function loadAdapters(): Promise<DaemonOptions['adapters']> {
 }
 
 async function serve(values: Record<string, string | boolean | undefined>): Promise<number> {
-  const portArg = typeof values['port'] === 'string' ? Number(values['port']) : undefined;
+  // --port, else PHONECODE_PORT (the Mac app sets it when it runs its own phonecode elsewhere).
+  const portRaw = typeof values['port'] === 'string' ? values['port'] : process.env['PHONECODE_PORT'];
+  const portArg = portRaw !== undefined && portRaw !== '' ? Number(portRaw) : undefined;
   if (portArg !== undefined && (!Number.isInteger(portArg) || portArg < 1 || portArg > 65535)) {
     process.stderr.write('--port must be a number between 1 and 65535\n');
     return 1;

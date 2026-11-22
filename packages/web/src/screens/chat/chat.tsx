@@ -14,7 +14,7 @@ import { basename, copyText, soon, tildify } from '../../lib/util';
 import { TopBar } from '../../ui/chrome';
 import { paneButtons } from '../../ui/drawer';
 import { GlassButton } from '../../ui/glass';
-import { Glyph, agentGlyph, glyphOf } from '../../ui/glyph';
+import { Glyph } from '../../ui/glyph';
 import { Icon, Spinner } from '../../ui/icons';
 import { openMenu, toast } from '../../ui/overlay';
 import { openComputer } from '../sidebar';
@@ -74,7 +74,7 @@ function NewChatEmpty({ onStarter }: { onStarter: (t: string) => void }): JSX.El
   if (h && ready.length === 0)
     return (
       <div class="chat-empty" data-testid="new-chat-empty" data-state="no-agent">
-        <Glyph kind="terminal" size={58} />
+        <Glyph kind="app" size={58} />
         <h2>No coding agent on {name} yet</h2>
         <p>Install one on your computer and it shows up here. Meanwhile, the terminal works.</p>
         <ul class="setup-hints" data-testid="setup-hints">
@@ -96,7 +96,7 @@ function NewChatEmpty({ onStarter }: { onStarter: (t: string) => void }): JSX.El
     );
   return (
     <div class="chat-empty" data-testid="new-chat-empty" data-state={d.info?.available ? 'ready' : 'setup'}>
-      <Glyph kind={agentGlyph(d.harness)} size={58} />
+      <Glyph kind="app" size={58} />
       <h2>{d.info?.name ?? 'New chat'}</h2>
       <p>
         in <code class="cmd">{tildify(d.cwd, h?.home)}</code> on {name}
@@ -271,7 +271,7 @@ export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Eleme
           </div>
         ) : empty ? (
           <div class="chat-empty">
-            <Glyph kind={glyphOf(s)} size={58} />
+            <Glyph kind="app" size={58} />
             <h2>{s.title}</h2>
             <p>
               in <code class="cmd">{tildify(s.cwd, host.value?.home)}</code>

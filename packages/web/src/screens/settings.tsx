@@ -37,7 +37,7 @@ function NotificationsRow(): JSX.Element {
     <>
       <div class="list">
         <label class="cell">
-          <span class="cell-icon" style={{ background: '#ff5a4f' }}>
+          <span class="cell-icon">
             <Icon name="bell" size={18} stroke={2.1} />
           </span>
           <span class="cell-main cell-title">Notifications</span>
@@ -192,7 +192,7 @@ export default function ComputerSheet({ close }: { close: () => void }): JSX.Ele
           <h2 class="section-head">Appearance</h2>
           <div class="list">
             <div class="cell static">
-              <span class="cell-icon" style={{ background: '#5e5ce6' }}>
+              <span class="cell-icon">
                 <Icon name="moon" size={17} stroke={2.1} />
               </span>
               <span class="cell-main cell-title">Theme</span>
@@ -214,7 +214,7 @@ export default function ComputerSheet({ close }: { close: () => void }): JSX.Ele
               </fieldset>
             </div>
             <div class="cell static">
-              <span class="cell-icon" style={{ background: '#30b0c7' }}>
+              <span class="cell-icon">
                 <Icon name="textSize" size={18} stroke={2} />
               </span>
               <span class="cell-main cell-title">Terminal text</span>

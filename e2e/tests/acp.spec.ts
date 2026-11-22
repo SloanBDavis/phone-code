@@ -156,6 +156,23 @@ test('question form: single choice, multiple choice and free text reach the agen
   await expect(phone.testId('chat-item-tool').filter({ hasText: 'ask_question' })).toHaveCount(0);
 });
 
+test("thinking level: the agent's own levels, through its config option", async ({ phone }) => {
+  await newChat(phone, 'gemini');
+  const chip = phone.testId('composer-effort');
+  const menu = phone.testId('effort-menu');
+  await send(phone, 'hello gemini');
+  await waitTurn(phone, 1);
+  await expect(chip).toHaveText('Medium');
+  await chip.click();
+  await expect(menu.getByRole('menuitem')).toHaveCount(3);
+  await expect(menu.getByTestId('effort-medium')).toHaveClass(/\bchecked\b/);
+  await menu.getByTestId('effort-deep').click();
+  await expect(chip).toHaveText('Deep think');
+  await send(phone, 'what is your thinking level');
+  await waitTurn(phone, 2);
+  await expect(lastText(phone)).toContainText('Thinking level: deep');
+});
+
 test('Antigravity: an executor error sent as a reply is an error, for that preset only', async ({
   phone,
 }) => {

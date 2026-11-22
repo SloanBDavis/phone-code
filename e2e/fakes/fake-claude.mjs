@@ -3,7 +3,7 @@
 // Speaks the same stdio protocol phone-code's adapter (and the Agent SDK) use:
 //   claude --output-format stream-json --verbose --input-format stream-json
 //          --include-partial-messages --permission-prompt-tool stdio
-//          [--model m] [--permission-mode m] [--session-id id | --resume id]
+//          [--model m] [--effort e] [--permission-mode m] [--session-id id | --resume id]
 // Framing and field names are copied from a capture of Claude Code 2.1.330.
 // Dependency-free; runs under bun or node.
 /* oxlint-disable no-await-in-loop -- a scripted agent streams and runs turns sequentially on purpose */
@@ -57,6 +57,9 @@ const MODEL_ALIASES = {
 const resolveModel = (m) => MODEL_ALIASES[m] ?? m ?? 'claude-sonnet-fake';
 let model = resolveModel(arg('--model'));
 let mode = arg('--permission-mode') ?? 'default';
+// Thinking level: `--effort`, `apply_flag_settings {effortLevel}`; "high" stands for the user's settings.
+const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+let effort = arg('--effort') ?? 'high';
 const resumeId = arg('--resume');
 const sessionId = resumeId ?? arg('--session-id') ?? randomUUID();
 const cwd = process.cwd();
@@ -257,6 +260,8 @@ function onControl(msg) {
             displayName: 'Default (recommended)',
             description: 'Sonnet Fake',
             supportsAutoMode: true,
+            supportsEffort: true,
+            supportedEffortLevels: EFFORT_LEVELS,
           },
           {
             value: 'opus',
@@ -264,6 +269,8 @@ function onControl(msg) {
             displayName: 'Opus Fake',
             description: 'Best for everyday, complex tasks',
             supportsAutoMode: true,
+            supportsEffort: true,
+            supportedEffortLevels: EFFORT_LEVELS,
           },
           {
             value: 'sonnet',
@@ -271,6 +278,8 @@ function onControl(msg) {
             displayName: 'Sonnet Fake',
             description: 'Efficient for routine tasks',
             supportsAutoMode: true,
+            supportsEffort: true,
+            supportedEffortLevels: EFFORT_LEVELS,
           },
           {
             value: 'haiku',
@@ -322,6 +331,15 @@ function onControl(msg) {
         isReplay: true,
       });
       return respond(msg.request_id, { model });
+    case 'apply_flag_settings':
+      if (typeof req.settings?.effortLevel === 'string') effort = req.settings.effortLevel;
+      return respond(msg.request_id, {});
+    case 'get_settings':
+      return respond(msg.request_id, {
+        effective: { effortLevel: effort },
+        sources: [],
+        applied: { model, effort },
+      });
     case 'set_max_thinking_tokens':
       if (req.thinking_display !== undefined) thinkingDisplay = req.thinking_display ?? 'omitted';
       return respond(msg.request_id, {});
@@ -691,6 +709,13 @@ function lateAsk() {
     lateDecision = `${r.behavior}${r.interrupt ? ' (interrupt)' : ''}`;
   });
 }
+
+scenario(/thinking level/i, async (t) => {
+  t.newMessage();
+  await t.text(`Thinking level: **${effort}**.`);
+  t.endMessage('end_turn');
+  return `Thinking level: ${effort}`;
+});
 
 scenario(/crash/i, async (t) => {
   t.newMessage();

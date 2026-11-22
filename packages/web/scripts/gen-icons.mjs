@@ -1,6 +1,9 @@
-// Renders scripts/icon.svg into the PNG sizes the PWA and iOS need.
+// Renders scripts/icon.svg (the Graphite mark: a near-black square with a
+// white prompt, the same artwork as apple/scripts/icon.svg) into the PNG sizes
+// the PWA and iOS need.
 // Usage: bun run icons   (needs Playwright's Chromium; set PLAYWRIGHT_PATH if
-// `playwright` is not resolvable from here).
+// `playwright` is not resolvable from here, PLAYWRIGHT_CHROMIUM=<path> to use
+// another Chromium build).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
@@ -33,13 +36,14 @@ const targets = [
   { file: 'icons/favicon-32.png', size: 32, svg: rounded, transparent: true },
 ];
 
-const browser = await pw.chromium.launch();
+const exe = process.env['PLAYWRIGHT_CHROMIUM'];
+const browser = await pw.chromium.launch(exe ? { executablePath: exe } : {});
 async function render(t) {
   const inner = t.pad ? t.size * (1 - t.pad * 2) : t.size;
   const off = t.pad ? t.size * t.pad : 0;
   const page = await browser.newPage({ deviceScaleFactor: 1, viewport: { width: t.size, height: t.size } });
   await page.setContent(
-    `<html><body style="margin:0;background:${t.transparent ? 'transparent' : '#040605'}">` +
+    `<html><body style="margin:0;background:${t.transparent ? 'transparent' : '#0c0c0e'}">` +
       `<div style="position:absolute;left:${off}px;top:${off}px;width:${inner}px;height:${inner}px">${t.svg.replace('<svg ', `<svg width="${inner}" height="${inner}" `)}</div>` +
       `</body></html>`,
   );

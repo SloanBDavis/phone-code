@@ -12,6 +12,15 @@ import type {
 export const HOME = '/Users/maya';
 const MIN = 60_000;
 
+/** Claude Code's thinking levels, as the daemon names them. */
+const CLAUDE_EFFORTS = [
+  { id: 'low', name: 'Low' },
+  { id: 'medium', name: 'Medium' },
+  { id: 'high', name: 'High' },
+  { id: 'xhigh', name: 'Extra high' },
+  { id: 'max', name: 'Max' },
+];
+
 export const demoHost: HostInfo = {
   name: 'studio',
   platform: 'darwin',
@@ -32,6 +41,11 @@ export const demoHost: HostInfo = {
       available: true,
       version: '2.1.4',
       models: ['opus', 'sonnet', 'haiku'],
+      modelOptions: [
+        { id: 'opus', efforts: CLAUDE_EFFORTS },
+        { id: 'sonnet', efforts: CLAUDE_EFFORTS },
+        { id: 'haiku' },
+      ],
       commands: [
         {
           name: 'compact',
@@ -98,7 +112,7 @@ export function demoSvg(kind: string, w = 600): string {
     const bars = [38, 52, 47, 70, 64, 88, 80]
       .map(
         (v, i) =>
-          `<rect x="${60 + i * 70}" y="${330 - v * 3}" width="44" height="${v * 3}" rx="8" fill="#3be0a8" opacity="${0.55 + i * 0.06}"/>`,
+          `<rect x="${60 + i * 70}" y="${330 - v * 3}" width="44" height="${v * 3}" rx="8" fill="#e4e4e7" opacity="${0.55 + i * 0.06}"/>`,
       )
       .join('');
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 372" width="${w}" height="${h}"><rect width="600" height="372" fill="#101114"/><text x="40" y="44" fill="#fff" font-family="system-ui" font-size="22" font-weight="600">Revenue, last 90 days</text>${bars}<line x1="40" y1="331" x2="560" y2="331" stroke="#555"/></svg>`;
@@ -599,6 +613,7 @@ export function buildDemo(now = Date.now()): DemoSession[] {
         status: 'waiting',
         preview: 'Wants to run npm test -- --repeat 20 auth',
         model: 'opus',
+        effort: 'high',
         permissionMode: 'default',
         unread: true,
       },

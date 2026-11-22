@@ -1,7 +1,7 @@
 /** Small helpers shared by the agent adapters. Everything here is defensive: agent output is untrusted JSON. */
 import path from 'node:path';
 import os from 'node:os';
-import type { ChatItem, QuestionItem, SessionStatus } from '@phone-code/protocol';
+import type { ChatItem, EffortOption, QuestionItem, SessionStatus } from '@phone-code/protocol';
 import type { AgentEvents } from '../types.ts';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -165,5 +165,26 @@ export function toQuestion(q: Rec, multiSelect: boolean): Question {
   };
   const header = str(q.header);
   if (header) out.header = header;
+  return out;
+}
+
+const EFFORT_NAMES: Record<string, string> = {
+  none: 'Off',
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  max: 'Max',
+};
+
+/** Thinking levels with display names ("xhigh" -> "Extra high"); unknown ids keep their own name. */
+export function effortOptions(levels: Array<{ id: string; description?: string }>): EffortOption[] {
+  const out: EffortOption[] = [];
+  for (const { id, description } of levels) {
+    if (id === '' || out.some((o) => o.id === id)) continue;
+    const name = EFFORT_NAMES[id];
+    out.push({ id, ...(name ? { name } : {}), ...(description ? { description } : {}) });
+  }
   return out;
 }

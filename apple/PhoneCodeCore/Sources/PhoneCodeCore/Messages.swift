@@ -133,12 +133,13 @@ public enum ClientMessage: Sendable, Hashable, Encodable {
   case chatAnswer(sessionId: String, itemId: String, answers: [String: String])
   case chatSetMode(sessionId: String, mode: PermissionMode)
   case chatSetModel(sessionId: String, model: String)
+  case chatSetEffort(sessionId: String, effort: String)
   case termInput(sessionId: String, data: String)
   case termResize(sessionId: String, cols: Int, rows: Int)
 
   private enum K: String, CodingKey {
     case t, v, token, id, params, sessionId, title, path, agent, query, archived, text, attachments
-    case afterSeq, itemId, decision, message, answers, permissionMode, model, data, cols, rows
+    case afterSeq, itemId, decision, message, answers, permissionMode, model, effort, data, cols, rows
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -200,6 +201,10 @@ public enum ClientMessage: Sendable, Hashable, Encodable {
       try c.encode("chat.setModel", forKey: .t)
       try c.encode(s, forKey: .sessionId)
       try c.encode(model, forKey: .model)
+    case .chatSetEffort(let s, let effort):
+      try c.encode("chat.setEffort", forKey: .t)
+      try c.encode(s, forKey: .sessionId)
+      try c.encode(effort, forKey: .effort)
     case .termInput(let s, let data):
       try c.encode("term.input", forKey: .t)
       try c.encode(s, forKey: .sessionId)

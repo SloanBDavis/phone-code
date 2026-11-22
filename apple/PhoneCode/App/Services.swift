@@ -10,40 +10,69 @@ import UserNotifications
   import AppKit
 #endif
 
-/// The device token lives in the Keychain (this device only, after first unlock).
-enum Keychain {
-  private static let service = "phone-code"
-  private static let account = "host"
-
-  private static var query: [String: Any] {
-    [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: service,
-      kSecAttrAccount as String: account,
-    ]
-  }
-
+/// Where this device's token for the computer is kept.
+///
+/// iPhone: the Keychain, this device only.
+/// Mac: a file only this user can read, in the app's Application Support
+/// folder. The Keychain ties an item to the signature of the app that made
+/// it, so every locally built (ad-hoc signed) version asked to unlock it; and
+/// on the Mac it protects nothing extra, since anything running as this user
+/// can read phone-code's own control token in ~/.phonecode anyway.
+enum CredentialStore {
   static func save(_ c: HostCredentials) {
     guard let data = try? JSONEncoder().encode(c) else { return }
-    SecItemDelete(query as CFDictionary)
-    var add = query
-    add[kSecValueData as String] = data
-    add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    SecItemAdd(add as CFDictionary, nil)
+    #if os(macOS)
+      let url = fileURL
+      try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600])
+      try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    #else
+      SecItemDelete(query as CFDictionary)
+      var add = query
+      add[kSecValueData as String] = data
+      add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+      SecItemAdd(add as CFDictionary, nil)
+    #endif
   }
 
   static func load() -> HostCredentials? {
-    var q = query
-    q[kSecReturnData as String] = true
-    q[kSecMatchLimit as String] = kSecMatchLimitOne
-    var out: CFTypeRef?
-    guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
+    #if os(macOS)
+      guard let data = try? Data(contentsOf: fileURL) else { return nil }
+    #else
+      var q = query
+      q[kSecReturnData as String] = true
+      q[kSecMatchLimit as String] = kSecMatchLimitOne
+      var out: CFTypeRef?
+      guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
+    #endif
     return try? JSONDecoder().decode(HostCredentials.self, from: data)
   }
 
   static func delete() {
-    SecItemDelete(query as CFDictionary)
+    #if os(macOS)
+      try? FileManager.default.removeItem(at: fileURL)
+    #else
+      SecItemDelete(query as CFDictionary)
+    #endif
   }
+
+  #if os(macOS)
+    /// ~/Library/Application Support/<bundle id>/credentials.json (per bundle id,
+    /// so a test build never touches the real app's pairing).
+    private static var fileURL: URL {
+      let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      return base.appendingPathComponent(Bundle.main.bundleIdentifier ?? "phone-code", isDirectory: true)
+        .appendingPathComponent("credentials.json")
+    }
+  #else
+    private static var query: [String: Any] {
+      [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "phone-code",
+        kSecAttrAccount as String: "host",
+      ]
+    }
+  #endif
 }
 
 enum Haptics {

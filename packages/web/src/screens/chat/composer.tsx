@@ -12,7 +12,7 @@ import { haptic } from '../../lib/util';
 import { GlassSurface } from '../../ui/glass';
 import { Icon } from '../../ui/icons';
 import { toast } from '../../ui/overlay';
-import { FolderChip, HarnessChip, ModeChip, ModelChip } from './pickers';
+import { EffortChip, FolderChip, HarnessChip, ModeChip, ModelChip } from './pickers';
 
 export { MODES, modeInfo } from './pickers';
 
@@ -233,7 +233,7 @@ export function Composer({
             disabled={busy}
             data-testid="composer-attach"
           >
-            <Icon name={busy ? 'refresh' : 'plus'} size={22} stroke={2.1} />
+            <Icon name={busy ? 'refresh' : 'plus'} size={18} stroke={2.3} />
           </button>
           <input
             ref={fileRef}
@@ -310,7 +310,7 @@ export function Composer({
               onClick={send}
               data-testid="composer-send"
             >
-              <Icon name="send" size={20} stroke={2.6} />
+              <Icon name="send" size={17} stroke={2.6} />
             </button>
           )}
         </div>
@@ -330,11 +330,12 @@ export function Composer({
                 taRef.current?.focus();
               }}
             >
-              <Icon name="slash" size={15} stroke={2.6} />
+              <Icon name="slash" size={13} stroke={2.4} />
             </button>
           )}
           <HarnessChip session={session} onSwitch={() => saveDraft(NEW, text)} />
           {session?.kind !== 'terminal' && <ModelChip session={session} />}
+          <EffortChip session={session} />
           <ModeChip session={session} />
           {isDraft && <FolderChip />}
         </div>

@@ -30,8 +30,8 @@
   width: 52px;
   height: 52px;
   border-radius: 15px;
-  background: linear-gradient(150deg, var(--term-a), var(--term-b));
-  color: var(--term-mark);
+  background: var(--chip);
+  color: var(--label);
 }
 
 .host-name {
@@ -112,7 +112,7 @@
   align-items: center;
   gap: 2px;
   margin-top: 6px;
-  color: var(--accent-text);
+  color: var(--ink);
   font: 600 14px/1 var(--font);
   text-decoration: none;
 }

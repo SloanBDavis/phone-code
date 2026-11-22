@@ -74,6 +74,7 @@ import {
 import {
   StatusTracker,
   arr,
+  effortOptions,
   errorMessage,
   isRec,
   num,
@@ -206,8 +207,11 @@ class AcpSession implements AgentSession {
   private modes: Selector | undefined;
   private modeMap = new Map<PermissionMode, string>();
   private models: Selector | undefined;
+  /** The `thought_level` config option, when the agent has one. */
+  private thought: Selector | undefined;
   private wantMode: PermissionMode;
   private wantModel: string | undefined;
+  private wantEffort: string | undefined;
 
   constructor(
     private readonly cfg: AcpAgentConfig,
@@ -218,6 +222,7 @@ class AcpSession implements AgentSession {
     this.status = new StatusTracker(this.events);
     this.wantMode = opts.permissionMode ?? 'default';
     this.wantModel = opts.model;
+    this.wantEffort = opts.effort;
   }
 
   // ------------------------------------------------------------ lifecycle
@@ -1252,6 +1257,16 @@ class AcpSession implements AgentSession {
     this.emitMeta();
   }
 
+  async setEffort(effort: string): Promise<void> {
+    this.wantEffort = effort;
+    if (!this.sessionId) {
+      this.events.meta({ effort });
+      return;
+    }
+    await this.applyEffort(effort);
+    this.emitMeta();
+  }
+
   // ------------------------------------------------------ modes, models
 
   private applySessionState(res: Rec): void {
@@ -1301,6 +1316,8 @@ class AcpSession implements AgentSession {
           this.modes?.configId === configId ? (this.modeMap.get('default') ?? current) : current;
         this.modes = { via: 'config', configId, choices, current };
         this.modeMap = mapModes(choices, initial);
+      } else if (cat === 'thought_level' && (!this.thought || this.thought.configId === configId)) {
+        this.thought = { via: 'config', configId, choices, current };
       }
     }
   }
@@ -1311,6 +1328,28 @@ class AcpSession implements AgentSession {
     }
     if (this.wantMode !== 'default' || (this.modes && this.modeMap.get('default') !== this.modes.current)) {
       await this.applyMode(this.wantMode, false);
+    }
+    if (this.wantEffort !== undefined && this.thought && this.wantEffort !== this.thought.current) {
+      if (this.thought.choices.some((c) => c.id === this.wantEffort)) await this.applyEffort(this.wantEffort);
+    }
+  }
+
+  private async applyEffort(effort: string): Promise<void> {
+    const sessionId = this.sessionId;
+    const thought = this.thought;
+    if (!sessionId || !thought?.configId || effort === thought.current) return;
+    try {
+      const res = rec(
+        await this.call('session/set_config_option', {
+          sessionId,
+          configId: thought.configId,
+          value: effort,
+        }),
+      );
+      if (Array.isArray(res.configOptions)) this.applyConfigOptions(res.configOptions);
+      else thought.current = effort;
+    } catch (e) {
+      this.notice('warn', `Could not change ${this.cfg.name}'s thinking level: ${rpcErrorText(e)}`);
     }
   }
 
@@ -1400,6 +1439,21 @@ class AcpSession implements AgentSession {
       ...(permissionMode !== undefined ? { permissionMode } : {}),
       permissionModes,
       ...(modelOptions !== undefined ? { models: modelOptions.map((o) => o.id), modelOptions } : {}),
+      // Levels the agent names itself; well-known ids get phone-code's names.
+      ...(this.thought
+        ? {
+            efforts: this.thought.choices.map((c) => {
+              const known = effortOptions([{ id: c.id }])[0];
+              const name = c.name && c.name !== c.id ? c.name : known?.name;
+              return {
+                id: c.id,
+                ...(name ? { name } : {}),
+                ...(c.description ? { description: c.description } : {}),
+              };
+            }),
+            ...(this.thought.current !== undefined ? { effort: this.thought.current } : {}),
+          }
+        : {}),
     });
   }
 

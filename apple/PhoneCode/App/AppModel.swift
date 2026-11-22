@@ -71,7 +71,7 @@ final class AppModel {
 
   init() {
     if didReset {
-      Keychain.delete()
+      CredentialStore.delete()
       for k in ["pc.lastChat", "pc.draftPrefs", "pc.notifications", "pc.termFontSize", "pc.workspace"] {
         UserDefaults.standard.removeObject(forKey: k)
       }
@@ -83,7 +83,7 @@ final class AppModel {
     if let last = UserDefaults.standard.string(forKey: "pc.lastChat") { route = .session(last) }
     client.onUnauthorized = { [weak self] why in self?.unpair(reason: why, tellHost: false) }
     client.onSessions = { [weak self] list in self?.sessionsChanged(list) }
-    if let c = Keychain.load() { connect(c) }
+    if let c = CredentialStore.load() { connect(c) }
     #if os(macOS)
       hub.run(self)
     #endif
@@ -108,7 +108,7 @@ final class AppModel {
 
   /// Stores and connects with credentials from a redeemed code.
   func adopt(_ c: HostCredentials) {
-    Keychain.save(c)
+    CredentialStore.save(c)
     pairReason = nil
     pendingLink = nil
     route = .new
@@ -122,7 +122,7 @@ final class AppModel {
       if tellHost { hub.paused = true }
     #endif
     client.stop()
-    Keychain.delete()
+    CredentialStore.delete()
     creds = nil
     images = nil
     pairReason = reason
@@ -151,9 +151,28 @@ final class AppModel {
     prefs.harness[d.harness, default: HarnessPrefs()].model = model
   }
 
+  func pickEffort(_ effort: String) {
+    let d = draft
+    prefs.harness[d.harness, default: HarnessPrefs()].effort = effort
+  }
+
   func pickMode(_ mode: PermissionMode) {
     let d = draft
     prefs.harness[d.harness, default: HarnessPrefs()].mode = mode.rawValue
+  }
+
+  /// Forget the new-chat folder (and recent ones) when the computer says it does not exist.
+  func checkDraftFolder() async {
+    let d = draft
+    guard d.cwd != client.host?.home else { return }
+    do {
+      _ = try await client.listFolder(d.cwd)
+    } catch {
+      let text = "\(error)"
+      guard text.contains("No such directory") || text.contains("Not a directory") else { return }
+      prefs.harness[d.harness, default: HarnessPrefs()].cwd = nil
+      prefs.recentDirs.removeAll { $0 == d.cwd }
+    }
   }
 
   func pickFolder(_ cwd: String) {

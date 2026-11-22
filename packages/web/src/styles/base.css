@@ -60,7 +60,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -109,10 +109,7 @@ textarea {
 /* Desktop: show the app as a phone-sized card. Not for phones in landscape (short viewports). */
 @media (min-width: 700px) and (min-height: 600px) {
   body {
-    background:
-      radial-gradient(60% 50% at 20% 10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent),
-      radial-gradient(50% 50% at 85% 90%, color-mix(in srgb, var(--codex-a) 10%, transparent), transparent),
-      var(--bg-grouped);
+    background: var(--bg-grouped);
   }
   .app {
     left: 50%;
@@ -381,8 +378,8 @@ textarea {
   height: 30px;
   border-radius: 8px;
   flex: none;
-  color: #fff;
-  background: var(--fill);
+  color: var(--label-2);
+  background: var(--chip);
 }
 
 .cell-main {
@@ -435,7 +432,10 @@ textarea {
 }
 
 .footnote a {
-  color: var(--accent-text);
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--label-3);
+  text-underline-offset: 2px;
 }
 
 /* ------------------------------------------------------------ buttons */
@@ -449,7 +449,7 @@ textarea {
   padding: 0 22px;
   border: 0;
   border-radius: var(--r-control);
-  font: 600 17px/1 var(--font);
+  font: 500 17px/1 var(--font);
   letter-spacing: -0.01em;
   cursor: pointer;
   transition:
@@ -459,33 +459,52 @@ textarea {
 }
 
 .btn:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: scale(0.97);
   transition-duration: 120ms;
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: default;
 }
 
+/* Primary: solid ink, at most one per view. */
 .btn-primary {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: 600;
 }
 
+.btn-primary:active:not(:disabled) {
+  opacity: 0.82;
+}
+
+.btn-primary:disabled {
+  background: var(--chip);
+  color: var(--label-3);
+  opacity: 1;
+}
+
+/* Secondary: the quiet capsule. */
 .btn-secondary {
-  background: var(--fill-2);
+  background: var(--chip);
   color: var(--label);
+}
+
+.btn-secondary:active:not(:disabled) {
+  background: var(--chip-pressed);
 }
 
 .btn-plain {
   background: none;
-  color: var(--accent-text);
+  color: var(--label-2);
 }
 
+/* Destructive primary. */
 .btn-danger {
-  background: var(--danger-soft);
-  color: var(--danger);
+  background: var(--danger-fill);
+  color: #fff;
+  font-weight: 600;
 }
 
 .btn-block {
@@ -549,11 +568,12 @@ textarea {
 }
 
 .switch:checked {
-  background: var(--accent);
+  background: var(--ink);
 }
 
 .switch:checked::after {
   transform: translateX(20px);
+  background: var(--on-ink);
 }
 
 .switch:disabled {
@@ -593,7 +613,7 @@ textarea {
 }
 
 :root[data-theme='dark'] .segmented button[aria-pressed='true'] {
-  background: #636366;
+  background: #3f3f46;
 }
 
 /* ------------------------------------------------------------ status */
@@ -607,8 +627,9 @@ textarea {
   flex: none;
 }
 
+/* Connected is the normal state: quiet, not a color. */
 .dot.ok {
-  background: var(--accent);
+  background: var(--label-2);
 }
 .dot.warn {
   background: var(--attention);
@@ -649,7 +670,7 @@ textarea {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent-text);
+  color: var(--ink);
   font: inherit;
   cursor: pointer;
 }

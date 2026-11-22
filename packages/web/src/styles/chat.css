@@ -245,9 +245,12 @@
 }
 
 .md a {
-  color: var(--accent-text);
-  text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent-text) 35%, transparent);
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--label-3);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2.5px;
 }
 
 .md blockquote {
@@ -282,7 +285,7 @@
   margin-left: 2px;
   vertical-align: -0.17em;
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--ink);
   animation: caret 1s steps(1) infinite;
 }
 
@@ -331,8 +334,8 @@
 
 .code-copy:active,
 .code-copy.done {
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: var(--selection);
+  color: var(--ink);
 }
 
 .code-block pre {
@@ -544,43 +547,9 @@
   flex: none;
   width: 28px;
   height: 28px;
-  border-radius: 9px;
-  background: var(--fill-2);
+  border-radius: 8px;
+  background: var(--chip);
   color: var(--label-2);
-}
-
-.ti-bash {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent-text);
-}
-.ti-edit,
-.ti-write {
-  background: color-mix(in srgb, var(--codex-a) 18%, transparent);
-  color: var(--codex-a);
-}
-.ti-read,
-.ti-glob,
-.ti-grep {
-  background: color-mix(in srgb, var(--info) 16%, transparent);
-  color: var(--info);
-}
-.ti-webfetch,
-.ti-websearch {
-  background: color-mix(in srgb, var(--hl-meta) 16%, transparent);
-  color: var(--hl-meta);
-}
-.ti-task {
-  background: color-mix(in srgb, var(--claude-a) 18%, transparent);
-  color: var(--claude-a);
-}
-
-:root[data-theme='light'] .ti-edit,
-:root[data-theme='light'] .ti-write {
-  color: var(--codex-b);
-}
-
-:root[data-theme='light'] .ti-task {
-  color: var(--claude-b);
 }
 
 .tool-label {
@@ -693,7 +662,7 @@
 }
 
 .cmd-prompt {
-  color: var(--accent-text);
+  color: var(--label-3);
   margin-right: 8px;
   user-select: none;
 }
@@ -729,7 +698,7 @@
   border: 0;
   border-top: 0.5px solid var(--code-border);
   background: none;
-  color: var(--accent-text);
+  color: var(--ink);
   font: 600 13px/1 var(--font);
   cursor: pointer;
 }
@@ -761,7 +730,7 @@
 }
 
 .tool-kv a {
-  color: var(--accent-text);
+  color: var(--ink);
 }
 
 .tool-input summary {
@@ -908,7 +877,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: var(--accent);
+  background: var(--ink);
   transform-origin: left;
   transform: scaleX(var(--p));
   transition: transform 500ms var(--spring);
@@ -937,14 +906,14 @@
   margin-top: 0.5px;
   border-radius: 50%;
   box-shadow: inset 0 0 0 1.5px var(--label-3);
-  color: var(--on-accent);
+  color: var(--on-ink);
   transition:
     background-color 300ms,
     box-shadow 300ms;
 }
 
 .todo-completed .todo-box {
-  background: var(--accent);
+  background: var(--ink);
   box-shadow: none;
 }
 
@@ -955,7 +924,7 @@
 }
 
 .todo-in_progress .todo-box {
-  box-shadow: inset 0 0 0 1.5px var(--accent);
+  box-shadow: inset 0 0 0 1.5px var(--ink);
 }
 
 .todo-in_progress .todo-text {
@@ -966,7 +935,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--ink);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
@@ -1018,7 +987,7 @@
   padding: 6px 4px 8px;
   border: 0;
   background: none;
-  color: var(--accent-text);
+  color: var(--ink);
   font: 500 13px/1 var(--font);
   cursor: pointer;
 }
@@ -1040,8 +1009,9 @@
 .q-card {
   border-radius: 22px;
   padding: 16px;
-  background: color-mix(in srgb, var(--attention) 9%, var(--card));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--attention) 38%, transparent);
+  background: var(--card);
+  /* Needs-you is the one place the card carries color: a quiet attention edge. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--attention) 34%, var(--hairline));
   animation: pop-in 520ms var(--spring-bouncy);
 }
 
@@ -1064,9 +1034,9 @@
   flex: none;
   width: 34px;
   height: 34px;
-  border-radius: 11px;
-  background: var(--attention);
-  color: var(--on-attention);
+  border-radius: 10px;
+  background: var(--attention-soft);
+  color: var(--attention);
 }
 
 .perm-title {
@@ -1130,7 +1100,8 @@
   padding: 11px 14px;
   border: 0;
   border-radius: 14px;
-  background: var(--fill-2);
+  background: var(--chip);
+  color: var(--label);
   font: 400 16px/1.4 var(--font);
   resize: none;
 }
@@ -1154,7 +1125,7 @@
 }
 
 .perm-resolved.ps-allowed > .icon {
-  color: var(--accent-text);
+  color: var(--ink);
 }
 
 .perm-resolved.ps-denied > .icon {
@@ -1210,8 +1181,9 @@
   width: 100%;
   padding: 12px 14px;
   border: 0;
-  border-radius: 16px;
-  background: var(--fill-3);
+  border-radius: 14px;
+  background: var(--chip);
+  color: var(--label);
   text-align: left;
   cursor: pointer;
   transition:
@@ -1225,8 +1197,8 @@
 }
 
 .q-option.on {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1.5px var(--accent);
+  background: var(--chip-pressed);
+  box-shadow: inset 0 0 0 1.5px var(--ink);
 }
 
 .q-mark {
@@ -1238,7 +1210,7 @@
   margin-top: 1px;
   border-radius: 50%;
   box-shadow: inset 0 0 0 1.5px var(--label-3);
-  color: var(--on-accent);
+  color: var(--on-ink);
 }
 
 .q-mark.square {
@@ -1246,7 +1218,7 @@
 }
 
 .q-option.on .q-mark {
-  background: var(--accent);
+  background: var(--ink);
   box-shadow: none;
 }
 
@@ -1293,7 +1265,7 @@
 }
 
 .q-resolved-a .icon {
-  color: var(--accent-text);
+  color: var(--ink);
 }
 
 /* ------------------------------------------------------------ notices / turns */
@@ -1381,17 +1353,25 @@
   pointer-events: auto;
 }
 
+/*
+ * The composer: a 26px rounded box with a 12px inset. Everything inside is
+ * concentric with it: 28px capsule chips (radius 14 = 26 - 12) and 32px round
+ * buttons.
+ */
 .composer {
-  --glass-tint: color-mix(in srgb, var(--glass-tint-strong) 82%, transparent);
+  --glass-tint: var(--glass-tint-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   border-radius: 26px;
-  padding: 4px 6px 6px;
+  padding: 12px;
 }
 
 .composer-input {
   display: block;
   width: 100%;
-  min-height: 40px;
-  padding: 10px 10px 4px;
+  min-height: 32px;
+  padding: 5px 0 4px;
   border: 0;
   background: none;
   resize: none;
@@ -1411,21 +1391,23 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 38px;
+  height: 28px;
 }
 
 .composer-spacer {
   flex: 1;
 }
 
+/* A round quiet button (add photos). */
 .c-btn {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  flex: none;
+  width: 32px;
+  height: 32px;
   border: 0;
   border-radius: 50%;
-  background: none;
+  background: var(--chip);
   color: var(--label-2);
   cursor: pointer;
   transition:
@@ -1433,28 +1415,37 @@
     background-color 140ms;
 }
 
-.c-btn:active {
-  transform: scale(1.12);
-  background: var(--fill-2);
+.c-btn:active:not(:disabled) {
+  transform: scale(1.08);
+  background: var(--chip-pressed);
 }
 
+.c-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The quiet capsule: composer pickers, filters. Gray fill, no border. */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 30px;
+  height: 28px;
   padding: 0 11px;
   border: 0;
   border-radius: 999px;
-  background: var(--fill-2);
+  background: var(--chip);
   color: var(--label);
-  font: 600 13px/1 var(--font);
+  font: 500 13px/1 var(--font);
+  letter-spacing: -0.005em;
   cursor: pointer;
   white-space: nowrap;
-  max-width: 140px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: transform 300ms var(--spring-bouncy);
+  transition:
+    transform 300ms var(--spring-bouncy),
+    background-color 140ms;
 }
 
 .chip-text {
@@ -1465,26 +1456,15 @@
 
 .chip > svg {
   flex: none;
+  color: var(--label-2);
 }
 
 .chip:active {
-  transform: scale(1.06);
+  transform: scale(1.05);
+  background: var(--chip-pressed);
 }
 
-.chip.mode-acceptEdits {
-  background: color-mix(in srgb, var(--codex-a) 22%, transparent);
-  color: var(--codex-a);
-}
-
-:root[data-theme='light'] .chip.mode-acceptEdits {
-  color: var(--codex-b);
-}
-
-.chip.mode-plan {
-  background: color-mix(in srgb, var(--info) 20%, transparent);
-  color: var(--info);
-}
-
+/* Permission modes that change what the agent may do unasked carry meaning. */
 .chip.mode-auto {
   background: var(--attention-soft);
   color: var(--attention);
@@ -1495,49 +1475,56 @@
   color: var(--danger);
 }
 
+.chip.mode-auto > svg,
+.chip.mode-bypassPermissions > svg {
+  color: inherit;
+}
+
+/* Send: ink when there is something to send, a quiet chip when not. */
 .send-btn {
   display: grid;
   place-items: center;
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: 0;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--ink);
+  color: var(--on-ink);
   cursor: pointer;
   transition:
     transform 360ms var(--spring-bouncy),
     background-color 200ms,
+    color 200ms,
     opacity 200ms;
 }
 
 .send-btn:active:not(:disabled) {
-  transform: scale(1.14);
+  transform: scale(1.1);
 }
 
 .send-btn:disabled {
-  background: var(--fill);
-  color: var(--label-3);
+  background: var(--chip);
+  color: var(--label-2);
   cursor: default;
 }
 
 .send-btn.stop {
-  background: var(--label);
-  color: var(--bg);
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 .stop-square {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+  width: 11px;
+  height: 11px;
+  border-radius: 2.5px;
   background: currentColor;
 }
 
 .composer-atts {
   display: flex;
   gap: 8px;
-  padding: 8px 8px 2px;
+  padding: 6px 0 0;
   overflow-x: auto;
 }
 
@@ -1552,6 +1539,7 @@
   height: 64px;
   object-fit: cover;
   border-radius: 14px;
+  box-shadow: inset 0 0 0 0.5px var(--hairline);
 }
 
 .att-x {
@@ -1576,7 +1564,7 @@
   gap: 8px;
   padding: 7px 7px 7px 8px;
   border-radius: 24px;
-  --glass-tint: color-mix(in srgb, var(--attention) 14%, var(--glass-tint-strong));
+  --glass-tint: var(--glass-tint-strong);
   animation: ask-in 520ms var(--spring-bouncy);
 }
 
@@ -1607,8 +1595,8 @@
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--attention);
-  color: var(--on-attention);
+  background: var(--attention-soft);
+  color: var(--attention);
 }
 
 .ask-text {
@@ -1660,13 +1648,13 @@
 
 .ask-btn.deny {
   padding: 0;
-  background: var(--fill);
+  background: var(--chip);
   color: var(--label);
 }
 
 .ask-btn.allow {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 /* Jump to latest */

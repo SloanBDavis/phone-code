@@ -70,7 +70,7 @@ struct NewChatView: View {
     let info = agents.first { $0.id == d.harness }
     VStack(spacing: 14) {
       if model.client.host != nil, !agents.contains(where: \.available) {
-        HarnessGlyph(id: "terminal", size: 58)
+        AppMark(size: 56)
         Text("No coding agent on \(model.client.host?.name ?? "your computer") yet")
           .font(.title2.bold())
           .multilineTextAlignment(.center)
@@ -87,12 +87,12 @@ struct NewChatView: View {
         Button("Open a terminal", systemImage: "apple.terminal") {
           Task { await model.openTerminal() }
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.graphite)
       } else {
-        HarnessGlyph(id: d.harness, size: 58)
+        AppMark(size: 56)
         Text(info?.name ?? "New chat")
           .font(.title2.bold())
-        Text("in \(tildePath(d.cwd, home: model.client.host?.home)) on \(model.client.host?.name ?? "your computer")")
+        Text("in \(tildePath(d.cwd, home: model.client.host?.home)) on \(SidebarView.displayName(model.client.host?.name))")
           .font(.callout)
           .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
@@ -106,7 +106,7 @@ struct NewChatView: View {
           VStack(spacing: 10) {
             ForEach(Self.starters, id: \.self) { s in
               Button(s) { starter = s }
-                .buttonStyle(.glass)
+                .buttonStyle(.graphite)
                 .accessibilityIdentifier("starter")
             }
           }

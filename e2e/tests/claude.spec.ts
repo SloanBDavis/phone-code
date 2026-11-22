@@ -232,6 +232,43 @@ test('switching permission mode and model', async ({ phone, daemon }) => {
   await expect(phone.testId('composer-mode')).toHaveText(/Edits/);
 });
 
+test('thinking level: picked before the first message, changed in the chat, gone with Haiku', async ({
+  phone,
+}) => {
+  await newChat(phone, 'claude');
+  const chip = phone.testId('composer-effort');
+  const menu = phone.testId('effort-menu');
+  // Nothing chosen yet: the user's own Claude Code setting.
+  await expect(chip).toHaveText('Default');
+  await chip.click();
+  await expect(menu.getByTestId('effort-default')).toHaveClass(/\bchecked\b/);
+  await expect(menu.getByTestId('effort-xhigh')).toContainText('Extra high');
+  await menu.getByTestId('effort-max').click();
+  await expect(chip).toHaveText('Max');
+  await send(phone, 'what is your thinking level');
+  await waitTurn(phone, 1);
+  await expect(lastText(phone)).toContainText('Thinking level: max');
+  // What the CLI reports it is using.
+  await expect(chip).toHaveText('Max');
+
+  await chip.click();
+  await expect(menu.getByTestId('effort-max')).toHaveClass(/\bchecked\b/);
+  await menu.getByTestId('effort-low').click();
+  await expect(chip).toHaveText('Low');
+  await send(phone, 'what is your thinking level now');
+  await waitTurn(phone, 2);
+  await expect(lastText(phone)).toContainText('Thinking level: low');
+
+  // Haiku has no thinking levels.
+  await phone.testId('composer-model').click();
+  await phone.testId('model-menu').getByTestId('model-haiku').click();
+  await expect(phone.testId('composer-model')).toHaveText('Haiku Fake');
+  await expect(chip).toHaveCount(0);
+  await phone.testId('composer-model').click();
+  await phone.testId('model-menu').getByTestId('model-opus').click();
+  await expect(chip).toHaveText('Low');
+});
+
 // 8x8 red PNG.
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC',

@@ -89,7 +89,7 @@ struct PairingView: View {
             Label("Scan QR code", systemImage: "qrcode.viewfinder")
               .frame(maxWidth: .infinity)
           }
-          .buttonStyle(.glassProminent)
+          .buttonStyle(.graphitePrimary)
           .controlSize(.large)
           .accessibilityIdentifier("pair-scan")
         }
@@ -100,7 +100,7 @@ struct PairingView: View {
         Label("Paste pairing link", systemImage: "doc.on.clipboard")
           .frame(maxWidth: .infinity)
       }
-      .buttonStyle(.glass)
+      .buttonStyle(.graphite)
       .controlSize(.large)
       .accessibilityIdentifier("pair-paste")
     }
@@ -145,7 +145,7 @@ struct PairingView: View {
         }
         .frame(maxWidth: .infinity)
       }
-      .buttonStyle(.glassProminent)
+      .buttonStyle(.graphitePrimary)
       .controlSize(.large)
       .disabled(busy || code.trimmingCharacters(in: .whitespaces).isEmpty || address.trimmingCharacters(in: .whitespaces).isEmpty)
       .accessibilityIdentifier("pair-submit")

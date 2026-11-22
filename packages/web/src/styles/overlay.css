@@ -309,7 +309,8 @@
   height: 46px;
   border: 0;
   border-radius: 999px;
-  background: var(--fill-2);
+  background: var(--chip);
+  color: var(--label);
   font: 500 17px/1 var(--font);
   cursor: pointer;
   transition: transform 300ms var(--spring-bouncy);
@@ -321,12 +322,12 @@
 
 .alert-btn.strong {
   font-weight: 600;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 .alert-btn.strong.destructive {
-  background: var(--danger);
+  background: var(--danger-fill);
   color: #fff;
 }
 

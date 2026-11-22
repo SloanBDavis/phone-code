@@ -142,34 +142,3 @@ export function attachRefraction(el: HTMLElement): () => void {
     cancelAnimationFrame(frame);
   };
 }
-
-/**
- * Specular highlight that follows the pointer across glass controls. One
- * delegated listener, one style write per frame, only on the hovered element.
- */
-export function startGlassHighlights(): void {
-  let frame = 0;
-  let target: HTMLElement | null = null;
-  let x = 0;
-  let y = 0;
-  const apply = (): void => {
-    frame = 0;
-    if (!target) return;
-    const r = target.getBoundingClientRect();
-    target.style.setProperty('--lx', `${(((x - r.left) / r.width) * 100).toFixed(1)}%`);
-    target.style.setProperty('--ly', `${(((y - r.top) / r.height) * 100).toFixed(1)}%`);
-  };
-  const onMove = (e: PointerEvent): void => {
-    const el = e.target instanceof Element ? e.target.closest<HTMLElement>('.glass') : null;
-    if (target && target !== el) {
-      target.style.removeProperty('--lx');
-      target.style.removeProperty('--ly');
-    }
-    target = el ?? null;
-    x = e.clientX;
-    y = e.clientY;
-    if (target && !frame) frame = requestAnimationFrame(apply);
-  };
-  document.addEventListener('pointermove', onMove, { passive: true });
-  document.addEventListener('pointerdown', onMove, { passive: true });
-}

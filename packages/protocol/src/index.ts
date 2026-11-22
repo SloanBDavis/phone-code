@@ -100,6 +100,26 @@ export interface ModelOption {
   resolved?: string;
   /** The model used when none is chosen. */
   isDefault?: boolean;
+  /**
+   * Thinking levels this model accepts (`chat.setEffort`, `CreateSessionParams.effort`),
+   * lowest first. Absent when the model has no such setting (or the daemon is older).
+   */
+  efforts?: EffortOption[];
+  /** The level the agent uses for this model when none is chosen. */
+  defaultEffort?: string;
+}
+
+/**
+ * A thinking level ("effort"): how long the agent reasons before acting.
+ * `id` is the agent's own value ("low", "medium", "high", "xhigh", "max" for
+ * Claude Code and Codex; whatever an ACP agent advertises).
+ */
+export interface EffortOption {
+  id: string;
+  /** Display name, e.g. "Extra high". */
+  name?: string;
+  /** One line under the name, e.g. "Greater reasoning depth for complex problems". */
+  description?: string;
 }
 
 /**
@@ -135,6 +155,14 @@ export interface SessionInfo {
   models?: string[];
   /** `models` with display names, same order. Absent from older daemons. */
   modelOptions?: ModelOption[];
+  /** The thinking level in effect, when the agent reports one. */
+  effort?: string;
+  /**
+   * Thinking levels this session can switch to, when they do not depend on the
+   * model (ACP agents). Otherwise clients use the current model's
+   * `ModelOption.efforts`.
+   */
+  efforts?: EffortOption[];
   /** True while there is activity the user has not seen (no subscriber when it happened). */
   unread?: boolean;
   /**
@@ -374,6 +402,11 @@ export type ClientMessage =
   | { t: 'chat.answer'; sessionId: string; itemId: string; answers: Record<string, string> }
   | { t: 'chat.setMode'; sessionId: string; permissionMode: PermissionMode }
   | { t: 'chat.setModel'; sessionId: string; model: string }
+  /**
+   * Thinking level. Claude Code applies it at once, Codex from the next turn, ACP agents
+   * through their `thought_level` option. The session's `effort` follows.
+   */
+  | { t: 'chat.setEffort'; sessionId: string; effort: string }
   // --- terminal
   | { t: 'term.input'; sessionId: string; data: string }
   | { t: 'term.resize'; sessionId: string; cols: number; rows: number }
@@ -388,6 +421,8 @@ export interface CreateSessionParams {
   cwd?: string;
   title?: string;
   model?: string;
+  /** Thinking level (an `EffortOption.id` of the model or session). */
+  effort?: string;
   permissionMode?: PermissionMode;
   /** Resume a past agent session (id from `history.list`). */
   resumeId?: string;

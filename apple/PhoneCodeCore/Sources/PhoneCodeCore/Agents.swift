@@ -65,6 +65,23 @@ public enum Agents {
     return cur.name ?? cur.id
   }
 
+  /// Thinking levels to offer: the session's own (ACP agents), else the current model's.
+  public static func efforts(session s: SessionInfo, _ h: HostInfo?) -> [EffortOption] {
+    if let own = s.efforts, !own.isEmpty { return own }
+    return currentModel(s.model, sessionModels(s, h))?.efforts ?? []
+  }
+
+  /// Thinking levels for a new chat with this agent and model.
+  public static func efforts(_ a: AgentInfo?, model: String?) -> [EffortOption] {
+    currentModel(model, modelOptions(a))?.efforts ?? []
+  }
+
+  /// The level a chip shows: the chosen one, else the model's default.
+  public static func effortLabel(_ effort: String?, _ options: [EffortOption], defaultEffort: String? = nil) -> String? {
+    guard let id = effort ?? defaultEffort else { return nil }
+    return options.first { $0.id == id }?.label ?? id
+  }
+
   public static func modes(_ a: AgentInfo?) -> [PermissionMode] { a?.permissionModes ?? PermissionMode.classic }
   public static func modes(_ s: SessionInfo) -> [PermissionMode] { s.permissionModes ?? PermissionMode.classic }
 
@@ -79,11 +96,14 @@ public enum Agents {
 public struct NewChatChoices: Hashable, Sendable {
   public var harness: String
   public var model: String?
+  /// Thinking level; nil: the agent's own default.
+  public var effort: String?
   public var mode: PermissionMode
   public var cwd: String
-  public init(harness: String, model: String? = nil, mode: PermissionMode = .default, cwd: String) {
+  public init(harness: String, model: String? = nil, effort: String? = nil, mode: PermissionMode = .default, cwd: String) {
     self.harness = harness
     self.model = model
+    self.effort = effort
     self.mode = mode
     self.cwd = cwd
   }
@@ -92,10 +112,12 @@ public struct NewChatChoices: Hashable, Sendable {
 /// Per-harness defaults: what a new chat with a harness starts with (the choices made last time).
 public struct HarnessPrefs: Codable, Hashable, Sendable {
   public var model: String?
+  public var effort: String?
   public var mode: String?
   public var cwd: String?
-  public init(model: String? = nil, mode: String? = nil, cwd: String? = nil) {
+  public init(model: String? = nil, effort: String? = nil, mode: String? = nil, cwd: String? = nil) {
     self.model = model
+    self.effort = effort
     self.mode = mode
     self.cwd = cwd
   }
@@ -121,12 +143,14 @@ public struct DraftPrefs: Codable, Hashable, Sendable {
     let model = p.model.flatMap { m in models.contains { $0.id == m } ? m : nil }
     let modes = Agents.modes(info)
     let mode = modes.first { $0.rawValue == p.mode } ?? .default
-    return NewChatChoices(harness: harness, model: model, mode: mode, cwd: p.cwd ?? host?.home ?? "~")
+    // A remembered level only if this model offers it (another model may not).
+    let effort = p.effort.flatMap { e in Agents.efforts(info, model: model).contains { $0.id == e } ? e : nil }
+    return NewChatChoices(harness: harness, model: model, effort: effort, mode: mode, cwd: p.cwd ?? host?.home ?? "~")
   }
 
   public mutating func remember(_ c: NewChatChoices) {
     lastHarness = c.harness
-    harness[c.harness] = HarnessPrefs(model: c.model, mode: c.mode.rawValue, cwd: c.cwd)
+    harness[c.harness] = HarnessPrefs(model: c.model, effort: c.effort, mode: c.mode.rawValue, cwd: c.cwd)
     recentDirs = Array(([c.cwd] + recentDirs.filter { $0 != c.cwd }).prefix(6))
   }
 }

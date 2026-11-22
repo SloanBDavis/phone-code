@@ -93,6 +93,8 @@ export function pushRecentDir(path: string): void {
 /** What a new chat with a harness starts with: the choices made last time. */
 export interface HarnessPrefs {
   model?: string;
+  /** Thinking level; offered again only while the model in use accepts it. */
+  effort?: string;
   mode?: string;
   cwd?: string;
 }
@@ -108,6 +110,7 @@ export function setHarnessPrefs(harness: string, patch: HarnessPrefs): void {
   const cur = harnessPrefs.value[harness] ?? {};
   const next: HarnessPrefs = { ...cur, ...patch };
   if ('model' in patch && patch.model === undefined) delete next.model;
+  if ('effort' in patch && patch.effort === undefined) delete next.effort;
   if ('mode' in patch && patch.mode === undefined) delete next.mode;
   if ('cwd' in patch && patch.cwd === undefined) delete next.cwd;
   harnessPrefs.value = { ...harnessPrefs.value, [harness]: next };

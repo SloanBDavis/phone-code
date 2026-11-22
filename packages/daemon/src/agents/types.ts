@@ -10,6 +10,7 @@ import type {
   AgentKind,
   Attachment,
   ChatItem,
+  EffortOption,
   ImageRef,
   ModelOption,
   PermissionDecision,
@@ -30,6 +31,8 @@ export type AgentAttachment = Attachment & { path?: string; ref?: ImageRef };
 export interface AgentStartOptions {
   cwd: string;
   model?: string;
+  /** Thinking level (EffortOption.id) to start with. */
+  effort?: string;
   permissionMode?: PermissionMode;
   /** Native session id to resume (from listResumable or a previous run's onNativeSessionId). */
   resumeId?: string;
@@ -54,6 +57,10 @@ export interface AgentEvents {
     models?: string[];
     /** `models` with display names, same order. */
     modelOptions?: ModelOption[];
+    /** Thinking level in effect. */
+    effort?: string;
+    /** Thinking levels for this session when they do not depend on the model (ACP); [] clears. */
+    efforts?: EffortOption[];
     /** Permission modes the agent can switch to (absent: all four). */
     permissionModes?: PermissionMode[];
     /** Slash commands the agent accepts in this session (replaces the previous list). */
@@ -84,6 +91,8 @@ export interface AgentSession {
   answerQuestion(itemId: string, answers: Record<string, string>): void;
   setPermissionMode(mode: PermissionMode): Promise<void>;
   setModel(model: string): Promise<void>;
+  /** Change the thinking level. Absent: the agent has no such setting. */
+  setEffort?(effort: string): Promise<void>;
   /** Kill the process and release resources. */
   dispose(): Promise<void>;
 }

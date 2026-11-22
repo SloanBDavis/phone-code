@@ -45,6 +45,7 @@ import { listCodexResumable } from './codex-history.ts';
 import {
   StatusTracker,
   arr,
+  effortOptions,
   errorMessage,
   isRec,
   num,
@@ -103,11 +104,24 @@ function parseModels(data: unknown): ModelOption[] {
     if (!id || m.hidden === true || out.some((o) => o.id === id)) continue;
     const name = str(m.displayName);
     const description = str(m.description);
+    // `supportedReasoningEfforts: [{reasoningEffort: "low", description}]`, `defaultReasoningEffort: "medium"`.
+    const efforts = effortOptions(
+      arr(m.supportedReasoningEfforts)
+        .map(rec)
+        .flatMap((e) => {
+          const eid = str(e.reasoningEffort);
+          const d = str(e.description);
+          return eid ? [{ id: eid, ...(d ? { description: d } : {}) }] : [];
+        }),
+    );
+    const defaultEffort = str(m.defaultReasoningEffort);
     out.push({
       id,
       ...(name && name !== id ? { name } : {}),
       ...(description ? { description } : {}),
       ...(m.isDefault === true ? { isDefault: true } : {}),
+      ...(efforts.length ? { efforts } : {}),
+      ...(efforts.length && defaultEffort ? { defaultEffort } : {}),
     });
   }
   return out;
@@ -161,6 +175,8 @@ class CodexSession implements AgentSession {
   private threadId: string | undefined;
   private turnId: string | undefined;
   private model: string | undefined;
+  /** Thinking level chosen on phone-code (sent with the next turn/start). */
+  private effort: string | undefined;
   private mode: PermissionMode;
   private readonly items = new Map<string, ChatItem>();
   private readonly pending = new Map<string, PendingRequest>();
@@ -185,6 +201,7 @@ class CodexSession implements AgentSession {
     this.events = safeEvents(events);
     this.status = new StatusTracker(this.events);
     this.model = opts.model;
+    this.effort = opts.effort;
     this.mode = opts.permissionMode ?? 'default';
   }
 
@@ -238,13 +255,17 @@ class CodexSession implements AgentSession {
       const model = str(res.model);
       if (model) this.model = model;
       const name = str(thread.name);
+      // The thread's level until one is chosen here (thread/start takes none; turn/start does).
+      const effort = this.effort ?? str(res.reasoningEffort);
       this.events.meta({
         ...(model ? { model } : {}),
+        ...(effort ? { effort } : {}),
         permissionMode: this.mode,
         ...(name ? { title: name } : {}),
       });
       if (resumeId && loadHistory && this.threadId) await this.loadHistory(this.threadId);
-      this.overridesDirty = false;
+      // A chosen level goes out with the first turn.
+      this.overridesDirty = this.effort !== undefined;
       void this.discoverModels();
       void this.discoverSkills();
     } catch (e) {
@@ -968,6 +989,7 @@ class CodexSession implements AgentSession {
       params.approvalPolicy = approvalPolicy;
       params.sandboxPolicy = SANDBOX_POLICY[sandbox];
       if (this.model) params.model = this.model;
+      if (this.effort) params.effort = this.effort;
     }
     if (!this.status.turnActive) this.beginTurn();
     const proc = this.proc;
@@ -1037,6 +1059,12 @@ class CodexSession implements AgentSession {
     this.model = model;
     this.overridesDirty = true;
     this.events.meta({ model });
+  }
+
+  async setEffort(effort: string): Promise<void> {
+    this.effort = effort;
+    this.overridesDirty = true; // turn/start's `effort` applies to this and later turns
+    this.events.meta({ effort });
   }
 
   private notice(level: NoticeItem['level'], text: string, key?: string): void {

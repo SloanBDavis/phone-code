@@ -1,6 +1,7 @@
 import PhotosUI
 import PhoneCodeCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 #if os(iOS)
   import UIKit
@@ -24,6 +25,8 @@ struct ComposerView: View {
   @State private var attachments: [PreparedImage] = []
   @State private var commands: [SlashCommand] = []
   @State private var showFolders = false
+  /// Mac, phone-code on this Mac: the system's folder chooser.
+  @State private var chooseLocalFolder = false
   @State private var sending = false
   @FocusState private var focused: Bool
 
@@ -51,7 +54,7 @@ struct ComposerView: View {
               .font(.body.weight(.semibold))
               .foregroundStyle(.secondary)
               .frame(width: 32, height: 32)
-              .background(Theme.selection, in: .circle)
+              .background(Theme.chip, in: .circle)
           }
           .buttonStyle(.plain)
           .accessibilityLabel("Add photos")
@@ -69,8 +72,10 @@ struct ComposerView: View {
         }
         pickers
       }
+      // Concentric corners: 12pt inset in a 26pt rounded box leaves 14, the
+      // radius of the 28pt capsule chips and the 32pt round buttons near enough.
       .padding(12)
-      .glassEffect(.regular, in: .rect(cornerRadius: 26))
+      .glassEffect(.regular, in: .rect(cornerRadius: 26, style: .continuous))
     }
     .padding(.horizontal, 12)
     .padding(.bottom, 8)
@@ -86,6 +91,10 @@ struct ComposerView: View {
       }
     }
     .task(id: session?.id) { await refreshCommands() }
+    // A remembered folder that is gone (deleted, or from another computer) falls back to home.
+    .task(id: "\(model.client.status == .open)|\(model.draft.cwd)") {
+      if mode == .new, model.client.status == .open { await model.checkDraftFolder() }
+    }
     .sheet(isPresented: $showFolders) {
       NavigationStack {
         FolderPicker(start: model.draft.cwd) { path in
@@ -93,8 +102,18 @@ struct ComposerView: View {
           showFolders = false
         }
       }
+      #if os(macOS)
+        .frame(minWidth: 480, idealWidth: 520, minHeight: 520, idealHeight: 600)
+      #endif
       .presentationDetents([.medium, .large])
     }
+    #if os(macOS)
+      .fileImporter(isPresented: $chooseLocalFolder, allowedContentTypes: [.folder]) { result in
+        if case .success(let url) = result { model.pickFolder(url.path) }
+      }
+      .fileDialogDefaultDirectory(URL(fileURLWithPath: model.draft.cwd, isDirectory: true))
+      .fileDialogConfirmationLabel("Use Folder")
+    #endif
   }
 
   private var placeholder: String {
@@ -112,12 +131,12 @@ struct ComposerView: View {
         Haptics.play(.deny)
       } label: {
         Image(systemName: "stop.fill")
-          .font(.subheadline.weight(.bold))
+          .font(.footnote.weight(.bold))
+          .foregroundStyle(Theme.onInk)
           .frame(width: 32, height: 32)
+          .background(Theme.ink, in: .circle)
       }
-      .buttonStyle(.glassProminent)
-      .buttonBorderShape(.circle)
-      .tint(.red)
+      .buttonStyle(.plain)
       .accessibilityLabel("Stop")
       .accessibilityIdentifier("composer-stop")
     } else {
@@ -126,9 +145,9 @@ struct ComposerView: View {
       } label: {
         Image(systemName: "arrow.up")
           .font(.subheadline.weight(.bold))
-          .foregroundStyle(canSend ? Theme.onAccent : Color.secondary)
+          .foregroundStyle(canSend ? Theme.onInk : Color.secondary)
           .frame(width: 32, height: 32)
-          .background(canSend ? Color.accentColor : Theme.selection, in: .circle)
+          .background(canSend ? Theme.ink : Theme.chip, in: .circle)
           .animation(.easeOut(duration: 0.15), value: canSend)
       }
       .buttonStyle(.plain)
@@ -148,24 +167,43 @@ struct ComposerView: View {
         switch mode {
         case .new:
           harnessMenu
-          modelMenu(options: Agents.modelOptions(Agents.find(model.client.host, model.draft.harness)), current: model.draft.model) {
+          let agent = Agents.find(model.client.host, model.draft.harness)
+          let options = Agents.modelOptions(agent)
+          modelMenu(
+            options: options, current: model.draft.model,
+            levels: Agents.efforts(agent, model: model.draft.model),
+            effort: model.draft.effort ?? Agents.currentModel(model.draft.model, options)?.defaultEffort,
+            pickEffort: { model.pickEffort($0) }
+          ) {
             model.pickModel($0)
           }
           modeMenu(modes: Agents.modes(Agents.find(model.client.host, model.draft.harness)), current: model.draft.mode) {
             model.pickMode($0)
           }
           Button {
+            #if os(macOS)
+              // The computer is this Mac: Finder's chooser, with Recents, favorites and search.
+              if model.hub.isLocal(model.creds) {
+                chooseLocalFolder = true
+                return
+              }
+            #endif
             showFolders = true
           } label: {
             Label(folderName(model.draft.cwd), systemImage: "folder")
           }
-          .buttonStyle(.glass)
+          .buttonStyle(.graphite)
           .accessibilityIdentifier("picker-folder")
         case .session:
           if let s = session {
             let options = Agents.sessionModels(s, model.client.host)
-            if !options.isEmpty {
-              modelMenu(options: options, current: s.model) { m in
+            let levels = Agents.efforts(session: s, model.client.host)
+            if !options.isEmpty || !levels.isEmpty {
+              modelMenu(
+                options: options, current: s.model, levels: levels,
+                effort: s.effort ?? Agents.currentModel(s.model, options)?.defaultEffort,
+                pickEffort: { model.client.setEffort(s.id, $0) }
+              ) { m in
                 if let m { model.client.setModel(s.id, m) }
               }
             }
@@ -222,37 +260,67 @@ struct ComposerView: View {
         }
       }
     } label: {
-      Label(Agents.find(model.client.host, d.harness)?.name ?? d.harness, systemImage: HarnessGlyph.symbol(d.harness))
+      Text(Agents.find(model.client.host, d.harness)?.name ?? d.harness)
+        .graphiteChip()
     }
     .menuStyle(.button)
-    .buttonStyle(.glass)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
     .accessibilityIdentifier("picker-harness")
   }
 
-  private func modelMenu(options: [ModelOption], current: String?, pick: @escaping (String?) -> Void) -> some View {
+  /// The model, and the thinking level when the model has levels: one chip
+  /// ("Opus 4.7 · High"), so the composer's row still fits a phone.
+  private func modelMenu(
+    options: [ModelOption], current: String?, levels: [EffortOption] = [], effort: String? = nil,
+    pickEffort: @escaping (String) -> Void = { _ in }, pick: @escaping (String?) -> Void
+  ) -> some View {
     let label = Agents.modelLabel(current, options) ?? "Default model"
+    let level = levels.isEmpty ? nil : Agents.effortLabel(effort, levels)
     return Menu {
-      if options.isEmpty {
-        Text("This agent picks its model itself")
-      }
-      ForEach(options) { o in
-        Button {
-          pick(o.isDefault == true ? nil : o.id)
-        } label: {
-          let selected = Agents.currentModel(current, options)?.id == o.id
-          if selected {
-            Label(o.name ?? o.id, systemImage: "checkmark")
-          } else {
-            Text(o.name ?? o.id)
+      Section("Model") {
+        if options.isEmpty {
+          Text("This agent picks its model itself")
+        }
+        ForEach(options) { o in
+          Button {
+            pick(o.isDefault == true ? nil : o.id)
+          } label: {
+            let selected = Agents.currentModel(current, options)?.id == o.id
+            if selected {
+              Label(o.name ?? o.id, systemImage: "checkmark")
+            } else {
+              Text(o.name ?? o.id)
+            }
+            if let d = o.description { Text(d) }
           }
-          if let d = o.description { Text(d) }
+        }
+      }
+      if !levels.isEmpty {
+        Section("Thinking") {
+          ForEach(levels) { l in
+            Button {
+              pickEffort(l.id)
+              Haptics.play(.select)
+            } label: {
+              if l.id == effort {
+                Label(l.label, systemImage: "checkmark")
+              } else {
+                Text(l.label)
+              }
+              if let d = l.description { Text(d) }
+            }
+            .accessibilityIdentifier("effort-\(l.id)")
+          }
         }
       }
     } label: {
-      Label(label, systemImage: "cpu")
+      Label(level.map { "\(label) · \($0)" } ?? label, systemImage: "cpu")
+        .graphiteChip()
     }
     .menuStyle(.button)
-    .buttonStyle(.glass)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
     .accessibilityIdentifier("picker-model")
   }
 
@@ -269,9 +337,11 @@ struct ComposerView: View {
       }
     } label: {
       Label(current.shortLabel, systemImage: current.symbol)
+        .graphiteChip()
     }
     .menuStyle(.button)
-    .buttonStyle(.glass)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
     .accessibilityIdentifier("picker-mode")
   }
 

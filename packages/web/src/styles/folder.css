@@ -6,11 +6,8 @@
 }
 
 .folder-ic {
-  background: #64a8ff;
-}
-
-.folder-ic.up {
-  background: #8e8e93;
+  background: var(--chip);
+  color: var(--label-2);
 }
 
 .cell-sub.mono,
@@ -40,5 +37,5 @@
 }
 
 .glass-btn.on {
-  color: var(--accent-text);
+  color: var(--ink);
 }

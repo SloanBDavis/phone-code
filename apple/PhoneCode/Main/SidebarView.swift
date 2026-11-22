@@ -113,24 +113,41 @@ struct SidebarView: View {
     }
   }
 
+  private func open(_ s: SessionInfo) {
+    model.route = .session(s.id)
+    Haptics.play(.select)
+    onOpen()
+  }
+
+  /// iPhone: a button. Mac: a row that opens on click and can be dragged onto
+  /// the workspace (a Button there takes the mouse-down, so no drag starts).
+  @ViewBuilder
+  private func rowBody(_ s: SessionInfo, selected: Bool) -> some View {
+    #if os(macOS)
+      SessionRow(session: s, selected: selected)
+        .contentShape(.rect)
+        .onTapGesture { open(s) }
+        .workspaceDraggable(.session(s.id), title: s.title)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { open(s) }
+    #else
+      Button {
+        open(s)
+      } label: {
+        SessionRow(session: s, selected: selected)
+      }
+      .buttonStyle(.plain)
+    #endif
+  }
+
   private func row(_ s: SessionInfo) -> some View {
     let selected = model.route == .session(s.id)
-    return Button {
-      model.route = .session(s.id)
-      Haptics.play(.select)
-      onOpen()
-    } label: {
-      SessionRow(session: s, selected: selected)
-    }
-    .buttonStyle(.plain)
+    return rowBody(s, selected: selected)
     .listRowBackground(
       RoundedRectangle(cornerRadius: 10)
         .fill(selected ? Theme.selection : .clear)
         .padding(.horizontal, 6)
     )
-    #if os(macOS)
-      .draggable(DragPayload.session(s.id).string)
-    #endif
     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
       Button {
         model.archive(s)
@@ -198,7 +215,7 @@ struct SessionRow: View {
       HarnessGlyph(id: session.isTerminal ? "terminal" : (session.agent ?? "claude"), size: 28)
         .overlay(alignment: .topTrailing) {
           if session.isUnread && !selected {
-            Circle().fill(Color.accentColor).frame(width: 9, height: 9).offset(x: 3, y: -3)
+            Circle().fill(Theme.ink).frame(width: 8, height: 8).offset(x: 3, y: -3)
           }
         }
       VStack(alignment: .leading, spacing: 3) {
@@ -243,43 +260,74 @@ struct StatusDot: View {
   }
 }
 
-/// The harness's symbol in a small rounded square.
+/// An agent as a monogram on a quiet gray tile ("CC", "Cx", "Ge"): Graphite
+/// has no brand colors, and look-alike logos read as fake. The terminal is
+/// the app's own mark, a prompt on an ink tile.
 struct HarnessGlyph: View {
   let id: String
   var size: CGFloat = 30
 
-  static func symbol(_ id: String) -> String {
+  static func monogram(_ id: String) -> String {
     switch id {
-    case "claude": "asterisk"
-    case "codex": "curlybraces"
-    case "gemini": "sparkle"
-    case "terminal": "apple.terminal"
-    default: "cpu"
-    }
-  }
-
-  static func tint(_ id: String) -> Color {
-    switch id {
-    case "claude": .orange
-    case "codex": .blue
-    case "gemini": .purple
-    case "terminal": .gray
-    default: .teal
+    case "claude": "CC"
+    case "codex": "Cx"
+    case "gemini": "Ge"
+    case "opencode": "Oc"
+    case "copilot": "Co"
+    default: String(id.prefix(2)).capitalized
     }
   }
 
   var body: some View {
-    // The web app's glyphs: a gradient squircle with a white mark (the
-    // terminal's mark is mint on graphite).
-    Image(systemName: Self.symbol(id))
-      .font(.system(size: size * 0.46, weight: .bold))
-      .foregroundStyle(id == "terminal" ? Theme.terminalMark : .white)
+    if id == "terminal" {
+      AppMark(size: size)
+    } else {
+      RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+        .fill(Theme.chip)
+        .overlay {
+          Text(Self.monogram(id))
+            .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
+            .foregroundStyle(.secondary)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+  }
+}
+
+/// What a chat looks like while it is dragged onto the workspace.
+struct DragCard: View {
+  let title: String
+
+  var body: some View {
+    Label(title, systemImage: "rectangle.on.rectangle")
+      .font(.callout.weight(.medium))
+      .lineLimit(1)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 9)
+      .background(Theme.card, in: .capsule)
+      .overlay(Capsule().strokeBorder(Theme.hairline))
+      .frame(maxWidth: 280)
+  }
+}
+
+/// phone-code's mark: a prompt on an ink tile (the app icon, at any size).
+struct AppMark: View {
+  var size: CGFloat = 30
+
+  var body: some View {
+    RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+      // Near-black in light and dark mode alike, like the app icon.
+      .fill(LinearGradient(colors: [Color(hex: 0x2A2A2E), Color(hex: 0x0C0C0E)], startPoint: .top, endPoint: .bottom))
+      .overlay(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).strokeBorder(Theme.hairline))
+      .overlay {
+        Text(">_")
+          .font(.system(size: size * 0.4, weight: .bold, design: .monospaced))
+          .foregroundStyle(.white)
+          .offset(y: -size * 0.02)
+      }
       .frame(width: size, height: size)
-      .background(
-        LinearGradient(colors: Theme.agentGradient(id), startPoint: .topLeading, endPoint: .bottomTrailing),
-        in: .rect(cornerRadius: size * 0.3, style: .continuous)
-      )
-      .overlay(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).strokeBorder(.white.opacity(0.12)))
+      .accessibilityHidden(true)
   }
 }
 

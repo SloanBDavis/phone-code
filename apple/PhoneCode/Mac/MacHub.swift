@@ -6,7 +6,9 @@
 
   /// The Mac is the hub: phone-code runs here, so the Mac app connects to it
   /// by itself (through the daemon's local control endpoint, no pairing
-  /// code), can start it, and is where phones get paired.
+  /// code), and is where phones get paired. The app carries its own
+  /// phonecode (Contents/Helpers/phonecode, see scripts/build-daemon.sh) and
+  /// starts it when none is running, so nothing else needs installing.
   @MainActor @Observable
   final class MacHub {
     enum State: Equatable {
@@ -29,19 +31,31 @@
 
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var launched: Process?
+    /// Starts that died within a few seconds, to stop retrying a daemon that cannot run.
+    @ObservationIgnored private var quickExits = 0
+    @ObservationIgnored private var launchedAt = Date.distantPast
+    @ObservationIgnored private var quitObserver: NSObjectProtocol?
 
     /// Where phone-code keeps its state (`$PHONECODE_HOME` or `~/.phonecode`).
     let stateDir = LocalDaemon.stateDirectory()
 
-    /// The installed `phonecode`: `$PHONECODE_BIN`, install.sh's `~/.local/bin`, or Homebrew.
+    /// The phonecode to run: `$PHONECODE_BIN`, else the app's own, else an
+    /// installed one (install.sh's `~/.local/bin`, Homebrew).
     var binary: URL? {
       let env = ProcessInfo.processInfo.environment
       let home = FileManager.default.homeDirectoryForCurrentUser.path
-      let candidates = [env["PHONECODE_BIN"], "\(home)/.local/bin/phonecode", "/opt/homebrew/bin/phonecode", "/usr/local/bin/phonecode"]
+      let bundled = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/phonecode").path
+      let candidates = [
+        env["PHONECODE_BIN"], bundled, "\(home)/.local/bin/phonecode", "/opt/homebrew/bin/phonecode", "/usr/local/bin/phonecode",
+      ]
       return candidates.compactMap { $0 }.first { FileManager.default.isExecutableFile(atPath: $0) }.map {
         URL(fileURLWithPath: $0)
       }
     }
+
+    /// Whether the app starts phone-code by itself when none is running.
+    /// Off under UI tests, which run their own daemon.
+    var autoStart: Bool { ProcessInfo.processInfo.environment["PC_NO_AUTOSTART"] == nil }
 
     static let installCommand = "curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install.sh | sh"
 
@@ -52,7 +66,9 @@
         while !Task.isCancelled {
           guard let self, let model else { return }
           await self.tick(model)
-          try? await Task.sleep(for: .seconds(model.isPaired ? 10 : 1.5))
+          // Quick while not connected, so a daemon that comes up is noticed at once.
+          let settled = model.isPaired && model.client.status == .open
+          try? await Task.sleep(for: .seconds(settled ? 10 : 1.5))
         }
       }
     }
@@ -60,8 +76,18 @@
     private func tick(_ model: AppModel) async {
       let found = await LocalDaemon.find(in: stateDir)
       daemon = found
+      // This Mac's phone-code is down while the app wants it: start the app's own.
+      let wantsLocal = !paused && (!model.isPaired || isLocal(model.creds))
+      if found == nil, wantsLocal, autoStart, launched?.isRunning != true, binary != nil {
+        if quickExits < 3 {
+          startDaemon()
+        } else if state != .notRunning, !model.isPaired {
+          state = .failed("phone-code keeps stopping right after it starts. Its log: \(logPath)")
+        }
+      }
       guard !model.isPaired, !paused else { return }
       guard let found else {
+        if case .failed = state { return }
         if state != .starting || launched?.isRunning != true { state = .notRunning }
         return
       }
@@ -82,26 +108,49 @@
       run(model)
     }
 
+    var logPath: String { stateDir.appendingPathComponent("daemon.log").path }
+
     /// Starts `phonecode` in the user's login shell (so agents on their PATH
-    /// are found), logging to `<state>/daemon.log`. It keeps running when the
-    /// app quits.
+    /// are found), logging to `<state>/daemon.log`. The app stops it when it
+    /// quits; closing the window keeps it running, so phones stay connected.
     func startDaemon() {
       guard let bin = binary else { return }
       try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
-      let log = stateDir.appendingPathComponent("daemon.log").path
+      let log = logPath
       let p = Process()
       p.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
       p.arguments = ["-l", "-c", "exec \"$0\" --no-qr >>\"$1\" 2>&1 </dev/null", bin.path, log]
       var env = ProcessInfo.processInfo.environment
       env["PHONECODE_HOME"] = stateDir.path
       p.environment = env
+      p.terminationHandler = { [weak self] proc in
+        Task { @MainActor in
+          guard let self, self.launched === proc else { return }
+          if Date().timeIntervalSince(self.launchedAt) < 10 { self.quickExits += 1 }
+        }
+      }
       do {
         try p.run()
         launched = p
+        launchedAt = Date()
         state = .starting
+        quitObserver = quitObserver
+          ?? NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+          ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopDaemon() }
+          }
       } catch {
         state = .failed("Could not start phonecode: \(error.localizedDescription)")
       }
+    }
+
+    /// Stops the phone-code this app started (SIGTERM: it saves its state and exits).
+    func stopDaemon() {
+      guard let p = launched, p.isRunning else { return }
+      p.terminate()
+      let deadline = Date().addingTimeInterval(3)
+      while p.isRunning, Date() < deadline { usleep(50_000) }
     }
 
     /// Whether the app is connected to the daemon on this Mac (not another computer).
@@ -179,18 +228,18 @@
           .foregroundStyle(.orange)
           .multilineTextAlignment(.center)
         Button("Try again") { hub.resume(model) }
-          .buttonStyle(.glassProminent)
+          .buttonStyle(.graphitePrimary)
       case .notRunning:
         if hub.paused {
           Button("Connect to phone-code on this Mac") { hub.resume(model) }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.graphitePrimary)
             .controlSize(.large)
             .accessibilityIdentifier("mac-setup-resume")
         } else if hub.binary != nil {
           Text("phone-code is installed but not running.")
             .foregroundStyle(.secondary)
           Button("Start phone-code") { hub.startDaemon() }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.graphitePrimary)
             .controlSize(.large)
             .accessibilityIdentifier("mac-setup-start")
           Text("Or run `phonecode` in a terminal. This window connects as soon as it is up.")

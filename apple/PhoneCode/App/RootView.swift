@@ -102,14 +102,55 @@ struct ConnectionBanner: View {
     switch model.client.status {
     case .open, .idle, .unauthorized:
       EmptyView()
-    case .connecting:
-      banner("Connecting to \(model.creds?.hostName ?? "your computer")…", "antenna.radiowaves.left.and.right")
-    case .reconnecting:
-      banner("Reconnecting…", "arrow.triangle.2.circlepath")
+    case .connecting, .reconnecting:
+      #if os(macOS)
+        if model.hub.isLocal(model.creds), model.hub.daemon == nil {
+          notRunning
+        } else {
+          retrying
+        }
+      #else
+        retrying
+      #endif
     case .incompatible(let why):
       banner(why, "exclamationmark.triangle")
     }
   }
+
+  @ViewBuilder
+  private var retrying: some View {
+    if case .reconnecting = model.client.status {
+      banner("Reconnecting…", "arrow.triangle.2.circlepath")
+    } else {
+      banner("Connecting to \(SidebarView.displayName(model.creds?.hostName))…", "antenna.radiowaves.left.and.right")
+    }
+  }
+
+  #if os(macOS)
+    /// The computer is this Mac and nothing answers: say so, and offer to start it.
+    private var notRunning: some View {
+      HStack(spacing: 12) {
+        Label("phone-code isn't running on this Mac", systemImage: "bolt.horizontal.circle")
+          .font(.footnote.weight(.medium))
+        if model.hub.binary != nil {
+          Button("Start phone-code") { model.hub.startDaemon() }
+            .buttonStyle(.graphitePrimary)
+            .controlSize(.small)
+            .accessibilityIdentifier("banner-start-daemon")
+        } else {
+          Text("Run `phonecode` in a terminal.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 8)
+      .glassEffect(.regular.tint(Theme.attention.opacity(0.2)), in: .capsule)
+      .padding(.top, 6)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("connection-banner")
+    }
+  #endif
 
   private func banner(_ text: String, _ symbol: String) -> some View {
     Button {
@@ -121,7 +162,7 @@ struct ConnectionBanner: View {
         .padding(.vertical, 8)
     }
     .buttonStyle(.plain)
-    .glassEffect(.regular.tint(.orange.opacity(0.25)), in: .capsule)
+    .glassEffect(.regular.tint(Theme.attention.opacity(0.2)), in: .capsule)
     .padding(.top, 6)
     .accessibilityIdentifier("connection-banner")
   }

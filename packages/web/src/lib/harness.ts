@@ -1,7 +1,14 @@
 import { batch, computed, signal } from '@preact/signals';
-import type { AgentId, AgentInfo, Attachment, PermissionMode, SessionInfo } from '@phone-code/protocol';
+import type {
+  AgentId,
+  AgentInfo,
+  Attachment,
+  EffortOption,
+  PermissionMode,
+  SessionInfo,
+} from '@phone-code/protocol';
 import { toast } from '../ui/overlay';
-import { CLASSIC_MODES, agentCatalog, modelOptions } from './agents';
+import { CLASSIC_MODES, agentCatalog, currentModel, modelOptions } from './agents';
 import { client, uid } from './client';
 import { openChat } from './nav';
 import { host, type PendingSend, rememberCreated } from './state';
@@ -46,6 +53,12 @@ export interface DraftChoices {
   harness: Harness;
   info?: AgentInfo;
   model?: string;
+  /** Levels the picked model accepts (empty: no thinking level setting). */
+  efforts: EffortOption[];
+  /** The level chosen; undefined sends none, so the agent's own setting applies. */
+  effort?: string;
+  /** What the agent uses for this model when no level is sent, if it says. */
+  defaultEffort?: string;
   mode: PermissionMode;
   modes: PermissionMode[];
   cwd: string;
@@ -57,9 +70,23 @@ export const draft = computed<DraftChoices>(() => {
   const prefs = harnessPrefs.value[harness] ?? {};
   const models = modelOptions(info);
   const model = prefs.model && models.some((m) => m.id === prefs.model) ? prefs.model : undefined;
+  // Levels belong to the model: one remembered from another model may not exist on this one.
+  const cur = currentModel(model, models);
+  const efforts = cur?.efforts ?? [];
+  const effort = efforts.find((e) => e.id === prefs.effort)?.id;
   const modes = info?.permissionModes ?? CLASSIC_MODES;
   const mode = modes.find((m) => m === prefs.mode) ?? 'default';
-  return { harness, info, model, mode, modes, cwd: prefs.cwd ?? host.value?.home ?? '~' };
+  return {
+    harness,
+    info,
+    model,
+    efforts,
+    ...(effort ? { effort } : {}),
+    ...(cur?.defaultEffort ? { defaultEffort: cur.defaultEffort } : {}),
+    mode,
+    modes,
+    cwd: prefs.cwd ?? host.value?.home ?? '~',
+  };
 });
 
 export function pickHarness(id: Harness): void {
@@ -71,6 +98,10 @@ export function pickHarness(id: Harness): void {
 
 export function pickModel(model: string | undefined): void {
   setHarnessPrefs(draftHarness.peek(), { model });
+}
+
+export function pickEffort(effort: string | undefined): void {
+  setHarnessPrefs(draftHarness.peek(), { effort });
 }
 
 export function pickMode(mode: PermissionMode): void {
@@ -138,6 +169,7 @@ export async function startChat(text: string, attachments: Attachment[] = []): P
         agent: d.harness,
         cwd: d.cwd,
         ...(d.model ? { model: d.model } : {}),
+        ...(d.effort ? { effort: d.effort } : {}),
         permissionMode: d.mode,
       },
     });

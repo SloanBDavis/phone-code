@@ -178,7 +178,7 @@ struct CodeText: View {
       case .string: part.foregroundColor = Theme.codeString
       case .comment: part.foregroundColor = Theme.codeComment
       case .number: part.foregroundColor = Theme.codeNumber
-      case .type: part.foregroundColor = Color.accentColor
+      case .type: part.foregroundColor = Theme.codeType
       case .plain: break
       }
       out += part

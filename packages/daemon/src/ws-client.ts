@@ -344,6 +344,9 @@ export class Connection implements Subscriber {
       case 'chat.setModel':
         this.chat(msg.sessionId)?.setModel(msg.model);
         return;
+      case 'chat.setEffort':
+        this.chat(msg.sessionId)?.setEffort(msg.effort);
+        return;
       case 'term.input':
         this.terminal(msg.sessionId)?.input(msg.data);
         return;

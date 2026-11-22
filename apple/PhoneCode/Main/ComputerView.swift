@@ -221,8 +221,14 @@ struct FolderPicker: View {
       do {
         listing = try await model.client.listFolder(path ?? start)
         error = nil
-      } catch {
-        self.error = "\(error)"
+      } catch let failure {
+        // The start folder is gone: begin at home rather than at an error.
+        if path == nil, let home = try? await model.client.listFolder(nil) {
+          listing = home
+          self.error = nil
+        } else {
+          self.error = "\(failure)"
+        }
       }
     }
   }

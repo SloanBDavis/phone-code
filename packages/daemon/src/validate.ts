@@ -122,6 +122,8 @@ function createParams(v: unknown): CreateSessionParams {
   if (title !== undefined) out.title = title;
   const model = optStr(p, 'model', 200);
   if (model !== undefined) out.model = model;
+  const effort = optStr(p, 'effort', 64);
+  if (effort !== undefined) out.effort = effort;
   const mode = optOneOf(p, 'permissionMode', MODES);
   if (mode !== undefined) out.permissionMode = mode;
   const resumeId = optStr(p, 'resumeId', 512);
@@ -221,6 +223,8 @@ function parseObject(o: Obj): ClientMessage {
       };
     case 'chat.setModel':
       return { t, sessionId: str(o, 'sessionId', ID_MAX, 1), model: str(o, 'model', 200, 1) };
+    case 'chat.setEffort':
+      return { t, sessionId: str(o, 'sessionId', ID_MAX, 1), effort: str(o, 'effort', 64, 1) };
     case 'term.input':
       return { t, sessionId: str(o, 'sessionId', ID_MAX, 1), data: str(o, 'data', 1_000_000) };
     case 'term.resize':

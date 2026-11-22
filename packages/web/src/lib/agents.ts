@@ -1,6 +1,7 @@
 import type {
   AgentId,
   AgentInfo,
+  EffortOption,
   HostInfo,
   ModelOption,
   PermissionMode,
@@ -87,6 +88,15 @@ export function modelLabel(model: string | undefined, options: ModelOption[]): s
     return target?.name ?? cur.description ?? cur.name ?? 'Default';
   }
   return cur.name ?? cur.id;
+}
+
+/**
+ * The thinking levels a session offers: its own list when they do not depend
+ * on the model (ACP agents), else the current model's. Empty: no such setting.
+ */
+export function sessionEfforts(s: SessionInfo, h: HostInfo | null | undefined): EffortOption[] {
+  if (s.efforts?.length) return s.efforts;
+  return currentModel(s.model, sessionModels(s, h))?.efforts ?? [];
 }
 
 /** The modes every agent had before `auto`; offered when an agent does not list its own. */

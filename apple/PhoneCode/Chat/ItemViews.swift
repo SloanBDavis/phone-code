@@ -451,23 +451,20 @@ struct PermissionCard: View {
             .accessibilityIdentifier("permission-deny-message")
           HStack {
             Button("Cancel") { denying = false }
-              .buttonStyle(.glass)
+              .buttonStyle(.graphite)
             Spacer()
             Button("Deny", role: .destructive) { decide(.deny, message: reason) }
-              .buttonStyle(.glassProminent)
+              .buttonStyle(.graphitePrimary)
               .tint(.red)
               .accessibilityIdentifier("permission-deny-send")
           }
         } else {
-          ViewThatFits(in: .horizontal) {
-            HStack { buttons }
-            VStack(alignment: .leading) { buttons }
-          }
+          buttons
         }
       }
       .padding(14)
-      .background(Theme.attention.opacity(0.07), in: .rect(cornerRadius: 18))
-      .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.attention.opacity(0.35)))
+      .background(Theme.card, in: .rect(cornerRadius: 18, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.hairline))
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("chat-item-permission")
       .accessibilityValue("pending")
@@ -475,23 +472,40 @@ struct PermissionCard: View {
   }
 
   @ViewBuilder
+  /// Deny and Allow side by side (Allow, the common answer, is the one ink
+  /// button); the rarer answers wait in a menu so the card stays one row.
   private var buttons: some View {
-    Button("Deny") { decide(.deny) }
-      .buttonStyle(.glass)
-      .accessibilityIdentifier("permission-deny")
-    if item.canDenyWithMessage != false {
-      Button("Deny with note…") { denying = true }
-        .buttonStyle(.glass)
-        .accessibilityIdentifier("permission-deny-note")
+    HStack(spacing: 8) {
+      if item.canDenyWithMessage != false || item.canAllowAlways == true {
+        Menu {
+          if item.canAllowAlways == true {
+            Button("Always allow", systemImage: "checkmark.seal") { decide(.allowAlways) }
+              .accessibilityIdentifier("permission-always")
+          }
+          if item.canDenyWithMessage != false {
+            Button("Deny with a note…", systemImage: "text.bubble") { denying = true }
+              .accessibilityIdentifier("permission-deny-note")
+          }
+        } label: {
+          Image(systemName: "ellipsis")
+            .frame(width: 18, height: 34)
+            .graphiteChip()
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("More answers")
+        .accessibilityIdentifier("permission-more")
+      }
+      Spacer(minLength: 0)
+      Button("Deny") { decide(.deny) }
+        .buttonStyle(.graphite)
+        .accessibilityIdentifier("permission-deny")
+      Button("Allow") { decide(.allow) }
+        .buttonStyle(.graphitePrimary)
+        .accessibilityIdentifier("permission-allow")
     }
-    if item.canAllowAlways == true {
-      Button("Always allow") { decide(.allowAlways) }
-        .buttonStyle(.glass)
-        .accessibilityIdentifier("permission-always")
-    }
-    Button("Allow") { decide(.allow) }
-      .buttonStyle(.glassProminent)
-      .accessibilityIdentifier("permission-allow")
   }
 
   @ViewBuilder
@@ -573,7 +587,7 @@ struct QuestionCard: View {
           }
         }
         Button("Submit") { submit() }
-          .buttonStyle(.glassProminent)
+          .buttonStyle(.graphitePrimary)
           .disabled(!ready)
           .accessibilityIdentifier("question-submit")
       }

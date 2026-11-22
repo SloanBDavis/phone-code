@@ -396,6 +396,7 @@ public final class PhoneCodeClient {
 
   public func setMode(_ sessionId: String, _ mode: PermissionMode) { send(.chatSetMode(sessionId: sessionId, mode: mode)) }
   public func setModel(_ sessionId: String, _ model: String) { send(.chatSetModel(sessionId: sessionId, model: model)) }
+  public func setEffort(_ sessionId: String, _ effort: String) { send(.chatSetEffort(sessionId: sessionId, effort: effort)) }
   public func terminalInput(_ sessionId: String, _ data: String) { send(.termInput(sessionId: sessionId, data: data)) }
   public func terminalResize(_ sessionId: String, cols: Int, rows: Int) {
     send(.termResize(sessionId: sessionId, cols: cols, rows: rows))
@@ -451,7 +452,9 @@ public final class PhoneCodeClient {
     starting = p
     do {
       let s = try await createSession(
-        CreateSessionParams(kind: .agent, agent: draft.harness, cwd: draft.cwd, model: draft.model, permissionMode: draft.mode))
+        CreateSessionParams(
+          kind: .agent, agent: draft.harness, cwd: draft.cwd, model: draft.model, effort: draft.effort,
+          permissionMode: draft.mode))
       starting = nil
       Task { await self.sendChat(s.id, text: text, attachments: attachments) }
       return s

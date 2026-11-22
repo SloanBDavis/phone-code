@@ -130,7 +130,7 @@ struct ImageViewer: View {
         } label: {
           Image(systemName: "xmark").font(.headline).frame(width: 44, height: 44)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.graphite)
         .accessibilityLabel("Close")
         .accessibilityIdentifier("image-viewer-close")
         Spacer()
@@ -140,7 +140,7 @@ struct ImageViewer: View {
           ) {
             Image(systemName: "square.and.arrow.up").font(.headline).frame(width: 44, height: 44)
           }
-          .buttonStyle(.glass)
+          .buttonStyle(.graphite)
         }
       }
       .padding()

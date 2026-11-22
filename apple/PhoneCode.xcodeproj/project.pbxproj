@@ -126,6 +126,7 @@
 				3DEE45F8C0F67B9F109972D6 /* Sources */,
 				41FF0BA91D586B9CDC0362FE /* Resources */,
 				F7B8B8BD3A966340156C6C49 /* Frameworks */,
+				5A1C0DAE00D0BE0000000001 /* Bundle phonecode daemon */,
 			);
 			buildRules = (
 			);
@@ -204,6 +205,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		5A1C0DAE00D0BE0000000001 /* Bundle phonecode daemon */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle phonecode daemon";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/build-daemon.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		3DEE45F8C0F67B9F109972D6 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -256,6 +280,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PC_BUNDLE_ID_PREFIX).phonecode";
 				PRODUCT_NAME = PhoneCode;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
@@ -314,6 +339,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PC_BUNDLE_ID_PREFIX).phonecode";
 				PRODUCT_NAME = PhoneCode;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;

@@ -4,37 +4,29 @@
   display: inline-grid;
   place-items: center;
   flex: none;
-  border-radius: 28%;
+  font-family: ui-rounded, 'SF Pro Rounded', var(--font);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.glyph-agent {
+  background: var(--chip);
+  color: var(--label-2);
+}
+
+/* The app's mark (and the terminal's): the app icon, near-black in both
+   themes, with a hairline ring so it separates from a dark page. */
+.glyph-mark {
+  background: linear-gradient(180deg, #2a2a2e, #0c0c0e);
+  box-shadow: inset 0 0 0 0.5px var(--hairline);
   color: #fff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
-}
-
-.glyph-claude {
-  background: linear-gradient(150deg, var(--claude-a), var(--claude-b));
-}
-
-.glyph-codex {
-  background: linear-gradient(150deg, var(--codex-a), var(--codex-b));
-}
-
-.glyph-acp {
-  background: linear-gradient(150deg, var(--acp-a), var(--acp-b));
-}
-
-.glyph-antigravity {
-  background: linear-gradient(150deg, var(--agy-a), var(--agy-b));
-}
-
-.glyph-terminal {
-  background: linear-gradient(150deg, var(--term-a), var(--term-b));
-  color: var(--term-mark);
-}
-
-:root[data-theme='light'] .glyph-terminal {
-  --term-a: #3a3e46;
-  --term-b: #1c1e22;
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  padding-bottom: 0.08em;
 }
 
 /* ------------------------------------------------------------ screen chrome */
@@ -56,7 +48,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent-text);
+  color: var(--ink);
   font: 600 15px/1 var(--font);
   cursor: pointer;
 }
@@ -87,13 +79,17 @@
   margin: 16px var(--gutter) 0;
   padding: 12px 14px;
   border-radius: 18px;
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: var(--chip);
+  color: var(--label-2);
   font: 500 14px/1.35 var(--font);
 }
 
 .demo-banner span {
   flex: 1;
+  color: var(--label);
+}
+
+.demo-banner .link-btn {
   color: var(--label);
 }
 
@@ -161,11 +157,12 @@
 }
 
 .swipe-action.tone-neutral .swipe-icon {
-  background: #8e8e93;
+  background: #71717a;
 }
 
 .swipe-action.tone-accent .swipe-icon {
-  background: var(--accent);
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 .swipe-action span:last-child {
@@ -185,7 +182,7 @@
   height: 8px;
   margin-top: -4px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--ink);
 }
 
 .pill-attention {

@@ -4,10 +4,6 @@
   --kb-h: 52px;
 }
 
-:root[data-theme='dark'] .term-screen {
-  --term-bg: #0a0b0d;
-}
-
 .term-wrap {
   position: absolute;
   left: calc(var(--safe-left) + 6px);
@@ -142,14 +138,14 @@
 }
 
 .key.mod.once {
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  box-shadow: inset 0 0 0 1.5px var(--accent);
+  background: var(--chip-pressed);
+  color: var(--label);
+  box-shadow: inset 0 0 0 1.5px var(--ink);
 }
 
 .key.mod.lock {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 .key-sep {

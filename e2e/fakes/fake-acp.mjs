@@ -89,8 +89,22 @@ function configOptions(s) {
       currentValue: s.model,
       options: MODELS.map((m) => ({ value: m, name: m })),
     },
+    // Like OpenCode's "variant" / Gemini's thinking budget: the spec's thought_level category.
+    {
+      id: 'thought',
+      name: 'Thinking',
+      category: 'thought_level',
+      type: 'select',
+      currentValue: s.thought ?? 'medium',
+      options: THOUGHT_LEVELS.map((t) => ({ value: t.value, name: t.name })),
+    },
   ];
 }
+const THOUGHT_LEVELS = [
+  { value: 'low', name: 'Low' },
+  { value: 'medium', name: 'Medium' },
+  { value: 'deep', name: 'Deep think' },
+];
 const modesState = (s) => ({ availableModes: MODES, currentModeId: s.mode });
 
 /** Send a session/update and keep it for session/load replay. */
@@ -486,6 +500,7 @@ const SCENARIOS = [
       process.exit(3);
     },
   ],
+  [/thinking level/i, (c) => c.say(`Thinking level: **${c.s.thought ?? 'medium'}**.`)],
   [/hello/i, (c) => c.say('Hello! I am a **fake ACP agent**.\n\n- I stream text\n- I run tools\n')],
   [
     /think/i,
@@ -703,6 +718,12 @@ async function onMessage(msg) {
     case 'session/set_model': {
       const s = sessions.get(params.sessionId);
       const value = method === 'session/set_model' ? params.modelId : params.value;
+      if (s && method === 'session/set_config_option' && params.configId === 'thought') {
+        if (!THOUGHT_LEVELS.some((t) => t.value === value))
+          return rpcError(id, -32602, 'Invalid thought level');
+        s.thought = value;
+        return result(id, { configOptions: configOptions(s) });
+      }
       if (
         !s ||
         (method === 'session/set_config_option' && params.configId !== 'model') ||

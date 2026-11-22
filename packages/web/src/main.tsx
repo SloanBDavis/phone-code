@@ -8,7 +8,7 @@ import './styles/shell.css';
 import { App } from './app';
 import { autoCode, mode, readLaunchParams, startDemo, startHost } from './lib/boot';
 import { startClock } from './lib/clock';
-import { refractionSupported, startGlassHighlights } from './lib/glass';
+import { refractionSupported } from './lib/glass';
 import { openChat, startNav } from './lib/nav';
 import { creds } from './lib/storage';
 import { startTheme } from './lib/theme';
@@ -21,7 +21,6 @@ if (refractionSupported()) document.documentElement.classList.add('refract');
 startTheme();
 trackViewport(root);
 startClock();
-startGlassHighlights();
 
 const launch = readLaunchParams();
 if (launch.pairCode) {

@@ -41,6 +41,11 @@ targets:
         type: syncedFolder
       - path: Config
         buildPhase: none
+    postBuildScripts:
+      # Mac: compile the phonecode daemon into the app (Contents/Helpers/phonecode).
+      - name: Bundle phonecode daemon
+        script: '"$SRCROOT/scripts/build-daemon.sh"'
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: PhoneCodeCore
         product: PhoneCodeCore
@@ -49,6 +54,8 @@ targets:
     settings:
       base:
         PRODUCT_NAME: PhoneCode
+        # The daemon build phase reads the repository and runs bun.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         PRODUCT_BUNDLE_IDENTIFIER: $(PC_BUNDLE_ID_PREFIX).phonecode
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Config/Info.plist

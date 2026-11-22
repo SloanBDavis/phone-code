@@ -148,6 +148,7 @@ export class ChatSession implements LiveSession {
       updatedAt: now,
       status: 'idle',
       ...(params.model === undefined ? {} : { model: params.model }),
+      ...(params.effort === undefined ? {} : { effort: params.effort }),
       permissionMode: params.permissionMode ?? 'default',
     };
     const s = new ChatSession(deps, info, 0, title !== undefined && title !== '', params.resumeId);
@@ -215,6 +216,7 @@ export class ChatSession implements LiveSession {
         {
           cwd: this.info.cwd,
           ...(this.info.model === undefined ? {} : { model: this.info.model }),
+          ...(this.info.effort === undefined ? {} : { effort: this.info.effort }),
           ...(this.info.permissionMode === undefined ? {} : { permissionMode: this.info.permissionMode }),
           ...(this.nativeSessionId === undefined ? {} : { resumeId: this.nativeSessionId }),
         },
@@ -265,6 +267,11 @@ export class ChatSession implements LiveSession {
         if (meta.permissionModes !== undefined) this.info.permissionModes = meta.permissionModes;
         if (meta.models !== undefined) this.info.models = meta.models;
         if (meta.modelOptions !== undefined) this.info.modelOptions = meta.modelOptions;
+        if (meta.effort !== undefined) this.info.effort = meta.effort;
+        if (meta.efforts !== undefined) {
+          if (meta.efforts.length) this.info.efforts = meta.efforts;
+          else delete this.info.efforts;
+        }
         if (meta.commands !== undefined) {
           this.commands = meta.commands;
           if (Object.keys(meta).length === 1) return; // commands are not part of SessionInfo
@@ -557,6 +564,12 @@ export class ChatSession implements LiveSession {
     this.info.model = model;
     this.deps.host.changed('structure');
     this.agent?.setModel(model).catch((err: unknown) => log.warn('setModel failed', err));
+  }
+
+  setEffort(effort: string): void {
+    this.info.effort = effort;
+    this.deps.host.changed('structure');
+    this.agent?.setEffort?.(effort).catch((err: unknown) => log.warn('setEffort failed', err));
   }
 
   /** The agent's own conversation id, once known (what history entries call resumeId). */

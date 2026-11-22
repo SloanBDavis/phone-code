@@ -41,6 +41,7 @@ import { findSessionFile, listClaudeResumable, loadClaudeTranscript } from './cl
 import {
   StatusTracker,
   arr,
+  effortOptions,
   errorMessage,
   isRec,
   num,
@@ -91,12 +92,20 @@ function parseModels(v: unknown): ModelOption[] {
     const name = str(m.displayName);
     const description = str(m.description);
     const resolved = str(m.resolvedModel);
+    // `supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"]`; absent for models without effort.
+    const efforts = effortOptions(
+      arr(m.supportedEffortLevels)
+        .map(str)
+        .filter((e): e is string => e !== undefined)
+        .map((level) => ({ id: level })),
+    );
     out.push({
       id,
       ...(name ? { name } : {}),
       ...(description ? { description } : {}),
       ...(resolved ? { resolved } : {}),
       ...(id === 'default' ? { isDefault: true } : {}),
+      ...(efforts.length ? { efforts } : {}),
     });
   }
   return out;
@@ -161,6 +170,8 @@ class ClaudeSession implements AgentSession {
   private readonly control = new Map<string, ControlWaiter>();
   private sessionId: string | undefined;
   private model: string | undefined;
+  /** Thinking level chosen on phone-code; undefined: the user's Claude Code setting. */
+  private effort: string | undefined;
   private modelOptions: ModelOption[] = discoveredModels ?? [];
   private mode: PermissionMode;
   private turnsQueued = 0;
@@ -181,6 +192,7 @@ class ClaudeSession implements AgentSession {
     this.status = new StatusTracker(this.events);
     this.mapper = this.newMapper();
     this.model = opts.model;
+    this.effort = opts.effort;
     this.mode = opts.permissionMode ?? 'default';
     this.sessionId = opts.resumeId;
     this.persisted = opts.resumeId !== undefined;
@@ -262,6 +274,10 @@ class ClaudeSession implements AgentSession {
     // models is "omitted": thinking blocks arrive empty. Ask for summaries, as the TUI shows them.
     // Older CLIs answer with an error; thinking then stays empty, as before.
     this.request({ subtype: 'set_max_thinking_tokens', thinking_display: 'summarized' }).catch(() => {});
+    // The chosen level as a flag setting (what `--effort` does, but it also works on a resumed
+    // process and can change later). Written now, before any user message is, so the first
+    // turn already runs at that level.
+    const effort = this.effort ? this.applyEffort(this.effort) : undefined;
     try {
       const res = await init;
       const options = parseModels(res.models);
@@ -281,8 +297,31 @@ class ClaudeSession implements AgentSession {
         ...(mode ? { permissionMode: mode } : {}),
         ...(this.model ? { model: this.model } : {}),
       });
+      await effort;
+      await this.reportEffort();
     } catch {
       // the exit handler reports a dead process
+    }
+  }
+
+  private async applyEffort(effort: string): Promise<boolean> {
+    try {
+      await this.request({ subtype: 'apply_flag_settings', settings: { effortLevel: effort } });
+      return true;
+    } catch (e) {
+      this.notice('warn', `Could not set the thinking level to ${effort}: ${errorMessage(e)}`);
+      return false;
+    }
+  }
+
+  /** `get_settings` -> `applied.effort`: the level the CLI uses now (settings, model and flags combined). */
+  private async reportEffort(): Promise<void> {
+    try {
+      const res = await this.request({ subtype: 'get_settings' }, 5000);
+      const effort = str(rec(res.applied).effort);
+      if (effort) this.events.meta({ effort });
+    } catch {
+      // Older CLIs have no get_settings; the session keeps the level phone-code chose, if any.
     }
   }
 
@@ -879,9 +918,20 @@ class ClaudeSession implements AgentSession {
       // The CLI answers with the concrete id ("claude-opus-4-7"); the phone keeps the alias it chose.
       await this.request({ subtype: 'set_model', model });
       this.events.meta({ model });
+      // A model can carry its own default level (modelSettings), unless one was chosen here.
+      if (!this.effort) await this.reportEffort();
     } catch (e) {
       this.notice('warn', `Could not switch model to ${model}: ${errorMessage(e)}`);
     }
+  }
+
+  async setEffort(effort: string): Promise<void> {
+    this.effort = effort;
+    if (!this.proc) {
+      this.events.meta({ effort });
+      return;
+    }
+    if (await this.applyEffort(effort)) await this.reportEffort();
   }
 
   /** The model id to show for a concrete model id the CLI reports. */

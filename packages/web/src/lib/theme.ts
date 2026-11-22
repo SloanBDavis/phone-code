@@ -10,7 +10,7 @@ darkMq.addEventListener('change', () => {
 export const resolvedTheme = signal<'dark' | 'light'>('dark');
 
 /** Background colors per theme; mirrors --bg in tokens.css. */
-const BG = { dark: '#000000', light: '#f2f2f7' } as const;
+const BG = { dark: '#0b0b0c', light: '#ffffff' } as const;
 
 export function startTheme(): void {
   effect(() => {

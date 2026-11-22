@@ -82,7 +82,8 @@ The Mac app is not sandboxed: it reads `~/.phonecode` and can launch
   archive it; long-press it to rename, archive, copy the last response or
   delete. Search finds every conversation on the computer, from every agent,
   including ones started at the computer. The composer's chips pick the agent,
-  model, permission mode and folder; the first message creates the chat. Type
+  model and thinking level (one chip, "Opus · High", when the model has
+  levels), permission mode and folder; the first message creates the chat. Type
   `/` for the agent's slash commands. The photo button sends pictures.
 - **Mac**: the same sidebar, and a workspace of tiles. Drag a chat from the
   sidebar onto the left, right, top or bottom edge of a tile to split it, or
@@ -185,7 +186,10 @@ Decisions:
 - **Speed**: frames are decoded on the `Connection` actor, off the main thread;
   each transcript item is its own `@Observable` object, so a streaming delta
   redraws one row.
-- **The token** lives in the Keychain (this device only).
+- **The token** lives in the Keychain on iPhone (this device only). On the Mac it is a
+  file only you can read (`~/Library/Application Support/<bundle id>/credentials.json`):
+  the Keychain would ask again after every local rebuild, and protects nothing extra
+  next to phone-code's own control token in `~/.phonecode`.
 
 ## Tests
 

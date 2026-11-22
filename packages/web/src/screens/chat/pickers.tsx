@@ -1,6 +1,13 @@
 import type { JSX } from 'preact';
 import type { PermissionMode, SessionInfo } from '@phone-code/protocol';
-import { CLASSIC_MODES, currentModel, modelLabel, modelOptions, sessionModels } from '../../lib/agents';
+import {
+  CLASSIC_MODES,
+  currentModel,
+  modelLabel,
+  modelOptions,
+  sessionEfforts,
+  sessionModels,
+} from '../../lib/agents';
 import { client } from '../../lib/client';
 import {
   agentInfo,
@@ -8,6 +15,7 @@ import {
   harnessList,
   openTerminal,
   pickFolder,
+  pickEffort,
   pickHarness,
   pickMode,
   pickModel,
@@ -171,7 +179,7 @@ export function HarnessChip({
         )
       }
     >
-      <Glyph kind={current === 'terminal' ? 'terminal' : agentGlyph(current)} size={20} />
+      {current === 'terminal' && <Icon name="terminal" size={13} stroke={2.2} />}
       <span class="chip-text">{shortName(current)}</span>
     </button>
   );
@@ -227,7 +235,71 @@ export function ModelChip({ session }: { session?: SessionInfo }): JSX.Element |
       }
     >
       <span class="chip-text">{modelLabel(model, models) ?? 'Default'}</span>
-      <Icon name="down" size={12} stroke={2.6} />
+    </button>
+  );
+}
+
+/**
+ * The thinking level. Its levels come from the model (or an ACP session), so
+ * the chip goes away with a model that has none.
+ */
+export function EffortChip({ session }: { session?: SessionInfo }): JSX.Element | null {
+  const d = draft.value;
+  const efforts = session ? sessionEfforts(session, host.value) : d.efforts;
+  if (!efforts.length || session?.kind === 'terminal') return null;
+  const harness = session ? (session.agent ?? 'claude') : d.harness;
+  // In a session, what the agent reports; before one, the choice to send.
+  const chosen = session ? session.effort : d.effort;
+  const fallback = session
+    ? currentModel(session.model, sessionModels(session, host.value))?.defaultEffort
+    : d.defaultEffort;
+  const value = chosen ?? fallback;
+  const cur = efforts.find((e) => e.id === value);
+  const label = cur ? (cur.name ?? cur.id) : (value ?? 'Default');
+  const set = (id: string): void => {
+    setHarnessPrefs(harness, { effort: id });
+    if (session) client.send({ t: 'chat.setEffort', sessionId: session.id, effort: id });
+  };
+  return (
+    <button
+      type="button"
+      class="chip"
+      data-testid="composer-effort"
+      aria-label={`Thinking level: ${label}`}
+      onClick={(e) =>
+        openMenu(
+          e.currentTarget,
+          [
+            {
+              title: 'Thinking level',
+              items: [
+                // Before a session, "Default" sends no level: the agent's own setting.
+                ...(!session && !fallback
+                  ? [
+                      {
+                        label: 'Default',
+                        checked: !chosen,
+                        testid: 'effort-default',
+                        onSelect: () => pickEffort(undefined),
+                      },
+                    ]
+                  : []),
+                ...efforts.map((x) => ({
+                  label: x.name ?? x.id,
+                  hint: x.description,
+                  checked: x.id === value,
+                  testid: `effort-${x.id}`,
+                  onSelect: () => set(x.id),
+                })),
+              ],
+            },
+          ],
+          { testid: 'effort-menu' },
+        )
+      }
+    >
+      <Icon name="sparkle" size={13} stroke={2.2} />
+      <span class="chip-text">{label}</span>
     </button>
   );
 }
@@ -270,8 +342,8 @@ export function ModeChip({ session }: { session?: SessionInfo }): JSX.Element | 
         )
       }
     >
-      <Icon name={m.icon} size={14} stroke={2.3} />
-      {m.short}
+      <Icon name={m.icon} size={13} stroke={2.2} />
+      <span class="chip-text">{m.short}</span>
     </button>
   );
 }

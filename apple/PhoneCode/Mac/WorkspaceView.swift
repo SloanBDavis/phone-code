@@ -77,6 +77,8 @@
             }
           }
       }
+      .overlay { WorkspaceDragCard() }
+      .onAppear { WorkspaceDrag.shared.installMonitor() }
       .focusedSceneValue(\.workspace, store)
       .sheet(isPresented: $pairingPhone) { PairPhoneView() }
       .onAppear {
@@ -178,8 +180,11 @@
     @Environment(AppModel.self) private var model
     let tile: Workspace.Node
     let store: WorkspaceStore
-    @State private var target: Workspace.Edge?
-    @State private var size: CGSize = .zero
+    /// The edge a dragged chat or tile would land on here, if it is over this tile.
+    private var target: Workspace.Edge? {
+      let d = WorkspaceDrag.shared
+      return d.target?.tile == tile.id ? d.target?.edge : nil
+    }
 
     private var focused: Bool { store.layout.focused == tile.id }
     private var route: Route { tile.sessionId.map { .session($0) } ?? .new }
@@ -195,13 +200,14 @@
       .overlay {
         if store.layout.tiles.count > 1 {
           RoundedRectangle(cornerRadius: 0)
-            .strokeBorder(focused ? Color.accentColor.opacity(0.55) : .clear, lineWidth: 1)
+            .strokeBorder(focused ? Theme.ink.opacity(0.35) : .clear, lineWidth: 1)
             .allowsHitTesting(false)
         }
       }
       .overlay { dropHighlight.allowsHitTesting(false) }
-      .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
-      .onDrop(of: [.text], delegate: TileDropDelegate(tile: tile, store: store, size: size, target: $target))
+      // Where this tile is on screen, so a drag knows which tile and edge it is over.
+      .background(ScreenFrameReader { frame in WorkspaceDrag.shared.register(tile: tile.id, frame: frame, store: store) })
+      .onDisappear { WorkspaceDrag.shared.unregister(tile: tile.id) }
       .simultaneousGesture(TapGesture().onEnded { store.layout.focus(tile.id) })
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("tile")
@@ -245,26 +251,55 @@
       .background(focused ? Theme.selection.opacity(0.6) : Theme.card)
       .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
       .contentShape(.rect)
-      .draggable(DragPayload.tile(tile.id).string) {
-        Label(s?.title ?? "New chat", systemImage: "rectangle.on.rectangle")
-          .padding(8)
-          .glassEffect()
-      }
+      .workspaceDraggable(.tile(tile.id), title: s?.title ?? "New chat")
       .axContainer("tile-title")
     }
 
     @ViewBuilder
+    /// Where a dragged chat or tile will land: an outline of the half it
+    /// will take (or the whole tile it replaces), with what will happen.
     private var dropHighlight: some View {
-      if let target {
-        GeometryReader { geo in
-          let r = Self.rect(for: target, in: geo.size)
-          RoundedRectangle(cornerRadius: 10)
-            .fill(Color.accentColor.opacity(0.18))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: 2))
+      GeometryReader { geo in
+        if let target {
+          let r = Self.rect(for: target, in: geo.size).insetBy(dx: 6, dy: 6)
+          RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(Theme.ink.opacity(0.06))
+            .overlay(
+              RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Theme.ink.opacity(0.7), style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+            )
+            .overlay {
+              Label(Self.title(for: target), systemImage: Self.symbol(for: target))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Theme.onInk)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Theme.ink, in: .capsule)
+            }
             .frame(width: r.width, height: r.height)
             .offset(x: r.minX, y: r.minY)
         }
-        .padding(4)
+      }
+      .accessibilityIdentifier(target == nil ? "" : "drop-target")
+    }
+
+    static func title(for edge: Workspace.Edge) -> String {
+      switch edge {
+      case .left: "Split left"
+      case .right: "Split right"
+      case .top: "Split up"
+      case .bottom: "Split down"
+      case .center: "Replace"
+      }
+    }
+
+    static func symbol(for edge: Workspace.Edge) -> String {
+      switch edge {
+      case .left: "rectangle.lefthalf.inset.filled"
+      case .right: "rectangle.righthalf.inset.filled"
+      case .top: "rectangle.tophalf.inset.filled"
+      case .bottom: "rectangle.bottomhalf.inset.filled"
+      case .center: "rectangle.inset.filled"
       }
     }
 
@@ -289,37 +324,183 @@
     return d.1 < 0.25 ? d.0 : .center
   }
 
-  struct TileDropDelegate: DropDelegate {
-    let tile: Workspace.Node
-    let store: WorkspaceStore
-    let size: CGSize
-    @Binding var target: Workspace.Edge?
+  /// Dragging a chat (from the sidebar) or a tile (by its title bar) onto the
+  /// workspace. An in-app drag: the app tracks the pointer and every tile's
+  /// frame, so it knows which tile and edge the pointer is over, outlines it,
+  /// and drops there on release. (AppKit drag and drop lost drops over the
+  /// chats' scroll views and gives no position to outline.)
+  @MainActor @Observable
+  final class WorkspaceDrag {
+    static let shared = WorkspaceDrag()
 
-    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.text]) }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-      target = dropEdge(at: info.location, in: size)
-      return DropProposal(operation: .move)
+    struct Target: Equatable {
+      var tile: String
+      var edge: Workspace.Edge
     }
 
-    func dropExited(info: DropInfo) { target = nil }
+    private(set) var payload: DragPayload?
+    private(set) var title = ""
+    /// The pointer, in screen coordinates (origin bottom left), while dragging.
+    private(set) var location: CGPoint?
+    private(set) var target: Target?
+    @ObservationIgnored private var tiles: [String: (frame: CGRect, store: WorkspaceStore)] = [:]
+    /// What can be dragged (sidebar rows, tile title bars), by payload string.
+    @ObservationIgnored private var sources: [String: (frame: CGRect, payload: DragPayload, title: String)] = [:]
+    @ObservationIgnored private var pressed: (payload: DragPayload, title: String, at: CGPoint)?
+    @ObservationIgnored private var monitor: Any?
 
-    func performDrop(info: DropInfo) -> Bool {
-      let edge = dropEdge(at: info.location, in: size)
-      target = nil
-      guard let provider = info.itemProviders(for: [.text]).first else { return false }
-      let tileId = tile.id
-      let store = store
-      _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
-        guard let s = obj as? String, let payload = DragPayload(s) else { return }
-        Task { @MainActor in
-          switch payload {
-          case .session(let id): store.layout.drop(id, onto: tileId, edge: edge)
-          case .tile(let from): store.layout.move(from, onto: tileId, edge: edge)
-          }
+    var active: Bool { payload != nil }
+
+    func register(tile: String, frame: CGRect, store: WorkspaceStore) { tiles[tile] = (frame, store) }
+    func unregister(tile: String) { tiles[tile] = nil }
+
+    func register(source payload: DragPayload, title: String, frame: CGRect) {
+      sources[payload.string] = (frame, payload, title)
+    }
+
+    func unregister(source payload: DragPayload) { sources[payload.string] = nil }
+
+    /// Watches the mouse for the whole app. A SwiftUI List row on macOS is an
+    /// AppKit table row that keeps the drag to itself, so gestures there never
+    /// fire; the events still pass through here first, and on to the list.
+    func installMonitor() {
+      guard monitor == nil else { return }
+      monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { e in
+        MainActor.assumeIsolated { WorkspaceDrag.shared.handle(e) }
+        return e
+      }
+    }
+
+    private func handle(_ e: NSEvent) {
+      let p = NSEvent.mouseLocation
+      switch e.type {
+      case .leftMouseDown:
+        pressed = sources.values.first { $0.frame.contains(p) }.map { ($0.payload, $0.title, p) }
+      case .leftMouseDragged:
+        guard let pressed else { return }
+        if active || hypot(p.x - pressed.at.x, p.y - pressed.at.y) > 6 { move(pressed.payload, title: pressed.title) }
+      case .leftMouseUp:
+        pressed = nil
+        if active { finish() }
+      default:
+        break
+      }
+    }
+
+    /// Screen coordinates throughout: the sidebar and the workspace are separate
+    /// hosting views, so SwiftUI's "global" coordinates differ between them.
+    func move(_ payload: DragPayload, title: String) {
+      let point = NSEvent.mouseLocation
+      self.payload = payload
+      self.title = title
+      location = point
+      let hit = tiles.first { $0.value.frame.contains(point) }
+      let next = hit.map { id, t in
+        // dropEdge measures from the top left; screen y grows upward.
+        Target(tile: id, edge: dropEdge(at: CGPoint(x: point.x - t.frame.minX, y: t.frame.maxY - point.y), in: t.frame.size))
+      }
+      // A tile dropped on itself goes nowhere.
+      if case .tile(let from) = payload, next?.tile == from { target = nil } else if next != target { target = next }
+    }
+
+    func finish() {
+      defer {
+        payload = nil
+        location = nil
+        target = nil
+      }
+      guard let payload, let target, let store = tiles[target.tile]?.store else { return }
+      withAnimation(.snappy(duration: 0.25)) {
+        switch payload {
+        case .session(let id): store.layout.drop(id, onto: target.tile, edge: target.edge)
+        case .tile(let from): store.layout.move(from, onto: target.tile, edge: target.edge)
         }
       }
-      return true
+    }
+  }
+
+  extension View {
+    /// Drag this onto a tile of the workspace (a chat from the sidebar, or a tile by its title bar).
+    func workspaceDraggable(_ payload: DragPayload, title: String) -> some View {
+      background(
+        ScreenFrameReader { frame in WorkspaceDrag.shared.register(source: payload, title: title, frame: frame) }
+      )
+      .onDisappear { WorkspaceDrag.shared.unregister(source: payload) }
+    }
+  }
+
+  /// The card under the pointer while dragging, over the whole window.
+  struct WorkspaceDragCard: View {
+    @State private var frame: CGRect = .zero
+
+    var body: some View {
+      let drag = WorkspaceDrag.shared
+      ZStack(alignment: .topLeading) {
+        Color.clear
+        if let p = drag.location, frame.contains(p) {
+          DragCard(title: drag.title)
+            .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+            .fixedSize()
+            .offset(x: p.x - frame.minX + 14, y: frame.maxY - p.y + 10)
+            .accessibilityIdentifier("drag-card")
+        }
+      }
+      .background(ScreenFrameReader { frame = $0 })
+      .allowsHitTesting(false)
+    }
+  }
+
+  /// Reports a view's frame in screen coordinates whenever it moves or resizes
+  /// (with its window too).
+  struct ScreenFrameReader: NSViewRepresentable {
+    var report: (CGRect) -> Void
+
+    func makeNSView(context: Context) -> Reader {
+      let v = Reader()
+      v.report = report
+      return v
+    }
+
+    func updateNSView(_ v: Reader, context: Context) {
+      v.report = report
+      v.send()
+    }
+
+    final class Reader: NSView {
+      var report: ((CGRect) -> Void)?
+      private var observers: [NSObjectProtocol] = []
+
+      override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        guard let window else { return }
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
+          observers.append(
+            NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+              MainActor.assumeIsolated { self?.send() }
+            })
+        }
+        send()
+      }
+
+      override func layout() {
+        super.layout()
+        send()
+      }
+
+      override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        send()
+      }
+
+      func send() {
+        guard let window else { return }
+        let frame = window.convertToScreen(convert(bounds, to: nil))
+        DispatchQueue.main.async { [report] in report?(frame) }
+      }
+
+      override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
   }
 

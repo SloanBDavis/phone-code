@@ -70,7 +70,7 @@ function threadObj() {
     historyMode: 'paginated',
     modelProvider: 'openai',
     model: thread.model,
-    reasoningEffort: null,
+    reasoningEffort: thread.effort ?? null,
     createdAt: thread.createdAt,
     updatedAt: nowS(),
     recencyAt: nowS(),
@@ -108,7 +108,7 @@ function threadResponse() {
             ? 'dangerFullAccess'
             : 'workspaceWrite',
     },
-    reasoningEffort: null,
+    reasoningEffort: thread.effort ?? null,
   };
 }
 
@@ -199,6 +199,8 @@ function onMessage(msg) {
         id,
         cwd: p.cwd ?? process.cwd(),
         model: p.model ?? MODELS[0],
+        // thread/start takes no effort (turn/start does); "medium" stands for config.toml.
+        effort: 'medium',
         approvalPolicy: p.approvalPolicy ?? 'on-request',
         sandbox: p.sandbox ?? 'workspace-write',
         file: path.join(dir, `rollout-${stamp}-${id}.jsonl`),
@@ -237,6 +239,7 @@ function onMessage(msg) {
         id: p.threadId,
         cwd: p.cwd ?? meta.cwd ?? process.cwd(),
         model: p.model ?? MODELS[0],
+        effort: 'medium',
         approvalPolicy: p.approvalPolicy ?? 'on-request',
         sandbox: p.sandbox ?? 'workspace-write',
         file,
@@ -266,8 +269,17 @@ function onMessage(msg) {
           description: 'fake',
           hidden: false,
           isDefault: i === 0,
-          supportedReasoningEfforts: [],
-          defaultReasoningEffort: 'low',
+          // Like gpt-5.x: low..xhigh, with descriptions; the last fake model has no reasoning levels.
+          supportedReasoningEfforts:
+            i === MODELS.length - 1
+              ? []
+              : [
+                  { reasoningEffort: 'low', description: 'Fast responses with lighter reasoning' },
+                  { reasoningEffort: 'medium', description: 'Balances speed and reasoning depth' },
+                  { reasoningEffort: 'high', description: 'Greater reasoning depth for complex problems' },
+                  { reasoningEffort: 'xhigh', description: 'Extra high reasoning depth' },
+                ],
+          defaultReasoningEffort: 'medium',
           inputModalities: ['text', 'image'],
         })),
         nextCursor: null,
@@ -277,6 +289,7 @@ function onMessage(msg) {
       if (current) return rpcError(msg.id, 'a turn is already running');
       if (p.approvalPolicy) thread.approvalPolicy = p.approvalPolicy;
       if (p.model) thread.model = p.model;
+      if (p.effort) thread.effort = p.effort;
       if (p.sandboxPolicy?.type)
         thread.sandbox =
           { readOnly: 'read-only', dangerFullAccess: 'danger-full-access' }[p.sandboxPolicy.type] ??
@@ -545,6 +558,10 @@ function lateAsk(turn) {
     lateDecision = typeof res.decision === 'string' ? res.decision : JSON.stringify(res);
   });
 }
+
+scenario(/thinking level/i, async (c) => {
+  await c.message(`Thinking level: **${thread.effort}**.`);
+});
 
 scenario(/crash/i, async (c) => {
   await c.message('Starting, this will go badly');

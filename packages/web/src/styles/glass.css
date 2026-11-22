@@ -1,16 +1,10 @@
 /*
- * Liquid Glass material. Glass is only for the control layer that floats
- * above content: bars, capsule buttons, the composer, the key bar, sheets and
- * menus. Content (chat, code, terminal) stays crisp and un-glassed.
+ * The floating control layer (bars, capsule buttons, the composer, the key
+ * bar, sheets and menus): a quiet frosted surface with a hairline edge and a
+ * soft shadow. Graphite keeps it flat: no tint, sheen or colored rim. Content
+ * (chat, code, terminal) stays crisp and un-frosted.
  *
- * Layers, back to front:
- *   backdrop-filter   blur + saturate + brightness (WebKit and fallback),
- *                     or SVG displacement refraction + light blur (Chromium)
- *   background        theme tint, thin enough to let colour through
- *   box-shadow        rim, top specular edge, bottom catch light, inner glow,
- *                     soft ambient shadow underneath
- *   ::before          sheen that follows the pointer (--lx/--ly)
- *   ::after           gradient rim highlight (brighter on the lit edges)
+ * Chromium also gets a light refraction at the rounded edge (lib/glass.ts).
  */
 
 .glass {
@@ -20,54 +14,10 @@
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
   box-shadow:
-    inset 0 1px 1px -0.5px var(--glass-spec),
-    inset 0 -1px 1px -0.5px var(--glass-spec-low),
     inset 0 0 0 0.5px var(--glass-rim),
-    inset 0 0 18px -4px var(--glass-glow),
-    0 0 0 0.5px var(--glass-outline),
-    0 12px 32px -12px var(--glass-shadow),
-    0 2px 8px -2px var(--glass-shadow-near);
+    0 10px 30px -14px var(--glass-shadow),
+    0 2px 6px -2px var(--glass-shadow-near);
   transform: translateZ(0);
-}
-
-.glass::before,
-.glass::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: -1;
-}
-
-.glass::before {
-  background: radial-gradient(
-    140% 90% at var(--lx, 22%) var(--ly, -10%),
-    var(--glass-sheen) 0%,
-    transparent 55%
-  );
-  opacity: 0.9;
-  transition: opacity 300ms var(--ease-out);
-}
-
-.glass::after {
-  padding: 1px;
-  background: linear-gradient(
-    var(--rim-angle, 155deg),
-    var(--glass-rim-strong) 0%,
-    transparent 28%,
-    transparent 70%,
-    color-mix(in srgb, var(--glass-rim-strong) 55%, transparent) 100%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  opacity: 0.75;
 }
 
 /* Chromium: real refraction through a per-size displacement map. */
@@ -89,13 +39,6 @@
 
 .glass-clear {
   background: var(--glass-tint-clear);
-}
-
-.glass-tinted {
-  background: var(--glass-tinted);
-  color: var(--on-accent);
-  --glass-sheen: rgba(255, 255, 255, 0.4);
-  --glass-rim-strong: rgba(255, 255, 255, 0.6);
 }
 
 /* ------------------------------------------------------------ controls */
@@ -134,14 +77,9 @@
 }
 
 .glass-btn:active:not(:disabled) {
-  transform: scale(1.09);
+  transform: scale(1.06);
   transition-duration: 160ms;
   transition-timing-function: var(--ease-out);
-  --glass-sheen: rgba(255, 255, 255, 0.34);
-}
-
-.glass-btn:active:not(:disabled)::before {
-  opacity: 1;
 }
 
 .glass-btn:disabled {
@@ -150,7 +88,7 @@
 }
 
 .glass-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -192,12 +130,6 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
-  .glass-tinted {
-    background: var(--accent);
-  }
-  .glass::before {
-    display: none;
-  }
 }
 
 @media (prefers-contrast: more) {
@@ -209,12 +141,5 @@
     box-shadow:
       inset 0 0 0 1px var(--label-3),
       0 4px 14px -6px var(--glass-shadow);
-  }
-  .glass-tinted {
-    background: var(--accent-strong);
-  }
-  .glass::before,
-  .glass::after {
-    display: none;
   }
 }

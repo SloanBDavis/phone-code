@@ -118,6 +118,31 @@ test('model and mode switching', async ({ phone }) => {
   await expect(phone.testId('composer-model')).toContainText(second);
 });
 
+test('thinking level: a change applies from the next turn', async ({ phone }) => {
+  await newChat(phone, 'codex');
+  const chip = phone.testId('composer-effort');
+  const menu = phone.testId('effort-menu');
+  // The model's default level until one is chosen.
+  await expect(chip).toHaveText('Medium');
+  await send(phone, 'what is your thinking level');
+  await waitTurn(phone, 1);
+  await expect(lastText(phone)).toContainText('Thinking level: medium');
+
+  await chip.click();
+  await expect(menu.getByTestId('effort-medium')).toHaveClass(/\bchecked\b/);
+  await expect(menu.getByTestId('effort-high')).toContainText('Greater reasoning depth for complex problems');
+  await menu.getByTestId('effort-high').click();
+  await expect(chip).toHaveText('High');
+  await send(phone, 'what is your thinking level now');
+  await waitTurn(phone, 2);
+  await expect(lastText(phone)).toContainText('Thinking level: high');
+
+  // A model without reasoning levels: no chip.
+  await phone.testId('composer-model').click();
+  await phone.testId('model-menu').getByTestId('model-gpt-fake-mini').click();
+  await expect(chip).toHaveCount(0);
+});
+
 test('an app-server that stops reading its input: an error, and the next message restarts it', async ({
   phone,
 }) => {

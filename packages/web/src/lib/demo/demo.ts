@@ -561,6 +561,7 @@ export class DemoTransport implements Transport {
           ...(p.kind === 'agent'
             ? {
                 model: p.model ?? demoHost.agentCatalog?.find((a) => a.id === p.agent)?.models?.[0],
+                ...(p.effort ? { effort: p.effort } : {}),
                 ...(p.agent
                   ? { agentName: demoHost.agentCatalog?.find((a) => a.id === p.agent)?.name ?? p.agent }
                   : {}),
@@ -724,6 +725,11 @@ export class DemoTransport implements Transport {
       case 'chat.setModel': {
         const sim = this.sims.get(msg.sessionId);
         if (sim) this.touch(sim, { model: msg.model, updatedAt: sim.info.updatedAt });
+        return;
+      }
+      case 'chat.setEffort': {
+        const sim = this.sims.get(msg.sessionId);
+        if (sim) this.touch(sim, { effort: msg.effort, updatedAt: sim.info.updatedAt });
         return;
       }
       case 'term.input': {

@@ -97,13 +97,35 @@ public struct ModelOption: Codable, Hashable, Sendable, Identifiable {
   public var description: String?
   public var resolved: String?
   public var isDefault: Bool?
-  public init(id: String, name: String? = nil, description: String? = nil, resolved: String? = nil, isDefault: Bool? = nil) {
+  /// Thinking levels this model accepts, lowest first; nil: no such setting.
+  public var efforts: [EffortOption]?
+  /// The level the agent uses for this model when none is chosen.
+  public var defaultEffort: String?
+  public init(
+    id: String, name: String? = nil, description: String? = nil, resolved: String? = nil, isDefault: Bool? = nil,
+    efforts: [EffortOption]? = nil, defaultEffort: String? = nil
+  ) {
     self.id = id
     self.name = name
     self.description = description
     self.resolved = resolved
     self.isDefault = isDefault
+    self.efforts = efforts
+    self.defaultEffort = defaultEffort
   }
+}
+
+/// A thinking level ("effort"): how long the agent reasons before acting.
+public struct EffortOption: Codable, Hashable, Sendable, Identifiable {
+  public var id: String
+  public var name: String?
+  public var description: String?
+  public init(id: String, name: String? = nil, description: String? = nil) {
+    self.id = id
+    self.name = name
+    self.description = description
+  }
+  public var label: String { name ?? id }
 }
 
 public struct SlashCommand: Codable, Hashable, Sendable, Identifiable {
@@ -144,6 +166,10 @@ public struct SessionInfo: Codable, Hashable, Sendable, Identifiable {
   public var permissionModes: [PermissionMode]?
   public var models: [String]?
   public var modelOptions: [ModelOption]?
+  /// The thinking level in effect, when the agent reports one.
+  public var effort: String?
+  /// Levels for agents whose levels do not depend on the model (ACP); else the model's.
+  public var efforts: [EffortOption]?
   public var unread: Bool?
   public var archived: Bool?
 
@@ -545,6 +571,7 @@ public struct CreateSessionParams: Codable, Hashable, Sendable {
   public var cwd: String?
   public var title: String?
   public var model: String?
+  public var effort: String?
   public var permissionMode: PermissionMode?
   public var resumeId: String?
   public var cols: Int?
@@ -552,14 +579,15 @@ public struct CreateSessionParams: Codable, Hashable, Sendable {
   public var command: String?
   public init(
     kind: SessionKind, agent: String? = nil, cwd: String? = nil, title: String? = nil, model: String? = nil,
-    permissionMode: PermissionMode? = nil, resumeId: String? = nil, cols: Int? = nil, rows: Int? = nil,
-    command: String? = nil
+    effort: String? = nil, permissionMode: PermissionMode? = nil, resumeId: String? = nil, cols: Int? = nil,
+    rows: Int? = nil, command: String? = nil
   ) {
     self.kind = kind
     self.agent = agent
     self.cwd = cwd
     self.title = title
     self.model = model
+    self.effort = effort
     self.permissionMode = permissionMode
     self.resumeId = resumeId
     self.cols = cols

@@ -58,6 +58,8 @@ final class PhoneCodeUITests: XCTestCase {
     // system restores per window, so each test starts in a new chat.
     app.launchArguments = reset ? ["-PCResetState"] : []
     if let stateHome { app.launchEnvironment["PHONECODE_HOME"] = stateHome }
+    // The tests run their own daemon; the Mac app must not start its bundled one.
+    app.launchEnvironment["PC_NO_AUTOSTART"] = "1"
     app.launch()
   }
 
@@ -92,6 +94,29 @@ final class PhoneCodeUITests: XCTestCase {
   private func send(_ text: String) {
     type("composer-input", text)
     press(el("composer-send"))
+  }
+
+  /// Transcript text containing `text` (iOS puts it in the label, macOS in the value).
+  private func said(_ text: String) -> XCUIElement {
+    app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch
+  }
+
+  /// A menu entry: by identifier, else (macOS sometimes drops identifiers of
+  /// entries inside a menu Section) by its label or title, whatever kind of
+  /// element the menu is drawn with.
+  /// Opens the menu `menuId` and chooses `title`.
+  private func choose(_ title: String, id: String, inMenu menuId: String) {
+    press(wait(menuId))
+    let entry = menuEntry(id, title)
+    XCTAssertTrue(entry.waitForExistence(timeout: 5), "missing \(title) in \(menuId)")
+    press(entry)
+  }
+
+  private func menuEntry(_ id: String, _ title: String) -> XCUIElement {
+    let byId = el(id)
+    if byId.waitForExistence(timeout: 2) { return byId }
+    return app.descendants(matching: .any)
+      .matching(NSPredicate(format: "label == %@ OR title == %@", title, title)).firstMatch
   }
 
   private func dismissMenu() {
@@ -198,6 +223,35 @@ final class PhoneCodeUITests: XCTestCase {
     app.typeText("echo phone-code-$((40+2))\r")
     sleep(2)
     shot("15-terminal")
+  }
+
+  /// The thinking level, in the model chip's menu: chosen before the first message, changed in the
+  /// chat; the fake agent answers "thinking level" with the level it has.
+  func test08ThinkingLevel() throws {
+    #if os(macOS)
+      // The model menu opens and lists the levels (checked by screenshot), but
+      // on macOS 27 XCTest cannot reach the items of a SwiftUI menu with
+      // sections: not by identifier, title or type-to-select. Covered by the
+      // iOS run, the Core end-to-end tests and the web e2e tests.
+      throw XCTSkip("XCTest cannot select items in this macOS menu")
+    #endif
+    launch()
+    pair()
+    choose("Max", id: "effort-max", inMenu: "picker-model")
+    // One chip: "Sonnet Fake · Max".
+    let chip = el("picker-model")
+    // iOS puts a menu button's text in its label, macOS in its title.
+    XCTAssertTrue((chip.label + chip.title).contains("Max"), "chip: \(chip.label) \(chip.title)")
+    shot("19-thinking-level")
+    send("what is your thinking level")
+    wait("chat-item-turn", 30)
+    let saidMax = said("Thinking level: max")
+    XCTAssertTrue(saidMax.waitForExistence(timeout: 10), "the agent did not get max")
+
+    choose("Low", id: "effort-low", inMenu: "picker-model")
+    send("thinking level again")
+    let saidLow = said("Thinking level: low")
+    XCTAssertTrue(saidLow.waitForExistence(timeout: 30), "the change did not reach the agent")
   }
 
   #if os(macOS)

@@ -279,7 +279,7 @@
 }
 
 .sb-row.active {
-  background: var(--fill);
+  background: var(--selection);
 }
 
 .sb-glyph {
@@ -342,7 +342,7 @@
 
 .sb-sub .spinner {
   flex: none;
-  color: var(--accent-text);
+  color: var(--label-2);
 }
 
 .status-exited .sb-title {
@@ -405,13 +405,11 @@ mark {
 
 .filter-chips .chip {
   flex: none;
-  height: 30px;
-  font-weight: 500;
 }
 
-.chip.on {
-  background: var(--accent-soft);
-  color: var(--accent-text);
+.filter-chips .chip.on {
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 /* ------------------------------------------------------------ composer pickers */
@@ -425,8 +423,8 @@ mark {
   overflow-x: auto;
   scrollbar-width: none;
   /* Room for the press scale and a soft edge where chips scroll away. */
-  padding: 4px 2px;
-  margin: -4px 0;
+  padding: 3px 2px;
+  margin: -3px -2px;
   -webkit-mask: linear-gradient(to right, #000 calc(100% - 14px), transparent);
   mask: linear-gradient(to right, #000 calc(100% - 14px), transparent);
 }
@@ -439,23 +437,12 @@ mark {
   flex: none;
 }
 
-.harness-chip {
-  padding-left: 4px;
-  gap: 6px;
-}
-
-.harness-chip .glyph {
-  border-radius: 50%;
-}
-
 .folder-chip {
   color: var(--label-2);
-  font-weight: 500;
 }
 
-.c-btn.slash-btn.on {
-  color: var(--accent-text);
-  background: var(--accent-soft);
+.slash-chip.on {
+  background: var(--chip-pressed);
 }
 
 /* ------------------------------------------------------------ slash palette */
@@ -755,9 +742,9 @@ mark {
   padding: 0 14px;
   border: 0;
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font: 700 15px/1 var(--font);
+  background: var(--chip);
+  color: var(--label);
+  font: 600 15px/1 var(--font);
   cursor: pointer;
 }
 
@@ -789,15 +776,16 @@ mark {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  color: #fff;
 }
 
 .works-mark.ok {
-  background: #30c463;
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 .works-mark.no {
-  background: #8e8e93;
+  background: var(--chip);
+  color: var(--label-2);
 }
 
 .footnote.fix {
@@ -824,35 +812,20 @@ mark {
 .composer-main {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
+  gap: 10px;
 }
 
 .composer-main .composer-input {
   flex: 1;
   min-width: 0;
-  padding: 9px 6px 7px;
-}
-
-.composer-main .c-btn,
-.composer-main .send-btn {
-  margin-bottom: 2px;
 }
 
 .composer-bar.pickers {
   height: auto;
-  margin: 0 -6px -6px;
-  padding: 2px 8px 8px;
-  border-top: 0.5px solid var(--sep);
-  padding-top: 8px;
-}
-
-.composer .chip {
-  height: 30px;
 }
 
 .slash-chip {
-  width: 30px;
+  width: 28px;
   padding: 0;
   justify-content: center;
-  color: var(--label-2);
 }
