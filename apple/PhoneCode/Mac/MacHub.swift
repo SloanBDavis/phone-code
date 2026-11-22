@@ -85,6 +85,13 @@
           state = .failed("phone-code keeps stopping right after it starts. Its log: \(logPath)")
         }
       }
+      // Paired with "this Mac", but this Mac's phone-code now runs elsewhere
+      // (another port, another state folder): follow the one that answers.
+      if model.isPaired, !paused, isLocal(model.creds), let found,
+        model.creds?.baseURL.port != found.control.port
+      {
+        model.unpair(reason: nil, tellHost: false)
+      }
       guard !model.isPaired, !paused else { return }
       guard let found else {
         if case .failed = state { return }

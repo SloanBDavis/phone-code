@@ -186,25 +186,29 @@
       return d.target?.tile == tile.id ? d.target?.edge : nil
     }
 
+    @State private var hovering = false
+
     private var focused: Bool { store.layout.focused == tile.id }
     private var route: Route { tile.sessionId.map { .session($0) } ?? .new }
+    /// The controls show on the tile being worked in and on the one under the
+    /// pointer; otherwise the chats read edge to edge, with no chrome.
+    private var showControls: Bool { store.layout.tiles.count > 1 && (focused || hovering) }
 
     var body: some View {
-      VStack(spacing: 0) {
-        // One tile: the window's title already says what it is.
-        if store.layout.tiles.count > 1 { titleBar }
-        ChatScreen(route: route, embedded: true)
-          .id(route)
-      }
-      .background(Color.appBackground)
-      .overlay {
-        if store.layout.tiles.count > 1 {
-          RoundedRectangle(cornerRadius: 0)
-            .strokeBorder(focused ? Theme.ink.opacity(0.35) : .clear, lineWidth: 1)
-            .allowsHitTesting(false)
+      ChatScreen(route: route, embedded: true)
+        .id(route)
+        .background(Color.appBackground)
+        .overlay(alignment: .topTrailing) {
+          if store.layout.tiles.count > 1 {
+            tileControls
+              .padding(8)
+              .opacity(showControls ? 1 : 0)
+              .allowsHitTesting(showControls)
+              .animation(.easeOut(duration: 0.15), value: showControls)
+          }
         }
-      }
-      .overlay { dropHighlight.allowsHitTesting(false) }
+        .onHover { hovering = $0 }
+        .overlay { dropHighlight.allowsHitTesting(false) }
       // Where this tile is on screen, so a drag knows which tile and edge it is over.
       .background(ScreenFrameReader { frame in WorkspaceDrag.shared.register(tile: tile.id, frame: frame, store: store) })
       .onDisappear { WorkspaceDrag.shared.unregister(tile: tile.id) }
@@ -213,15 +217,23 @@
       .accessibilityIdentifier("tile")
     }
 
-    private var titleBar: some View {
+    /// A small floating pill: the chat's title (grab it to move the tile), more, close.
+    private var tileControls: some View {
       let s = tile.sessionId.flatMap { model.client.session($0) }
-      return HStack(spacing: 8) {
-        HarnessGlyph(id: s.map { $0.isTerminal ? "terminal" : ($0.agent ?? "claude") } ?? model.draft.harness, size: 18)
-        Text(s?.title ?? "New chat")
-          .font(.callout.weight(focused ? .semibold : .regular))
-          .lineLimit(1)
-        if let s { StatusDot(status: s.status) }
-        Spacer()
+      return HStack(spacing: 2) {
+        HStack(spacing: 6) {
+          if let s { StatusDot(status: s.status) }
+          Text(s?.title ?? "New chat")
+            .font(.caption.weight(.medium))
+            .lineLimit(1)
+            .frame(maxWidth: 200, alignment: .leading)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 4)
+        .frame(height: 26)
+        .contentShape(.rect)
+        .workspaceDraggable(.tile(tile.id), title: s?.title ?? "New chat")
+        .help("Drag to move this tile")
         Menu {
           Button("Split right", systemImage: "rectangle.split.2x1") { store.layout.drop(nil, onto: tile.id, edge: .right) }
           Button("Split down", systemImage: "rectangle.split.1x2") { store.layout.drop(nil, onto: tile.id, edge: .bottom) }
@@ -231,27 +243,30 @@
           }
         } label: {
           Image(systemName: "ellipsis")
+            .frame(width: 22, height: 26)
+            .contentShape(.rect)
         }
         .menuStyle(.button)
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         Button {
           store.layout.close(tile.id)
         } label: {
           Image(systemName: "xmark")
+            .font(.caption2.weight(.bold))
+            .frame(width: 22, height: 26)
+            .contentShape(.rect)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .help("Close tile (⌃⌘W)")
         .accessibilityIdentifier("tile-close")
+        .padding(.trailing, 4)
       }
-      .padding(.horizontal, 10)
-      .frame(height: 32)
-      .foregroundStyle(focused ? .primary : .secondary)
-      .background(focused ? Theme.selection.opacity(0.6) : Theme.card)
-      .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
-      .contentShape(.rect)
-      .workspaceDraggable(.tile(tile.id), title: s?.title ?? "New chat")
+      .foregroundStyle(.secondary)
+      .background(.regularMaterial, in: .capsule)
+      .overlay(Capsule().strokeBorder(Theme.hairline))
+      .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
       .axContainer("tile-title")
     }
 
