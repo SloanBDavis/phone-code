@@ -174,6 +174,14 @@ export interface SessionInfo {
   archived?: boolean;
 }
 
+/** Cursor's desktop app on the computer (see `HostInfo.cursor`). */
+export interface CursorStatus {
+  /** Cursor is installed (or its settings folder exists). */
+  installed: boolean;
+  /** phone-code's hooks are in Cursor's hooks.json. */
+  connected: boolean;
+}
+
 export interface HostInfo {
   name: string; // hostname
   platform: string; // darwin | linux | win32
@@ -188,6 +196,12 @@ export interface HostInfo {
    * from older daemons; clients then fall back to `agents`.
    */
   agentCatalog?: AgentInfo[];
+  /**
+   * Cursor's desktop app on this computer: whether it is there, and whether
+   * phone-code's hooks are installed so its chats can be followed and answered
+   * (`cursor.connect`). Absent from older daemons.
+   */
+  cursor?: CursorStatus;
   shell: string;
   /** How the phone reaches the host, so the app can say what works and what does not. */
   connection?: ConnectionInfo;
@@ -377,6 +391,13 @@ export type ClientMessage =
   /** Directory listing for the "pick a folder" UI. Result: FsListResult */
   | { t: 'fs.list'; id: string; path?: string }
   /**
+   * Installs (or removes) phone-code's hooks in Cursor's user hooks
+   * (~/.cursor/hooks.json, keeping every other hook). Answered with the new
+   * `HostInfo.cursor`.
+   */
+  | { t: 'cursor.connect'; id: string }
+  | { t: 'cursor.disconnect'; id: string }
+  /**
    * Past agent sessions found on the host that can be resumed. Result: ResumableSession[]
    * With `query` (even `{}`): "All chats", see HistoryQuery. Without it: the
    * older resume picker (native agents only unless `agent` is given, newest 50).
@@ -541,6 +562,8 @@ export interface RpcResults {
   'chat.send': { itemId: string };
   'push.subscribe': undefined;
   'push.unsubscribe': undefined;
+  'cursor.connect': CursorStatus;
+  'cursor.disconnect': CursorStatus;
 }
 
 /**

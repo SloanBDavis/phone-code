@@ -104,6 +104,11 @@ export interface AgentAdapter {
   name?: string;
   /** 'native' when omitted. */
   impl?: AgentImpl;
+  /**
+   * Its chats start outside phone-code (Cursor's app, followed through hooks):
+   * not offered for new chats, never started by phone-code.
+   */
+  external?: boolean;
   /** Where an ACP agent's entry comes from. */
   source?: 'builtin' | 'config';
   /** Is the CLI installed? Cheap; called at startup and cached. */

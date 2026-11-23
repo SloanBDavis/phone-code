@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Attachment, SessionInfo, SlashCommand } from '@phone-code/protocol';
-import { agentShortLabel } from '../../lib/agents';
+import { agentShortLabel, isCursorChat } from '../../lib/agents';
 import { client } from '../../lib/client';
 import { groupCommands, sessionCommands, SOURCE_LABEL } from '../../lib/commands';
 import { agentInfo, draft, startChat, starting } from '../../lib/harness';
@@ -110,7 +110,8 @@ export function Composer({
   const harnessReady = isDraft ? (d.info?.available ?? false) : true;
   const running = session?.status === 'running';
   // Stop also clears a pending approval or question (the agent may ask outside a running turn).
-  const stoppable = running || session?.status === 'waiting';
+  // A Cursor chat waits for a reply, not an approval: nothing to stop then.
+  const stoppable = running || (session?.status === 'waiting' && !isCursorChat(session));
   const sending = isDraft && starting.value?.status === 'sending';
   const canSend = harnessReady && !sending && (text.trim().length > 0 || atts.length > 0);
 

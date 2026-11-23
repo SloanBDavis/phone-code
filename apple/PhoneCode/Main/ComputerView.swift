@@ -32,6 +32,15 @@ struct ComputerView: View {
         if let v = host?.daemonVersion { LabeledContent("phone-code", value: v) }
         if let h = host { LabeledContent("User", value: "\(h.user) · \(h.platform)") }
       }
+      if let cursor = host?.cursor, cursor.installed {
+        Section {
+          CursorToggle(status: cursor)
+        } header: {
+          Text("Cursor")
+        } footer: {
+          Text("Your Cursor app chats show up here as you work: what you asked, its thinking, commands, edits and answers. When Cursor finishes a turn, reply here and it continues that chat. phone-code adds a hook to Cursor (~/.cursor/hooks.json) and keeps your other hooks.")
+        }
+      }
       Section("Coding agents") {
         ForEach(Agents.pickerList(host)) { a in
           HStack(alignment: .top, spacing: 12) {
@@ -120,6 +129,41 @@ struct ComputerView: View {
     case "lan": "Local network (http)"
     case "local": "This computer only"
     default: mode
+    }
+  }
+}
+
+/// Connects Cursor's app (installs phone-code's hooks) or disconnects it.
+struct CursorToggle: View {
+  @Environment(AppModel.self) private var model
+  let status: CursorStatus
+  @State private var busy = false
+  @State private var error: String?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Toggle(
+        "Follow Cursor chats",
+        isOn: Binding(get: { status.connected }, set: { on in set(on) })
+      )
+      .disabled(busy)
+      .accessibilityIdentifier("cursor-toggle")
+      if let error {
+        Text(error).font(.footnote).foregroundStyle(Theme.danger)
+      }
+    }
+  }
+
+  private func set(_ on: Bool) {
+    busy = true
+    Task {
+      do {
+        try await model.client.setCursorConnected(on)
+        error = nil
+      } catch {
+        self.error = "\(error)"
+      }
+      busy = false
     }
   }
 }

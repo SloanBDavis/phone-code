@@ -380,6 +380,14 @@ public final class PhoneCodeClient {
     try await conn().rpc(.sessionCommands(sessionId: sessionId), as: [SlashCommand].self)
   }
 
+  /// Installs phone-code's hooks in Cursor (or removes them); the host's status follows.
+  @discardableResult
+  public func setCursorConnected(_ on: Bool) async throws -> CursorStatus {
+    let status = try await conn().rpc(on ? .cursorConnect : .cursorDisconnect, as: CursorStatus.self)
+    host?.cursor = status
+    return status
+  }
+
   public func listFolder(_ path: String?) async throws -> FsListResult {
     try await conn().rpc(.fsList(path: path), as: FsListResult.self)
   }

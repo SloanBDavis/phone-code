@@ -1,3 +1,4 @@
+import { cursorStatus } from './cursor/hooks.ts';
 import { homedir, hostname, userInfo } from 'node:os';
 import type {
   AgentId,
@@ -59,7 +60,8 @@ async function detectAdapter(adapter: AgentAdapter): Promise<Detected> {
 
 /** Every adapter, detected: native first, then ACP agents (all listed, available or not). */
 async function detectAll(adapters: AdapterRegistry): Promise<AgentInfo[]> {
-  const list = listAdapters(adapters);
+  // Agents whose chats start elsewhere (Cursor's app) are not offered for new chats.
+  const list = listAdapters(adapters).filter((a) => a.external !== true);
   const found = await Promise.all(list.map((a) => detectAdapter(a)));
   return list.map((a, i) => {
     const d = found[i] ?? { available: false };
@@ -136,6 +138,7 @@ export class HostInfoProvider {
       ...this.base,
       agents,
       agentCatalog: catalog,
+      cursor: await cursorStatus(),
       ...(this.connection === undefined ? {} : { connection: this.connection }),
     };
   }

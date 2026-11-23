@@ -19,6 +19,8 @@ const MONOGRAMS: Record<string, string> = {
   gemini: 'Ge',
   opencode: 'Oc',
   copilot: 'Co',
+  cursor: 'Cu',
+  'cursor-app': 'Cu',
 };
 
 /** Two letters for an agent: "CC", "Cx", "Ge", or the id's first two, capitalized. */

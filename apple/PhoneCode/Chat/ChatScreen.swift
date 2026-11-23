@@ -29,10 +29,17 @@ struct ChatScreen: View {
   }
 }
 
+/// A scroll view's height without its insets (the toolbar's, the keyboard's).
+func visibleHeight(_ g: ScrollGeometry) -> CGFloat {
+  max(0, g.containerSize.height - g.contentInsets.top - g.contentInsets.bottom)
+}
+
 struct NewChatView: View {
   @Environment(AppModel.self) private var model
   var embedded = false
   @State private var starter: String?
+  /// The visible height: the content fills it (see TranscriptView).
+  @State private var viewport: CGFloat = 0
 
   static let starters = [
     "Explain how this project is organized",
@@ -46,9 +53,10 @@ struct NewChatView: View {
       ScrollView {
         empty
           .padding(24)
-          .frame(maxWidth: .infinity)
+          .frame(maxWidth: .infinity, minHeight: viewport)
       }
-      .defaultScrollAnchor(.center)
+      .scrollEdgeEffectStyle(.soft, for: .top)
+      .onScrollGeometryChange(for: CGFloat.self) { visibleHeight($0) } action: { _, h in viewport = h }
       if let s = model.client.starting {
         PendingBubble(pending: s, onRetry: nil)
           .padding(.horizontal)
@@ -112,10 +120,56 @@ struct NewChatView: View {
           }
           .padding(.top, 10)
         }
+        CursorSuggestion()
+          .padding(.top, 18)
       }
     }
     .frame(maxWidth: 520)
     .axContainer("new-chat-empty")
+  }
+}
+
+/// For someone who has Cursor but has not connected it: one line offering it,
+/// once (it can be dismissed; the switch also lives in This computer).
+struct CursorSuggestion: View {
+  @Environment(AppModel.self) private var model
+  @AppStorage("pc.cursorSuggestionDismissed") private var dismissed = false
+  @State private var busy = false
+
+  var body: some View {
+    if let c = model.client.host?.cursor, c.installed, !c.connected, !dismissed {
+      HStack(spacing: 10) {
+        HarnessGlyph(id: "cursor-app", size: 26)
+        VStack(alignment: .leading, spacing: 1) {
+          Text("Follow your Cursor chats here").font(.subheadline.weight(.medium))
+          Text("See them live and reply when a turn ends.").font(.footnote).foregroundStyle(.secondary)
+        }
+        Spacer(minLength: 8)
+        Button("Connect") {
+          busy = true
+          Task {
+            _ = try? await model.client.setCursorConnected(true)
+            busy = false
+          }
+        }
+        .buttonStyle(.graphitePrimary)
+        .controlSize(.small)
+        .disabled(busy)
+        .accessibilityIdentifier("cursor-connect")
+        Button {
+          dismissed = true
+        } label: {
+          Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Not now")
+      }
+      .padding(12)
+      .background(Theme.card, in: .rect(cornerRadius: 16, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.hairline))
+      .frame(maxWidth: 440)
+      .axContainer("cursor-suggestion")
+    }
   }
 }
 
@@ -182,6 +236,9 @@ struct TranscriptView: View {
   /// Whether the reader is at (or near) the end; new items only pull the
   /// view down then, so scrolling up to read is never interrupted.
   @State private var atBottom = true
+  /// The visible height: the content is at least this tall, so a short chat
+  /// still fills the view (its messages at the bottom).
+  @State private var viewport: CGFloat = 0
 
   var body: some View {
     ScrollView {
@@ -205,9 +262,15 @@ struct TranscriptView: View {
       .padding(.horizontal, 16)
       .padding(.vertical, 12)
       .frame(maxWidth: 860)
-      .frame(maxWidth: .infinity)
+      // Fill the view even when the chat is short: the empty top of a scroll
+      // view under the toolbar is drawn in the toolbar's color on macOS.
+      .frame(maxWidth: .infinity, minHeight: viewport, alignment: .bottom)
     }
     .scrollPosition($position)
+    .scrollEdgeEffectStyle(.soft, for: .top)
+    .onScrollGeometryChange(for: CGFloat.self) { visibleHeight($0) } action: { _, h in
+      viewport = h
+    }
     .defaultScrollAnchor(.bottom)
     .defaultScrollAnchor(.bottom, for: .sizeChanges)
     .scrollDismissesKeyboard(.interactively)

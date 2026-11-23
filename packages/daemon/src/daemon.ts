@@ -14,6 +14,7 @@ import { PushService } from './push.ts';
 import { SessionManager } from './sessions/manager.ts';
 import { ScreenWorker } from './sessions/screen.ts';
 import { writeFileAtomic } from './util/files.ts';
+import { CURSOR_APP, CursorBridge } from './agents/cursor-app.ts';
 import { ConnectionRegistry, SESSIONS_TOPIC, type ClientContext, type WsData } from './ws-client.ts';
 
 export interface DaemonOptions {
@@ -93,7 +94,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   const [devices, assets] = await Promise.all([DeviceStore.load(paths.devices), loadWebAssets()]);
   const push = await PushService.create(paths.vapid, devices);
   const serverRef: { current?: Bun.Server<WsData> } = {};
-  const manager = await SessionManager.load(paths, opts.adapters, {
+  // Cursor's desktop app, followed through its hooks: an adapter like the others,
+  // fed by /_control/cursor/<event> instead of a process.
+  const cursor = new CursorBridge();
+  const adapters = { ...opts.adapters, [CURSOR_APP]: cursor.adapter() };
+  const manager = await SessionManager.load(paths, adapters, {
     sessions(list) {
       serverRef.current?.publish(SESSIONS_TOPIC, JSON.stringify({ t: 'sessions', sessions: list }));
     },
@@ -103,7 +108,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   });
   await manager.ensureDirs();
 
-  const host = new HostInfoProvider(opts.adapters);
+  cursor.attachManager(manager);
+  const host = new HostInfoProvider(adapters);
   manager.catalogCommands = (agent) => host.commandsFor(agent);
   const pairing = new PairingCodes();
   const registry = new ConnectionRegistry();
@@ -145,6 +151,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
         for (const d of removed) log.info(`revoked device "${d.name}" (${d.id})`);
         return { revoked: publicDevice(target), also: also.map(publicDevice) };
       },
+      cursorHook: (event, input, signal) => cursor.handle(event, input, { signal }),
     },
   });
   serverRef.current = server;

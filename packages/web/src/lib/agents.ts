@@ -9,6 +9,15 @@ import type {
 } from '@phone-code/protocol';
 
 const NATIVE_NAMES: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
+
+/**
+ * Cursor's desktop app, followed through its hooks: its chats start in Cursor
+ * (never offered for a new chat here), switch no modes, and take a reply only
+ * when Cursor finishes a turn.
+ */
+export const CURSOR_APP = 'cursor-app';
+
+export const isCursorChat = (s: Pick<SessionInfo, 'agent'> | undefined): boolean => s?.agent === CURSOR_APP;
 const SHORT_NAMES: Record<string, string> = { claude: 'Claude', codex: 'Codex' };
 
 /**

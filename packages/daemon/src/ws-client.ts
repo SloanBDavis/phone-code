@@ -7,6 +7,7 @@ import {
   type ServerMessage,
 } from '@phone-code/protocol';
 import type { DeviceRecord, DeviceStore } from './auth/devices.ts';
+import { connectCursor, cursorStatus, disconnectCursor } from './cursor/hooks.ts';
 import { listDirectory } from './fs-list.ts';
 import type { HostInfoProvider } from './host-info.ts';
 import { log } from './log.ts';
@@ -211,14 +212,18 @@ export class Connection implements Subscriber {
     this.readying = undefined;
     if (this.closed) return;
     const push = this.ctx.push;
-    this.send({
-      t: 'ready',
-      v: PROTOCOL_VERSION,
-      host,
-      deviceId: device.id,
-      ...(push === undefined ? {} : { vapidPublicKey: push.publicKey }),
+    // One write: host info can take file I/O (Cursor's hooks), and outside a socket
+    // handler Bun would send each frame on its own; clients get both together.
+    this.ws.cork(() => {
+      this.send({
+        t: 'ready',
+        v: PROTOCOL_VERSION,
+        host,
+        deviceId: device.id,
+        ...(push === undefined ? {} : { vapidPublicKey: push.publicKey }),
+      });
+      this.send({ t: 'sessions', sessions: this.ctx.manager.list() });
     });
-    this.send({ t: 'sessions', sessions: this.ctx.manager.list() });
     this.ws.subscribe(SESSIONS_TOPIC);
   }
 
@@ -282,6 +287,18 @@ export class Connection implements Subscriber {
         return;
       case 'fs.list':
         this.rpc(msg.id, () => listDirectory(msg.path));
+        return;
+      case 'cursor.connect':
+        this.rpc(msg.id, async () => {
+          await connectCursor();
+          return cursorStatus();
+        });
+        return;
+      case 'cursor.disconnect':
+        this.rpc(msg.id, async () => {
+          await disconnectCursor();
+          return cursorStatus();
+        });
         return;
       case 'history.list':
         this.rpc(msg.id, () => manager.history(msg.agent, msg.query));

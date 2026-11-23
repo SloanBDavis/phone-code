@@ -10,6 +10,9 @@ phonecode setup            check your connection options and say what to do next
 phonecode pair             show a fresh pairing QR code (phonecode must be running)
 phonecode devices          list paired phones
 phonecode revoke <id>      remove a paired phone
+phonecode cursor connect   follow Cursor desktop chats (see "Cursor desktop app")
+phonecode cursor disconnect
+phonecode cursor status
 ```
 
 Options: `--port <n>` (default 7777, or `$PHONECODE_PORT`), `--url <https url>`, `--tunnel`, `--local`, `--insecure`, `--host <addr>`, `--no-qr`. Run `phonecode --help` for details. State (paired devices, chats, images, push keys) lives in `~/.phonecode`, or `$PHONECODE_HOME`.
@@ -85,6 +88,17 @@ Notifications (Settings, Notifications) tell you when an agent finishes a turn o
 | Any other ACP agent                                            | Experimental | Add it to `agents.json` in the state directory: `{"agents":[{"id":"my-agent","name":"My Agent","command":"my-agent","args":["acp"]}]}`. Read at daemon start.                                                                |
 
 The terminal works with anything, so you can always run an agent's own TUI there.
+
+### Cursor desktop app
+
+Chats you run in the Cursor app on your computer can show up on your phone, so you can follow along and reply when a turn ends.
+
+- **Connect:** turn on "Follow Cursor chats" in Settings (the app suggests it when Cursor is installed), or run `phonecode cursor connect`. This adds phone-code's hooks to `~/.cursor/hooks.json`, next to any hooks you already have, and installs a small script in phone-code's state folder.
+- **Follow along:** each Cursor chat appears in the sidebar with the prompt, thinking, commands, edits and the answer.
+- **Reply:** when Cursor finishes a turn while you have the chat open, Cursor waits (up to 10 minutes) for your reply and sends it as the next message. A reply sent while Cursor is still working goes out when the turn ends.
+- **Disconnect:** turn the setting off, or run `phonecode cursor disconnect`. Only phone-code's hooks are removed.
+
+When phone-code is not running, the hooks answer at once and Cursor works as usual. You can't start a Cursor chat from your phone, approve Cursor's tool calls, or change its model; Cursor's hooks don't allow it.
 
 ## Architecture
 

@@ -64,30 +64,32 @@ Protocol version: **1** (`PROTOCOL_VERSION`).
 
 ### Client to daemon (`ClientMessage`)
 
-| `t`                | Fields                                                                              | Notes                                                                                                                                                                                                                                       |
-| ------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hello`            | `v: number; token: string`                                                          |                                                                                                                                                                                                                                             |
-| `ping`             |                                                                                     |                                                                                                                                                                                                                                             |
-| `session.create`   | `id: string; params: CreateSessionParams`                                           |                                                                                                                                                                                                                                             |
-| `session.rename`   | `id: string; sessionId: string; title: string`                                      |                                                                                                                                                                                                                                             |
-| `session.delete`   | `id: string; sessionId: string`                                                     | Kills the process and removes the session.                                                                                                                                                                                                  |
-| `fs.list`          | `id: string; path?: string`                                                         | Directory listing for the "pick a folder" UI. Result: FsListResult                                                                                                                                                                          |
-| `history.list`     | `id: string; agent?: AgentId; query?: HistoryQuery`                                 | Past agent sessions found on the host that can be resumed. Result: ResumableSession[] With `query` (even `{}`): "All chats", see HistoryQuery. Without it: the older resume picker (native agents only unless `agent` is given, newest 50). |
-| `session.archive`  | `id: string; sessionId: string; archived: boolean`                                  | Hide a session from the sidebar (or bring it back). Result: SessionInfo                                                                                                                                                                     |
-| `session.commands` | `id: string; sessionId: string`                                                     | Slash commands available in a session right now. Result: SlashCommand[]                                                                                                                                                                     |
-| `sub`              | `sessionId: string; afterSeq?: number`                                              |                                                                                                                                                                                                                                             |
-| `unsub`            | `sessionId: string`                                                                 |                                                                                                                                                                                                                                             |
-| `chat.send`        | `id: string; sessionId: string; text: string; attachments?: Attachment[]`           |                                                                                                                                                                                                                                             |
-| `chat.interrupt`   | `sessionId: string`                                                                 |                                                                                                                                                                                                                                             |
-| `chat.permission`  | `sessionId: string; itemId: string; decision: PermissionDecision; message?: string` |                                                                                                                                                                                                                                             |
-| `chat.answer`      | `sessionId: string; itemId: string; answers: Record<string, string>`                |                                                                                                                                                                                                                                             |
-| `chat.setMode`     | `sessionId: string; permissionMode: PermissionMode`                                 |                                                                                                                                                                                                                                             |
-| `chat.setModel`    | `sessionId: string; model: string`                                                  |                                                                                                                                                                                                                                             |
-| `chat.setEffort`   | `sessionId: string; effort: string`                                                 | Thinking level. Claude Code applies it at once, Codex from the next turn, ACP agents through their `thought_level` option. The session's `effort` follows.                                                                                  |
-| `term.input`       | `sessionId: string; data: string`                                                   |                                                                                                                                                                                                                                             |
-| `term.resize`      | `sessionId: string; cols: number; rows: number`                                     |                                                                                                                                                                                                                                             |
-| `push.subscribe`   | `id: string; subscription: unknown`                                                 |                                                                                                                                                                                                                                             |
-| `push.unsubscribe` | `id: string; endpoint: string`                                                      |                                                                                                                                                                                                                                             |
+| `t`                 | Fields                                                                              | Notes                                                                                                                                                                                                                                       |
+| ------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hello`             | `v: number; token: string`                                                          |                                                                                                                                                                                                                                             |
+| `ping`              |                                                                                     |                                                                                                                                                                                                                                             |
+| `session.create`    | `id: string; params: CreateSessionParams`                                           |                                                                                                                                                                                                                                             |
+| `session.rename`    | `id: string; sessionId: string; title: string`                                      |                                                                                                                                                                                                                                             |
+| `session.delete`    | `id: string; sessionId: string`                                                     | Kills the process and removes the session.                                                                                                                                                                                                  |
+| `fs.list`           | `id: string; path?: string`                                                         | Directory listing for the "pick a folder" UI. Result: FsListResult                                                                                                                                                                          |
+| `cursor.connect`    | `id: string`                                                                        | Installs (or removes) phone-code's hooks in Cursor's user hooks (~/.cursor/hooks.json, keeping every other hook). Answered with the new `HostInfo.cursor`.                                                                                  |
+| `cursor.disconnect` | `id: string`                                                                        |                                                                                                                                                                                                                                             |
+| `history.list`      | `id: string; agent?: AgentId; query?: HistoryQuery`                                 | Past agent sessions found on the host that can be resumed. Result: ResumableSession[] With `query` (even `{}`): "All chats", see HistoryQuery. Without it: the older resume picker (native agents only unless `agent` is given, newest 50). |
+| `session.archive`   | `id: string; sessionId: string; archived: boolean`                                  | Hide a session from the sidebar (or bring it back). Result: SessionInfo                                                                                                                                                                     |
+| `session.commands`  | `id: string; sessionId: string`                                                     | Slash commands available in a session right now. Result: SlashCommand[]                                                                                                                                                                     |
+| `sub`               | `sessionId: string; afterSeq?: number`                                              |                                                                                                                                                                                                                                             |
+| `unsub`             | `sessionId: string`                                                                 |                                                                                                                                                                                                                                             |
+| `chat.send`         | `id: string; sessionId: string; text: string; attachments?: Attachment[]`           |                                                                                                                                                                                                                                             |
+| `chat.interrupt`    | `sessionId: string`                                                                 |                                                                                                                                                                                                                                             |
+| `chat.permission`   | `sessionId: string; itemId: string; decision: PermissionDecision; message?: string` |                                                                                                                                                                                                                                             |
+| `chat.answer`       | `sessionId: string; itemId: string; answers: Record<string, string>`                |                                                                                                                                                                                                                                             |
+| `chat.setMode`      | `sessionId: string; permissionMode: PermissionMode`                                 |                                                                                                                                                                                                                                             |
+| `chat.setModel`     | `sessionId: string; model: string`                                                  |                                                                                                                                                                                                                                             |
+| `chat.setEffort`    | `sessionId: string; effort: string`                                                 | Thinking level. Claude Code applies it at once, Codex from the next turn, ACP agents through their `thought_level` option. The session's `effort` follows.                                                                                  |
+| `term.input`        | `sessionId: string; data: string`                                                   |                                                                                                                                                                                                                                             |
+| `term.resize`       | `sessionId: string; cols: number; rows: number`                                     |                                                                                                                                                                                                                                             |
+| `push.subscribe`    | `id: string; subscription: unknown`                                                 |                                                                                                                                                                                                                                             |
+| `push.unsubscribe`  | `id: string; endpoint: string`                                                      |                                                                                                                                                                                                                                             |
 
 ### Daemon to client (`ServerMessage`)
 
@@ -286,6 +288,14 @@ export interface SessionInfo {
   archived?: boolean;
 }
 
+/** Cursor's desktop app on the computer (see `HostInfo.cursor`). */
+export interface CursorStatus {
+  /** Cursor is installed (or its settings folder exists). */
+  installed: boolean;
+  /** phone-code's hooks are in Cursor's hooks.json. */
+  connected: boolean;
+}
+
 export interface HostInfo {
   name: string; // hostname
   platform: string; // darwin | linux | win32
@@ -300,6 +310,12 @@ export interface HostInfo {
    * from older daemons; clients then fall back to `agents`.
    */
   agentCatalog?: AgentInfo[];
+  /**
+   * Cursor's desktop app on this computer: whether it is there, and whether
+   * phone-code's hooks are installed so its chats can be followed and answered
+   * (`cursor.connect`). Absent from older daemons.
+   */
+  cursor?: CursorStatus;
   shell: string;
   /** How the phone reaches the host, so the app can say what works and what does not. */
   connection?: ConnectionInfo;
@@ -489,6 +505,13 @@ export type ClientMessage =
   /** Directory listing for the "pick a folder" UI. Result: FsListResult */
   | { t: 'fs.list'; id: string; path?: string }
   /**
+   * Installs (or removes) phone-code's hooks in Cursor's user hooks
+   * (~/.cursor/hooks.json, keeping every other hook). Answered with the new
+   * `HostInfo.cursor`.
+   */
+  | { t: 'cursor.connect'; id: string }
+  | { t: 'cursor.disconnect'; id: string }
+  /**
    * Past agent sessions found on the host that can be resumed. Result: ResumableSession[]
    * With `query` (even `{}`): "All chats", see HistoryQuery. Without it: the
    * older resume picker (native agents only unless `agent` is given, newest 50).
@@ -653,6 +676,8 @@ export interface RpcResults {
   'chat.send': { itemId: string };
   'push.subscribe': undefined;
   'push.unsubscribe': undefined;
+  'cursor.connect': CursorStatus;
+  'cursor.disconnect': CursorStatus;
 }
 
 /**

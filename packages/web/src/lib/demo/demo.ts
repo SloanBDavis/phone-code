@@ -607,6 +607,11 @@ export class DemoTransport implements Transport {
       case 'fs.list':
         this.ok(msg.id, fsList(msg.path));
         return;
+      // The demo computer has Cursor; connecting only flips the flag.
+      case 'cursor.connect':
+      case 'cursor.disconnect':
+        this.ok(msg.id, { installed: true, connected: msg.t === 'cursor.connect' });
+        return;
       case 'history.list':
         this.ok(msg.id, this.search(msg.agent, msg.query ?? {}));
         return;

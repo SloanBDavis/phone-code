@@ -3,7 +3,7 @@ import { useComputed } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SessionInfo } from '@phone-code/protocol';
 import { archiveSession, deleteSession, openSession, renameSession } from '../lib/actions';
-import { agentLabel } from '../lib/agents';
+import { agentLabel, isCursorChat } from '../lib/agents';
 import { exitDemo } from '../lib/boot';
 import { client } from '../lib/client';
 import { now } from '../lib/clock';
@@ -64,7 +64,11 @@ function Status({ s }: { s: SessionInfo }): JSX.Element | null {
   if (s.status === 'waiting')
     return (
       <span class="pill-attention">
-        {/^(?:Wants|Needs permission)\b/.test(s.preview ?? '') ? 'Approval' : 'Question'}
+        {isCursorChat(s)
+          ? 'Reply'
+          : /^(?:Wants|Needs permission)\b/.test(s.preview ?? '')
+            ? 'Approval'
+            : 'Question'}
       </span>
     );
   if (s.status === 'error') return <span class="badge-error-dot" aria-label="Error" />;

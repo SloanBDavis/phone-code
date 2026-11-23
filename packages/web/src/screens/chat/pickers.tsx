@@ -128,6 +128,9 @@ export function HarnessChip({
       : (session.agent ?? 'claude')
     : draft.value.harness;
   const cwd = session?.cwd ?? draft.value.cwd;
+  // An agent the host does not offer for new chats (Cursor's app): the session names it.
+  const named = current !== 'terminal' && !agentInfo(current) ? session?.agentName : undefined;
+  const label = named ?? shortName(current);
   const list = harnessList();
   const choose = (id: Harness): void => {
     if (id === current) return;
@@ -164,7 +167,7 @@ export function HarnessChip({
       class="chip harness-chip"
       data-testid="composer-harness"
       data-harness={current}
-      aria-label={`Harness: ${harnessName(current)}`}
+      aria-label={`Harness: ${named ?? harnessName(current)}`}
       onClick={(e) =>
         openMenu(
           e.currentTarget,
@@ -180,7 +183,7 @@ export function HarnessChip({
       }
     >
       {current === 'terminal' && <Icon name="terminal" size={13} stroke={2.2} />}
-      <span class="chip-text">{shortName(current)}</span>
+      <span class="chip-text">{label}</span>
     </button>
   );
 }

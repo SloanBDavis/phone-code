@@ -155,6 +155,9 @@ function parseObject(o: Obj): ClientMessage {
       };
     case 'session.delete':
       return { t, id: str(o, 'id', ID_MAX, 1), sessionId: str(o, 'sessionId', ID_MAX, 1) };
+    case 'cursor.connect':
+    case 'cursor.disconnect':
+      return { t, id: str(o, 'id', ID_MAX, 1) };
     case 'fs.list': {
       const path = optStr(o, 'path', 4096);
       return { t, id: str(o, 'id', ID_MAX, 1), ...(path === undefined ? {} : { path }) };

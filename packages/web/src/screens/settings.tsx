@@ -1,6 +1,8 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import '../styles/settings.css';
+import { setCursorConnected } from '../lib/actions';
+import { CURSOR_APP } from '../lib/agents';
 import { exitDemo, unpairDevice } from '../lib/boot';
 import { connectionOf } from '../lib/connection';
 import { harnessList } from '../lib/harness';
@@ -65,6 +67,67 @@ function NotificationsRow(): JSX.Element {
         {note}
       </p>
     </>
+  );
+}
+
+/**
+ * Cursor's desktop app: follow its chats here (phone-code's hook in Cursor's
+ * hooks.json) or stop. Shown when Cursor is on this computer.
+ */
+function CursorSection({ connected }: { connected: boolean }): JSX.Element {
+  const [busy, setBusy] = useState(false);
+  // What the switch shows while the host works on it; back to the host's answer after.
+  const [want, setWant] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <section class="section" data-testid="settings-cursor">
+      <h2 class="section-head">Cursor</h2>
+      <div class="list">
+        <label class="cell">
+          <Glyph kind={CURSOR_APP} size={30} />
+          <span class="cell-main cell-title">Follow Cursor chats</span>
+          {busy && <Spinner size={16} />}
+          <input
+            type="checkbox"
+            class="switch"
+            checked={want ?? connected}
+            disabled={busy}
+            data-testid="cursor-toggle"
+            onChange={(e) => {
+              const on = e.currentTarget.checked;
+              haptic('light');
+              setBusy(true);
+              setWant(on);
+              setError(null);
+              setCursorConnected(on)
+                .catch((err: unknown) => {
+                  setError(
+                    err instanceof Error
+                      ? err.message
+                      : on
+                        ? 'Could not connect Cursor'
+                        : 'Could not disconnect Cursor',
+                  );
+                })
+                .finally(() => {
+                  setBusy(false);
+                  setWant(null);
+                });
+            }}
+          />
+        </label>
+      </div>
+      {error && (
+        <p class="footnote error" role="alert" data-testid="cursor-error">
+          {error}
+        </p>
+      )}
+      <p class="footnote">
+        Your Cursor app chats show up here as you work: what you asked, its thinking, commands, edits and
+        answers. When Cursor finishes a turn, reply here and it continues that chat. phone-code adds a hook to
+        Cursor (<code class="cmd">~/.cursor/hooks.json</code>) and keeps your other hooks.
+      </p>
+    </section>
   );
 }
 
@@ -182,6 +245,8 @@ export default function ComputerSheet({ close }: { close: () => void }): JSX.Ele
             </div>
           </section>
         )}
+
+        {h?.cursor?.installed && <CursorSection connected={h.cursor.connected} />}
 
         <section class="section">
           <h2 class="section-head">Notifications</h2>

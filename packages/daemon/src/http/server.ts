@@ -20,6 +20,7 @@ import { SECURITY_HEADERS, serveManifest, serveStatic } from './static.ts';
 import type { WebAssets } from './web-assets.ts';
 
 const MAX_JSON_BODY = 4096;
+const MAX_CURSOR_HOOK_BODY = 8 * 1024 * 1024;
 const PORT_ATTEMPTS = 20;
 const HSTS = 'max-age=31536000';
 
@@ -29,6 +30,12 @@ export interface ControlApi {
   status(): { url: string; port: number; pid: number };
   /** The device and the devices paired through it (`also`), or undefined if none matches. */
   revoke(id: string): { revoked: PublicDevice; also: PublicDevice[] } | undefined;
+  /** One Cursor hook event (cursor/hooks.ts); the answer is printed back to Cursor. */
+  cursorHook?(
+    event: string,
+    input: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown>>;
 }
 
 export interface ServerOptions {
@@ -53,11 +60,11 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-async function readJsonBody(req: Request): Promise<Record<string, unknown> | undefined> {
+async function readJsonBody(req: Request, max = MAX_JSON_BODY): Promise<Record<string, unknown> | undefined> {
   const declared = Number(req.headers.get('content-length') ?? '0');
-  if (declared > MAX_JSON_BODY) return undefined;
+  if (declared > max) return undefined;
   const text = await req.text();
-  if (text.length > MAX_JSON_BODY) return undefined;
+  if (text.length > max) return undefined;
   const v = parseJson(text);
   return isRecord(v) ? v : undefined;
 }
@@ -205,7 +212,15 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     return json({ ok: true });
   }
 
-  async function control(req: Request, path: string): Promise<Response> {
+  async function control(req: Request, path: string, server: Bun.Server<WsData>): Promise<Response> {
+    const hook = /^\/_control\/cursor\/([A-Za-z]{1,40})$/.exec(path)?.[1];
+    if (hook !== undefined && req.method === 'POST' && opts.control.cursorHook !== undefined) {
+      // A finished turn may wait for a reply from the phone: no idle timeout for it.
+      if (hook === 'stop') server.timeout(req, 0);
+      // Hook events carry whole tool outputs and responses (control requests only: token-checked).
+      const body = await readJsonBody(req, MAX_CURSOR_HOOK_BODY);
+      return json(await opts.control.cursorHook(hook, body ?? {}, req.signal));
+    }
     if (path === '/_control/status' && req.method === 'GET') return json(opts.control.status());
     if (path === '/_control/pair' && req.method === 'POST') return json(opts.control.newPairCode());
     if (path === '/_control/devices' && req.method === 'GET') return json({ devices: opts.devices.list() });
@@ -267,7 +282,7 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
     }
     if (path.startsWith('/_control/')) {
       if (!controlAllowed(req, ip)) return json({ error: 'forbidden' }, 403);
-      return control(req, path);
+      return control(req, path, server);
     }
     if (path.startsWith('/api/')) {
       // CSRF: a foreign page can POST a simple request here (and burn the

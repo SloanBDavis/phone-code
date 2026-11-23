@@ -274,6 +274,7 @@ struct HarnessGlyph: View {
     case "gemini": "Ge"
     case "opencode": "Oc"
     case "copilot": "Co"
+    case "cursor", "cursor-app": "Cu"
     default: String(id.prefix(2)).capitalized
     }
   }

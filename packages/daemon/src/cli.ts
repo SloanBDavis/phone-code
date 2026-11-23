@@ -29,6 +29,9 @@ Usage
   phonecode pair             show a fresh pairing QR code (daemon must be running)
   phonecode devices          list paired devices
   phonecode revoke <id>      revoke a paired device (id or unique prefix)
+  phonecode cursor connect   follow your Cursor app chats on your phone and reply when a turn ends
+  phonecode cursor disconnect
+                             remove phone-code's hooks from Cursor (keeps your other hooks)
 
 Options
   --port <n>     port to listen on (default ${DEFAULT_PORT}, moves up if busy)
@@ -259,6 +262,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       return serve(values);
     case 'pair':
       return pairCommand(home, values['no-qr'] === true);
+    case 'cursor':
+      return cursorCommand(arg);
     case 'devices':
       return devicesCommand(home);
     case 'setup': {
@@ -270,6 +275,34 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     default:
       process.stderr.write(`Unknown command "${command}".\n\n${HELP}`);
       return 1;
+  }
+}
+
+async function cursorCommand(action: string | undefined): Promise<number> {
+  const { connectCursor, cursorDir, cursorStatus, disconnectCursor } = await import('./cursor/hooks.ts');
+  try {
+    if (action === 'connect') {
+      await connectCursor();
+      process.stdout.write(
+        `Connected. phone-code's hooks are in ${cursorDir()}/hooks.json (your other hooks are kept).\n` +
+          'Your Cursor app chats now show up on your phone while phonecode runs; reply there when Cursor finishes a turn.\n',
+      );
+      return 0;
+    }
+    if (action === 'disconnect') {
+      await disconnectCursor();
+      process.stdout.write("Disconnected: phone-code's hooks are removed from Cursor.\n");
+      return 0;
+    }
+    const s = await cursorStatus();
+    process.stdout.write(
+      `Cursor: ${s.installed ? 'installed' : 'not found'}; phone-code hooks: ${s.connected ? 'connected' : 'not connected'}\n` +
+        (s.connected ? '' : 'Connect with: phonecode cursor connect\n'),
+    );
+    return 0;
+  } catch (e) {
+    process.stderr.write(`${e instanceof Error ? e.message : String(e)}\n`);
+    return 1;
   }
 }
 

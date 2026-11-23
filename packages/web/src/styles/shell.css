@@ -723,6 +723,67 @@ mark {
   font-size: 13.5px;
 }
 
+/* Cursor on this computer, not followed yet: one quiet line above the new chat,
+   as wide as the gutters allow (the empty state itself is narrower). */
+.cursor-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% + 48px);
+  max-width: 420px;
+  margin: 0 -24px 26px;
+  padding: 10px 6px 10px 10px;
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 0.5px var(--card-border);
+  text-align: left;
+}
+
+.cursor-suggestion-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cursor-suggestion-title {
+  font: 600 13.5px/1.25 var(--font);
+  letter-spacing: -0.01em;
+  color: var(--label);
+}
+
+.cursor-suggestion-sub {
+  font: 400 12.5px/1.3 var(--font);
+  color: var(--label-2);
+}
+
+.cursor-suggestion .btn-sm {
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13.5px;
+}
+
+.cursor-suggestion-x {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: -2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--label-3);
+  cursor: pointer;
+}
+
+.cursor-suggestion-x:active {
+  background: var(--fill-3);
+}
+
 /* ------------------------------------------------------------ overlays: additions */
 
 .toast.has-action {

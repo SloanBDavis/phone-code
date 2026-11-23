@@ -70,6 +70,7 @@ It checks your computer and tells you the one next step.
 - Send photos and screenshots to the agent.
 - Find and continue any past chat, including ones you started at the computer.
 - Open a real terminal when you need one.
+- Follow chats from the Cursor desktop app and reply when a turn ends.
 
 Works with Claude Code, Codex, Antigravity, Gemini CLI, OpenCode and other agents that speak the Agent Client Protocol. Claude Code is the most tested; see [which agents work how well](docs/guide.md#agent-support).
 

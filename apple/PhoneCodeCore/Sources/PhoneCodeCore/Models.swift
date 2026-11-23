@@ -190,6 +190,12 @@ public struct HostAgent: Codable, Hashable, Sendable {
   public var models: [String]?
 }
 
+/// Cursor's desktop app: installed, and whether phone-code's hooks are in it.
+public struct CursorStatus: Codable, Hashable, Sendable {
+  public var installed: Bool
+  public var connected: Bool
+}
+
 public struct HostInfo: Codable, Hashable, Sendable {
   public var name: String
   public var platform: String
@@ -198,6 +204,8 @@ public struct HostInfo: Codable, Hashable, Sendable {
   public var daemonVersion: String
   public var agents: [HostAgent]
   public var agentCatalog: [AgentInfo]?
+  /// Cursor's desktop app on the computer (absent from older daemons).
+  public var cursor: CursorStatus?
   public var shell: String
   public var connection: ConnectionInfo?
 }

@@ -2,7 +2,7 @@ import type { SessionInfo } from '@phone-code/protocol';
 import { alertDialog, toast } from '../ui/overlay';
 import { client } from './client';
 import { currentSessionId, openChat, openNew } from './nav';
-import { chatOf, dropChat, sessions } from './state';
+import { chatOf, dropChat, host, sessions } from './state';
 import { copyText, haptic } from './util';
 
 /** Session-level actions shared by the list (swipe) and the chat title menu. */
@@ -96,4 +96,15 @@ export async function copyLastResponse(sessionId: string): Promise<void> {
     return;
   }
   if (await copyText(text)) toast('Copied', 'check');
+}
+
+/**
+ * Follow Cursor's desktop app (or stop): the host adds or removes its hook in
+ * Cursor's hooks.json and answers with the new status, which this host's info
+ * takes on. Throws what the host said when it could not.
+ */
+export async function setCursorConnected(on: boolean): Promise<void> {
+  const cursor = await client.rpc({ t: on ? 'cursor.connect' : 'cursor.disconnect' });
+  const h = host.peek();
+  if (h) host.value = { ...h, cursor };
 }

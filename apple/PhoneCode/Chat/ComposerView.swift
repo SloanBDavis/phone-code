@@ -207,7 +207,10 @@ struct ComposerView: View {
                 if let m { model.client.setModel(s.id, m) }
               }
             }
-            modeMenu(modes: Agents.modes(s), current: s.permissionMode ?? .default) { model.client.setMode(s.id, $0) }
+            // Cursor chats (followed from its app) have no modes to switch here.
+            if !Agents.modes(s).isEmpty {
+              modeMenu(modes: Agents.modes(s), current: s.permissionMode ?? .default) { model.client.setMode(s.id, $0) }
+            }
             Label(folderName(s.cwd), systemImage: "folder")
               .font(.callout)
               .foregroundStyle(.secondary)

@@ -106,6 +106,8 @@ public enum RpcRequest: Sendable, Hashable {
   case sessionArchive(sessionId: String, archived: Bool)
   case sessionCommands(sessionId: String)
   case chatSend(sessionId: String, text: String, attachments: [Attachment]?)
+  case cursorConnect
+  case cursorDisconnect
 
   public var name: String {
     switch self {
@@ -117,6 +119,8 @@ public enum RpcRequest: Sendable, Hashable {
     case .sessionArchive: "session.archive"
     case .sessionCommands: "session.commands"
     case .chatSend: "chat.send"
+    case .cursorConnect: "cursor.connect"
+    case .cursorDisconnect: "cursor.disconnect"
     }
   }
 }
@@ -171,6 +175,7 @@ public enum ClientMessage: Sendable, Hashable, Encodable {
         try c.encode(s, forKey: .sessionId)
         try c.encode(text, forKey: .text)
         if let attachments, !attachments.isEmpty { try c.encode(attachments, forKey: .attachments) }
+      case .cursorConnect, .cursorDisconnect: break
       }
     case .sub(let s, let afterSeq):
       try c.encode("sub", forKey: .t)

@@ -3,14 +3,20 @@ import { useSignal } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SessionInfo } from '@phone-code/protocol';
 import '../../styles/chat.css';
-import { archiveSession, copyLastResponse, deleteSession, renameSession } from '../../lib/actions';
-import { agentShortLabel } from '../../lib/agents';
+import {
+  archiveSession,
+  copyLastResponse,
+  deleteSession,
+  renameSession,
+  setCursorConnected,
+} from '../../lib/actions';
+import { CURSOR_APP, agentShortLabel } from '../../lib/agents';
 import { client } from '../../lib/client';
 import { connectionOf } from '../../lib/connection';
 import { draft, harnessList, openTerminal, retryStart, starting } from '../../lib/harness';
 import { chatOf, conn, host, isDemo } from '../../lib/state';
 import { loadDraft, markSeen, seen } from '../../lib/storage';
-import { basename, copyText, soon, tildify } from '../../lib/util';
+import { basename, copyText, haptic, soon, tildify } from '../../lib/util';
 import { TopBar } from '../../ui/chrome';
 import { paneButtons } from '../../ui/drawer';
 import { GlassButton } from '../../ui/glass';
@@ -65,6 +71,55 @@ function HttpNote(): JSX.Element | null {
   );
 }
 
+/**
+ * Cursor is on this computer but not followed: one line offering it, until
+ * connected or dismissed (the switch also lives in This computer).
+ */
+function CursorSuggestion(): JSX.Element | null {
+  const [hidden, setHidden] = useState(() => seen('cursor'));
+  const [busy, setBusy] = useState(false);
+  const c = host.value?.cursor;
+  if (hidden || !c?.installed || c.connected) return null;
+  const connect = (): void => {
+    haptic('light');
+    setBusy(true);
+    setCursorConnected(true)
+      .then(() => toast('Following your Cursor chats', 'check'))
+      .catch((e: unknown) => toast(e instanceof Error ? e.message : 'Could not connect Cursor', 'warn'))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div class="cursor-suggestion" data-testid="cursor-suggestion">
+      <Glyph kind={CURSOR_APP} size={28} />
+      <span class="cursor-suggestion-text">
+        <span class="cursor-suggestion-title">Follow your Cursor chats here</span>
+        <span class="cursor-suggestion-sub">See them live and reply when a turn ends.</span>
+      </span>
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        disabled={busy}
+        onClick={connect}
+        data-testid="cursor-connect"
+      >
+        {busy ? <Spinner size={15} /> : 'Connect'}
+      </button>
+      <button
+        type="button"
+        class="cursor-suggestion-x"
+        aria-label="Not now"
+        data-testid="cursor-dismiss"
+        onClick={() => {
+          markSeen('cursor');
+          setHidden(true);
+        }}
+      >
+        <Icon name="close" size={14} stroke={2.6} />
+      </button>
+    </div>
+  );
+}
+
 /** A new chat before its first message: what it will run, a few ideas, or how to set up an agent. */
 function NewChatEmpty({ onStarter }: { onStarter: (t: string) => void }): JSX.Element {
   const d = draft.value;
@@ -74,6 +129,7 @@ function NewChatEmpty({ onStarter }: { onStarter: (t: string) => void }): JSX.El
   if (h && ready.length === 0)
     return (
       <div class="chat-empty" data-testid="new-chat-empty" data-state="no-agent">
+        <CursorSuggestion />
         <Glyph kind="app" size={58} />
         <h2>No coding agent on {name} yet</h2>
         <p>Install one on your computer and it shows up here. Meanwhile, the terminal works.</p>
@@ -96,6 +152,7 @@ function NewChatEmpty({ onStarter }: { onStarter: (t: string) => void }): JSX.El
     );
   return (
     <div class="chat-empty" data-testid="new-chat-empty" data-state={d.info?.available ? 'ready' : 'setup'}>
+      <CursorSuggestion />
       <Glyph kind="app" size={58} />
       <h2>{d.info?.name ?? 'New chat'}</h2>
       <p>
