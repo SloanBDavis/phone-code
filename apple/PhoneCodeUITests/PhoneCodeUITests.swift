@@ -174,8 +174,15 @@ final class PhoneCodeUITests: XCTestCase {
     send("ask me something")
     wait("question-option", 30)
     shot("10-question")
-    press(el("question-option"))
-    press(el("question-submit"))
+    // The card can still be scrolling into view: a click then misses the
+    // option. Click until Submit is enabled (an option is chosen).
+    let submit = wait("question-submit")
+    for _ in 0..<5 where !submit.isEnabled {
+      press(el("question-option"))
+      sleep(1)
+    }
+    XCTAssertTrue(submit.isEnabled, "no option chosen")
+    press(submit)
     wait("question-answer", 30)
   }
 
