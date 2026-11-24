@@ -12,10 +12,14 @@
  *   afterFileEdit      -> ToolItem (diff)   stop / sessionEnd  -> TurnItem, idle
  *
  * Replying: Cursor's `stop` hook may return a `followup_message`, which Cursor
- * submits as the next message of that same chat. A message sent from the phone
- * while Cursor works waits for that hook; when the turn ends and a device has the
- * chat open, the hook waits (up to `holdMs`) for a reply. When nobody follows the
- * chat the hook returns at once, so the desktop is never held up.
+ * submits as the next message of that same chat; nothing else can put a message
+ * into a Cursor chat. A message sent from the phone while Cursor works waits for
+ * that hook. When a turn ends the hook is held open for a reply (the chat is
+ * `waiting`) if a device has the chat open, or if nobody is at the computer (no
+ * keyboard or mouse input for `awayMs`) and a device is paired. It is let go
+ * when someone is back at the computer and no device has the chat open, so the
+ * desktop is not held up for whoever sits at it, and after `holdMs` at the latest.
+ * Once let go, the chat is `idle` and takes no message until the next turn.
  */
 import { homedir } from 'node:os';
 import type { ChatItem, ToolItem } from '@phone-code/protocol';
@@ -23,14 +27,36 @@ import { log } from '../log.ts';
 import type { SessionManager } from '../sessions/manager.ts';
 import { ChatSession } from '../sessions/chat.ts';
 import { cursorInstalled } from '../cursor/hooks.ts';
+import { computerIdleMs } from '../cursor/idle.ts';
 import { isRec, oneLine, str, type Rec } from './shared/common.ts';
 import { countPatch, unifiedDiff } from './shared/diff.ts';
 import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
 
 export const CURSOR_APP = 'cursor-app';
 
-/** How long a finished turn waits for a reply while someone follows the chat. */
-const DEFAULT_HOLD_MS = 10 * 60_000;
+/** The longest a finished turn waits for a reply (cursor/hooks.ts gives the hook a little more). */
+export const DEFAULT_HOLD_MS = 8 * 60 * 60_000;
+/** No keyboard or mouse input for this long: nobody is at the computer. */
+const DEFAULT_AWAY_MS = 2 * 60_000;
+/** How often a waiting turn checks whether someone is back at the computer. */
+const DEFAULT_POLL_MS = 3000;
+/** Where idle time is unknown: a turn nobody has open any more is let go after this. */
+const UNFOLLOWED_MS = 10 * 60_000;
+
+export interface CursorBridgeOptions {
+  holdMs?: number;
+  awayMs?: number;
+  pollMs?: number;
+  /** Milliseconds since the last keyboard or mouse input; `undefined` when unknown. */
+  idleMs?: () => Promise<number | undefined>;
+  /** Whether any device is paired (someone could reply from one). */
+  hasDevices?: () => boolean;
+}
+
+const envMs = (name: string): number | undefined => {
+  const n = Number(process.env[name]);
+  return n > 0 ? n : undefined;
+};
 
 interface Conversation {
   events?: AgentEvents;
@@ -41,6 +67,8 @@ interface Conversation {
   /** Text handed to Cursor as a follow-up: its beforeSubmitPrompt is not a new user message. */
   delivered?: string;
   turnStartedAt?: number;
+  /** Cursor is in a turn: a message from the phone goes out when it ends. */
+  running?: boolean;
   seq: number;
   /** Called when a session attaches (its adapter started). */
   onAttach?: () => void;
@@ -50,9 +78,17 @@ export class CursorBridge {
   private manager: SessionManager | undefined;
   private readonly conversations = new Map<string, Conversation>();
   readonly holdMs: number;
+  private readonly awayMs: number;
+  private readonly pollMs: number;
+  private readonly idleMs: () => Promise<number | undefined>;
+  private readonly hasDevices: () => boolean;
 
-  constructor(holdMs = Number(process.env['PHONECODE_CURSOR_HOLD_MS']) || DEFAULT_HOLD_MS) {
-    this.holdMs = holdMs;
+  constructor(opts: CursorBridgeOptions = {}) {
+    this.holdMs = opts.holdMs ?? envMs('PHONECODE_CURSOR_HOLD_MS') ?? DEFAULT_HOLD_MS;
+    this.awayMs = opts.awayMs ?? envMs('PHONECODE_CURSOR_AWAY_MS') ?? DEFAULT_AWAY_MS;
+    this.pollMs = opts.pollMs ?? envMs('PHONECODE_CURSOR_POLL_MS') ?? DEFAULT_POLL_MS;
+    this.idleMs = opts.idleMs ?? computerIdleMs;
+    this.hasDevices = opts.hasDevices ?? (() => false);
   }
 
   attachManager(manager: SessionManager): void {
@@ -108,20 +144,26 @@ export class CursorBridge {
     };
   }
 
-  /** A message from the phone: to the waiting `stop` hook, else held for the next one. */
+  /** A message from the phone: to the waiting `stop` hook, or held until the running turn ends. */
   private reply(id: string, text: string): void {
     const c = this.conv(id);
     if (c.waiter !== undefined) {
       c.waiter(text);
       return;
     }
-    c.queued.push(text);
+    if (c.running === true) {
+      c.queued.push(text);
+      c.events?.status('running');
+      this.notice(id, 'info', 'Cursor gets this message when its current turn ends.', 'queued');
+      return;
+    }
+    // No turn to end and no hook waiting: there is no way to hand Cursor a message.
     c.events?.status('idle');
     this.notice(
       id,
-      'info',
-      'Cursor is not waiting for a reply right now. It gets this message when its current turn in this chat ends.',
-      'queued',
+      'warn',
+      'Not sent: Cursor is no longer waiting for a reply in this chat. Send its next message from Cursor on your computer; you can reply here when that turn ends.',
+      'closed',
     );
   }
 
@@ -141,10 +183,13 @@ export class CursorBridge {
     const now = Date.now();
     const gen = str(input.generation_id) ?? String(now);
     const up = (item: ChatItem): void => ev?.upsert(item);
+    if (event !== 'stop' && event !== 'sessionEnd') c.running = true;
     switch (event) {
       case 'beforeSubmitPrompt': {
         const prompt = str(input.prompt) ?? '';
         c.turnStartedAt = now;
+        // A new message went in at the computer: nothing waits for the phone any more.
+        c.waiter?.(undefined);
         ev?.status('running');
         if (c.delivered !== undefined && c.delivered.trim() === prompt.trim()) {
           // Our own follow-up coming back: the phone already shows it.
@@ -182,6 +227,7 @@ export class CursorBridge {
       case 'stop':
         return this.stop(id, c, input, request?.signal);
       case 'sessionEnd':
+        c.running = false;
         c.waiter?.(undefined);
         ev?.status('idle');
         return {};
@@ -194,30 +240,50 @@ export class CursorBridge {
     const status = str(input.status);
     const ev = c.events;
     const ended = Date.now();
-    ev?.upsert({
+    c.running = false;
+    const turn: ChatItem = {
       kind: 'turn',
       id: `cursor-turn:${str(input.generation_id) ?? ended}`,
       ts: ended,
       outcome: status === 'completed' ? 'completed' : status === 'aborted' ? 'interrupted' : 'error',
       ...(c.turnStartedAt === undefined ? {} : { durationMs: ended - c.turnStartedAt }),
-    });
+    };
     // Replies sent while Cursor worked go out now.
-    if (c.queued.length > 0) return this.followUp(c, c.queued.splice(0).join('\n\n'));
-    if (status !== 'completed' || !this.followed(id)) {
+    if (c.queued.length > 0) {
+      ev?.upsert(turn);
+      return this.followUp(c, c.queued.splice(0).join('\n\n'));
+    }
+    if (status !== 'completed' || !(await this.shouldWait(id))) {
+      ev?.upsert(turn);
       ev?.status('idle');
       return {};
     }
-    // Someone has this chat open: wait for their reply (the desktop shows Cursor still finishing).
+    // Wait for a reply (the desktop shows Cursor still finishing). `waiting` first:
+    // the notification for a chat nobody has open then says a reply is wanted.
     ev?.status('waiting');
+    ev?.upsert(turn);
     const reply = await new Promise<string | undefined>((resolve) => {
+      let lastFollowed = Date.now();
       const done = (r: string | undefined): void => {
         clearTimeout(timer);
+        clearInterval(poll);
         signal?.removeEventListener('abort', aborted);
         if (c.waiter === done) delete c.waiter;
         resolve(r);
       };
       const aborted = (): void => done(undefined);
       const timer = setTimeout(() => done(undefined), this.holdMs);
+      // Someone is back at the computer and no device has the chat open: let Cursor go.
+      const check = async (): Promise<void> => {
+        const idle = await this.idleMs();
+        if (c.waiter !== done || this.followed(id)) return;
+        const back = idle === undefined ? Date.now() - lastFollowed > UNFOLLOWED_MS : idle < this.awayMs;
+        if (back) done(undefined);
+      };
+      const poll = setInterval(() => {
+        if (this.followed(id)) lastFollowed = Date.now();
+        else void check();
+      }, this.pollMs);
       signal?.addEventListener('abort', aborted);
       c.waiter = done;
     });
@@ -228,8 +294,17 @@ export class CursorBridge {
     return this.followUp(c, reply);
   }
 
+  /** Whether a finished turn waits for a reply: a device has the chat open, or nobody is at the computer. */
+  private async shouldWait(id: string): Promise<boolean> {
+    if (this.followed(id)) return true;
+    if (!this.hasDevices()) return false;
+    const idle = await this.idleMs();
+    return idle !== undefined && idle >= this.awayMs;
+  }
+
   private followUp(c: Conversation, text: string): Rec {
     c.delivered = text;
+    c.running = true;
     c.events?.status('running');
     return { followup_message: text };
   }

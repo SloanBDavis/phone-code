@@ -15,6 +15,7 @@ import { SessionManager } from './sessions/manager.ts';
 import { ScreenWorker } from './sessions/screen.ts';
 import { writeFileAtomic } from './util/files.ts';
 import { CURSOR_APP, CursorBridge } from './agents/cursor-app.ts';
+import { refreshCursor } from './cursor/hooks.ts';
 import { ConnectionRegistry, SESSIONS_TOPIC, type ClientContext, type WsData } from './ws-client.ts';
 
 export interface DaemonOptions {
@@ -96,7 +97,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   const serverRef: { current?: Bun.Server<WsData> } = {};
   // Cursor's desktop app, followed through its hooks: an adapter like the others,
   // fed by /_control/cursor/<event> instead of a process.
-  const cursor = new CursorBridge();
+  const cursor = new CursorBridge({ hasDevices: () => devices.all().length > 0 });
   const adapters = { ...opts.adapters, [CURSOR_APP]: cursor.adapter() };
   const manager = await SessionManager.load(paths, adapters, {
     sessions(list) {
@@ -109,6 +110,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
   await manager.ensureDirs();
 
   cursor.attachManager(manager);
+  // A Cursor connected by an older phone-code: its hook script and timeout follow this version.
+  void refreshCursor().catch((err: unknown) => log.warn('could not update the Cursor hooks', err));
   const host = new HostInfoProvider(adapters);
   manager.catalogCommands = (agent) => host.commandsFor(agent);
   const pairing = new PairingCodes();

@@ -60,6 +60,8 @@ export class PushService {
   }
 
   notify(session: SessionInfo, reason: 'waiting' | 'turn'): void {
+    // A turn that ended into a wait for the reader: "needs you" already says it.
+    if (reason === 'turn' && session.status === 'waiting') return;
     const key = `${session.id}:${reason}`;
     const now = Date.now();
     if (now - (this.lastSent.get(key) ?? 0) < MIN_INTERVAL_MS) return;
@@ -70,9 +72,11 @@ export class PushService {
         : session.preview !== undefined
           ? session.preview
           : 'Finished';
+    // Cursor's app waits for the next message, not for an approval or an answer.
+    const cursorReply = reason === 'waiting' && session.agent === 'cursor-app';
     const payload: PushPayload = {
-      title: reason === 'waiting' ? `${session.title} needs you` : `${session.title} is done`,
-      body,
+      title: reason === 'waiting' && !cursorReply ? `${session.title} needs you` : `${session.title} is done`,
+      body: cursorReply ? `Cursor is waiting for your reply. ${session.preview ?? ''}`.trim() : body,
       sessionId: session.id,
       // One notification per session: "needs you" and "is done" replace each other.
       tag: session.id,

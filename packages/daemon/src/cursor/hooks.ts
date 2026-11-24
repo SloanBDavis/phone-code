@@ -28,8 +28,11 @@ export const CURSOR_EVENTS = [
 ] as const;
 
 const SCRIPT_NAME = 'cursor-hook.sh';
-/** A `stop` hook may wait this long for a reply from the phone (the daemon gives up sooner). */
-const STOP_TIMEOUT_S = 15 * 60;
+/**
+ * A `stop` hook may wait this long for a reply from the phone: a little more
+ * than the daemon's own limit (DEFAULT_HOLD_MS in agents/cursor-app.ts).
+ */
+const STOP_TIMEOUT_S = 8 * 60 * 60 + 5 * 60;
 
 export function cursorDir(): string {
   return process.env['PHONECODE_CURSOR_DIR'] || join(homedir(), '.cursor');
@@ -154,6 +157,21 @@ export async function connectCursor(): Promise<void> {
     hooksFile(),
     `${JSON.stringify({ ...f.rest, version: f.version, hooks }, null, 2)}\n`,
   );
+}
+
+/**
+ * Brings an already connected Cursor up to this version's script and hook
+ * settings (a daemon update may change either). Does nothing when not connected
+ * or already current.
+ */
+export async function refreshCursor(): Promise<void> {
+  const f = await readHooks();
+  const mine = Object.values(f.hooks).flatMap((list) => list.filter(ours));
+  if (mine.length === 0) return;
+  const script = await readFile(scriptPath(), 'utf8').catch(() => '');
+  const stop = (f.hooks['stop'] ?? []).find(ours);
+  if (script === SCRIPT && stop?.['timeout'] === STOP_TIMEOUT_S) return;
+  await connectCursor();
 }
 
 /** Removes phone-code's hooks (and only those). */

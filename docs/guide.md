@@ -95,7 +95,10 @@ Chats you run in the Cursor app on your computer can show up on your phone, so y
 
 - **Connect:** turn on "Follow Cursor chats" in Settings (the app suggests it when Cursor is installed), or run `phonecode cursor connect`. This adds phone-code's hooks to `~/.cursor/hooks.json`, next to any hooks you already have, and installs a small script in phone-code's state folder.
 - **Follow along:** each Cursor chat appears in the sidebar with the prompt, thinking, commands, edits and the answer.
-- **Reply:** when Cursor finishes a turn while you have the chat open, Cursor waits (up to 10 minutes) for your reply and sends it as the next message. A reply sent while Cursor is still working goes out when the turn ends.
+- **Reply:** Cursor only takes a message from phone-code at the moment a turn ends, so there are two ways to reply:
+  - While Cursor is working, send a message and it goes out when the turn ends.
+  - When a turn ends, Cursor waits for your reply (the chat says "Waiting for your reply" and you get a notification) if the chat is open on your phone, or if nobody is at the computer: no keyboard or mouse input for two minutes (macOS only). It waits up to 8 hours. In Cursor the turn looks unfinished meanwhile; it is let go as soon as someone uses the computer again and the chat is not open on a phone.
+  - Otherwise the chat says "Continue in Cursor" and takes no message: send the next one from Cursor, and you can reply from the phone when that turn ends.
 - **Disconnect:** turn the setting off, or run `phonecode cursor disconnect`. Only phone-code's hooks are removed.
 
 When phone-code is not running, the hooks answer at once and Cursor works as usual. You can't start a Cursor chat from your phone, approve Cursor's tool calls, or change its model; Cursor's hooks don't allow it.

@@ -1521,6 +1521,14 @@
   background: currentColor;
 }
 
+/* A Cursor chat that takes no message right now: why, and where to continue. */
+.composer-note {
+  margin: 0;
+  padding: 2px 4px 0;
+  color: var(--label-2);
+  font: 400 13.5px/1.4 var(--font);
+}
+
 .composer-atts {
   display: flex;
   gap: 8px;

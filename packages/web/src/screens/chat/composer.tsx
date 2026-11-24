@@ -113,7 +113,11 @@ export function Composer({
   // A Cursor chat waits for a reply, not an approval: nothing to stop then.
   const stoppable = running || (session?.status === 'waiting' && !isCursorChat(session));
   const sending = isDraft && starting.value?.status === 'sending';
-  const canSend = harnessReady && !sending && (text.trim().length > 0 || atts.length > 0);
+  // Cursor's app takes a message only when a turn ends: while it works (sent at the
+  // end) or while it waits for a reply. Otherwise there is no way to hand it one.
+  const cursor = isCursorChat(session);
+  const closed = cursor && !running && session?.status !== 'waiting';
+  const canSend = harnessReady && !sending && !closed && (text.trim().length > 0 || atts.length > 0);
 
   // Commands: the session's own list, else what the agent offers before one exists.
   const fromSession = session ? sessionCommands(session.id).value : null;
@@ -199,9 +203,15 @@ export function Composer({
     ? harnessReady
       ? `Message ${agentShortLabel({ agent: d.harness }, host.value)}`
       : `Set up ${d.info?.name ?? 'an agent'} to chat`
-    : running
-      ? 'Add to the queue…'
-      : `Message ${agentShortLabel(session, host.value)}`;
+    : closed
+      ? 'Continue this chat in Cursor'
+      : running
+        ? cursor
+          ? 'Send when this turn ends…'
+          : 'Add to the queue…'
+        : cursor
+          ? 'Reply to Cursor'
+          : `Message ${agentShortLabel(session, host.value)}`;
 
   return (
     <>
@@ -225,13 +235,19 @@ export function Composer({
             ))}
           </div>
         )}
+        {closed && (
+          <p class="composer-note" data-testid="composer-closed">
+            Cursor is no longer waiting for a reply here. Send its next message from Cursor on your computer;
+            when that turn ends you can reply from here again.
+          </p>
+        )}
         <div class="composer-main">
           <button
             type="button"
             class="c-btn"
             aria-label="Add photos"
             onClick={() => fileRef.current?.click()}
-            disabled={busy}
+            disabled={busy || closed}
             data-testid="composer-attach"
           >
             <Icon name={busy ? 'refresh' : 'plus'} size={18} stroke={2.3} />
@@ -250,6 +266,7 @@ export function Composer({
             class="composer-input"
             rows={1}
             value={text}
+            disabled={closed}
             placeholder={placeholder}
             aria-label="Message"
             enterkeyhint="send"

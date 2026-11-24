@@ -10,7 +10,7 @@ import {
   renameSession,
   setCursorConnected,
 } from '../../lib/actions';
-import { CURSOR_APP, agentShortLabel } from '../../lib/agents';
+import { CURSOR_APP, agentShortLabel, isCursorChat } from '../../lib/agents';
 import { client } from '../../lib/client';
 import { connectionOf } from '../../lib/connection';
 import { draft, harnessList, openTerminal, retryStart, starting } from '../../lib/harness';
@@ -35,6 +35,13 @@ const STATUS_LABEL = {
   waiting: 'Needs you',
   exited: 'Ended',
   error: 'Error',
+} as const;
+
+/** Cursor's app: it waits for a reply, or its next message has to come from the computer. */
+const CURSOR_STATUS_LABEL = {
+  ...STATUS_LABEL,
+  idle: 'Continue in Cursor',
+  waiting: 'Waiting for your reply',
 } as const;
 
 const STARTERS = [
@@ -244,8 +251,12 @@ function TitleCapsule({ s }: { s?: SessionInfo }): JSX.Element {
         ) : s.status === 'waiting' ? (
           <span class="dot warn" />
         ) : null}
-        {link ? STATUS_LABEL[s.status] : conn.value.status === 'offline' ? 'Offline' : 'Reconnecting…'} ·{' '}
-        {s.cwd === host.value?.home ? '~' : basename(s.cwd) || s.cwd}
+        {link
+          ? (isCursorChat(s) ? CURSOR_STATUS_LABEL : STATUS_LABEL)[s.status]
+          : conn.value.status === 'offline'
+            ? 'Offline'
+            : 'Reconnecting…'}{' '}
+        · {s.cwd === host.value?.home ? '~' : basename(s.cwd) || s.cwd}
       </span>
     </GlassButton>
   );

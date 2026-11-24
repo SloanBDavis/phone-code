@@ -24,6 +24,10 @@ import {
 // Cursor counts as installed when its folder exists; hooks.json goes there.
 const CURSOR_DIR = mkdtempSync(join(tmpdir(), 'phonecode-e2e-cursor-'));
 const HOOKS = join(CURSOR_DIR, 'hooks.json');
+// How long the computer has gone without keyboard or mouse input (ms): 0 is someone at the desk.
+const IDLE = join(CURSOR_DIR, 'idle');
+const AWAY = '600000';
+writeFileSync(IDLE, '0');
 // Someone else's hooks are already there: phone-code must keep them.
 const FOREIGN = {
   version: 1,
@@ -34,13 +38,22 @@ writeFileSync(HOOKS, JSON.stringify(FOREIGN));
 test.afterAll(() => rmSync(CURSOR_DIR, { recursive: true, force: true }));
 
 test.use({
-  daemonOptions: { env: { PHONECODE_CURSOR_DIR: CURSOR_DIR, PHONECODE_CURSOR_HOLD_MS: '20000' } },
+  daemonOptions: {
+    env: {
+      PHONECODE_CURSOR_DIR: CURSOR_DIR,
+      PHONECODE_CURSOR_HOLD_MS: '20000',
+      PHONECODE_CURSOR_POLL_MS: '150',
+      PHONECODE_IDLE_FILE: IDLE,
+    },
+  },
 });
 
 const CONV = `conv-${Date.now().toString(36)}`;
 const PROMPT = 'fix the login bug';
 const ANSWER = 'Fixed: the token was compared too early.';
 const REPLY = 'now add a test for it';
+const REPLY_AWAY = 'also update the changelog';
+const QUEUED = 'and run the linter';
 
 type Hooks = Record<string, Array<Record<string, unknown>>>;
 
@@ -186,7 +199,7 @@ test('when Cursor finishes a turn, the reply typed here goes back to it as its n
 
   // The turn ends while the phone follows the chat: the hook waits for a reply.
   const stopped = hook(daemon, 'stop', { generation_id: 'g1', status: 'completed', loop_count: 0 });
-  await expect(phone.testId('chat-title')).toContainText('Needs you');
+  await expect(phone.testId('chat-title')).toContainText('Waiting for your reply');
   await expect(phone.testId('chat-item-turn')).toHaveCount(1);
   await openSidebar(phone);
   await expect(phone.testId('section-waiting').locator('[data-agent="cursor-app"]')).toContainText('Reply');
@@ -194,7 +207,8 @@ test('when Cursor finishes a turn, the reply typed here goes back to it as its n
   // Nothing to stop or approve: the composer just takes the reply.
   await expect(phone.testId('composer-stop')).toHaveCount(0);
   await expect(phone.testId('composer-mode')).toHaveCount(0);
-  await expect(phone.testId('composer-input')).toHaveAttribute('placeholder', 'Message Cursor');
+  await expect(phone.testId('composer-input')).toHaveAttribute('placeholder', 'Reply to Cursor');
+  await expect(phone.testId('composer-closed')).toHaveCount(0);
   await bothThemes(phone, 'cursor-chat');
 
   await send(phone, REPLY);
@@ -208,8 +222,64 @@ test('when Cursor finishes a turn, the reply typed here goes back to it as its n
   await expect(phone.testId('chat-item-user')).toHaveCount(2);
   // Stopped in Cursor: nothing to wait for.
   expect(await hook(daemon, 'stop', { generation_id: 'g2', status: 'aborted', loop_count: 1 })).toEqual({});
-  await expect(phone.testId('chat-title')).toContainText('Ready');
+  await expect(phone.testId('chat-title')).toContainText('Continue in Cursor');
   await expect(phone.testId('chat-item-turn')).toHaveCount(2);
+  // No hook is waiting: the chat says where to continue and takes no message.
+  await expect(phone.testId('composer-closed')).toContainText('Send its next message from Cursor');
+  await expect(phone.testId('composer-input')).toBeDisabled();
+  await expect(phone.testId('composer-send')).toBeDisabled();
+  await bothThemes(phone, 'cursor-closed');
+});
+
+test('a turn that ends while nobody is at the computer waits for a reply, with the chat closed on the phone', async ({
+  phone,
+  daemon,
+}) => {
+  await startNewChat(phone);
+  // At the desk and the chat is not open anywhere: Cursor is not held up.
+  await hook(daemon, 'beforeSubmitPrompt', { generation_id: 'g3', prompt: 'explain the fix' });
+  expect(await hook(daemon, 'stop', { generation_id: 'g3', status: 'completed', loop_count: 0 })).toEqual({});
+
+  // Away from the computer: the turn waits, and the phone says a reply is wanted.
+  writeFileSync(IDLE, AWAY);
+  await hook(daemon, 'beforeSubmitPrompt', { generation_id: 'g4', prompt: 'explain it again' });
+  const stopped = hook(daemon, 'stop', { generation_id: 'g4', status: 'completed', loop_count: 0 });
+  await openSidebar(phone);
+  await expect(phone.testId('section-waiting').locator('[data-agent="cursor-app"]')).toContainText('Reply');
+  await cursorRow(phone).click();
+  await expect(phone.testId('chat-title')).toContainText('Waiting for your reply');
+  await expect(phone.testId('composer-input')).toBeEnabled();
+  await send(phone, REPLY_AWAY);
+  expect(await stopped).toEqual({ followup_message: REPLY_AWAY });
+  await expect(phone.testId('chat-item-user').last()).toContainText(REPLY_AWAY);
+});
+
+test('a message sent while Cursor works goes out when the turn ends; back at the computer, a waiting turn is let go', async ({
+  phone,
+  daemon,
+}) => {
+  await openCursorChat(phone);
+  expect(await hook(daemon, 'beforeSubmitPrompt', { generation_id: 'g5', prompt: REPLY_AWAY })).toEqual({});
+  await expect(phone.testId('chat-title')).toContainText('Working');
+  await expect(phone.testId('composer-input')).toHaveAttribute('placeholder', 'Send when this turn ends…');
+  await send(phone, QUEUED);
+  await expect(phone.testId('chat-item-notice').last()).toContainText('when its current turn ends');
+  await expect(phone.testId('chat-title')).toContainText('Working');
+  expect(await hook(daemon, 'stop', { generation_id: 'g5', status: 'completed', loop_count: 0 })).toEqual({
+    followup_message: QUEUED,
+  });
+  expect(await hook(daemon, 'beforeSubmitPrompt', { generation_id: 'g6', prompt: QUEUED })).toEqual({});
+
+  // The turn ends with the chat open on the phone: it waits. The phone leaves the
+  // chat and someone is back at the computer: Cursor is let go.
+  const stopped = hook(daemon, 'stop', { generation_id: 'g6', status: 'completed', loop_count: 1 });
+  await expect(phone.testId('chat-title')).toContainText('Waiting for your reply');
+  writeFileSync(IDLE, '0');
+  await startNewChat(phone);
+  expect(await stopped).toEqual({});
+  await openCursorChat(phone);
+  await expect(phone.testId('chat-title')).toContainText('Continue in Cursor');
+  await expect(phone.testId('composer-closed')).toBeVisible();
 });
 
 test('This computer: the switch stops following Cursor (only its hook goes), and says why it cannot', async ({
