@@ -120,7 +120,6 @@ jobs:
   # install-app.sh installs it with curl, which macOS does not hold back.
   mac-app:
     name: Build the Mac app
-    needs: build
     runs-on: macos-26
     timeout-minutes: 45
     steps:
