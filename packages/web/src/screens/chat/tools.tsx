@@ -327,6 +327,39 @@ function Meta({ t }: { t: ToolItem }): JSX.Element | null {
   return null;
 }
 
+/** A command that keeps running after its call returned (a dev server, a watcher). */
+function isBackground(t: ToolItem): boolean {
+  return t.detail?.type === 'command' && t.detail.background === true;
+}
+
+/**
+ * What is still running in this chat: sub-agents, and commands started in the
+ * background (those outlive the turn). Nothing running, nothing shown.
+ */
+export function RunningStrip({ chat }: { chat: ChatState }): JSX.Element | null {
+  // Reading the list of rows re-runs this when one is added.
+  void chat.ids.value;
+  const running: ToolItem[] = [];
+  for (const s of chat.items.values()) {
+    const t = s.value;
+    if (t.kind === 'tool' && t.status === 'running' && (t.name === 'Task' || isBackground(t)))
+      running.push(t);
+  }
+  if (running.length === 0) return null;
+  return (
+    <div class="running-strip" data-testid="running-strip" aria-label="Running now">
+      <Spinner size={12} />
+      <span class="running-label">Running</span>
+      {running.map((t) => (
+        <span class="running-chip" key={t.id} data-testid="running-chip">
+          <Icon name={t.name === 'Task' ? 'sparkle' : toolIcon(t.name)} size={12} stroke={2.2} />
+          <span class="running-title">{t.title}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function ToolRow({
   item,
   nested,
@@ -346,6 +379,7 @@ export function ToolRow({
       data-testid="chat-item-tool"
       data-tool={t.name}
       data-status={t.status}
+      data-background={isBackground(t) ? 'true' : undefined}
     >
       <button
         type="button"

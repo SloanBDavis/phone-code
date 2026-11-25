@@ -381,6 +381,7 @@ class ClaudeSession implements AgentSession {
     this.disposed = true;
     this.cancelAllPending();
     this.mapper.closeStreams();
+    this.mapper.dispose();
     const proc = this.proc;
     this.proc = undefined;
     if (proc) await proc.kill();
@@ -472,6 +473,8 @@ class ClaudeSession implements AgentSession {
         // The core already shows the prompt; tool results and local command output matter live.
         this.mapper.onToolResults(msg);
         this.mapper.onLocalCommandOutput(msg);
+        // A background command ended: the CLI tells the model in a user-role message.
+        this.mapper.onTaskNotifications(userText(msg));
         return;
       case 'result':
         this.onResult(msg);
@@ -546,6 +549,13 @@ class ClaudeSession implements AgentSession {
       case 'notification': {
         const text = str(msg.text) ?? str(msg.message);
         if (text) this.notice('info', text);
+        return;
+      }
+      case 'task_notification': {
+        // A background command ended (newer CLIs say so here as well as to the model).
+        const id = str(msg.task_id);
+        const how = str(msg.status);
+        if (id && how) this.mapper.endBackground(id, how);
         return;
       }
       default:
@@ -1069,4 +1079,15 @@ export function createClaudeAdapter(): AgentAdapter {
       return listClaudeResumable(limit ?? 50);
     },
   };
+}
+
+/** The text of a user-role stream message (a string, or its text blocks). */
+function userText(msg: Rec): string {
+  const content = rec(msg.message).content;
+  if (typeof content === 'string') return content;
+  return arr(content)
+    .map(rec)
+    .filter((b) => b.type === 'text')
+    .map((b) => str(b.text) ?? '')
+    .join('\n');
 }

@@ -672,6 +672,33 @@ scenario(/close (?:your )?input/i, async (t) => {
   return 'closed';
 });
 
+// A command started in the background: the call answers at once with where its output
+// goes, the file grows while (and after) the turn runs, and the CLI says when it ends.
+scenario(/dev server/i, async (t) => {
+  t.newMessage();
+  const file = path.join(os.tmpdir(), `fake-claude-bg-${randomUUID()}.output`);
+  fs.writeFileSync(file, '');
+  const input = { command: 'npm run dev', description: 'Start the dev server', run_in_background: true };
+  const id = await t.toolUse('Bash', input);
+  t.endMessage('tool_use');
+  const taskId = `bg${randomUUID().replace(/-/g, '').slice(0, 8)}`;
+  t.toolResult(
+    id,
+    `Command running in background with ID: ${taskId}. Output is being written to: ${file}. You will be notified when it completes.`,
+    { structured: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: taskId } },
+  );
+  fs.appendFileSync(file, 'ready on http://localhost:3000\n');
+  setTimeout(() => fs.appendFileSync(file, 'compiled in 120ms\n'), 2500);
+  setTimeout(() => {
+    fs.appendFileSync(file, 'server closed\n');
+    out({ type: 'system', subtype: 'task_notification', task_id: taskId, status: 'completed' });
+  }, 6000);
+  t.newMessage();
+  await t.text('The dev server is starting in the background.');
+  t.endMessage('end_turn');
+  return 'started';
+});
+
 // A permission request that arrives after the turn ended (as from a background task).
 let lateAskAfterTurn = false;
 scenario(/late ask/i, async (t) => {

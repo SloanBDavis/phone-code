@@ -8,6 +8,7 @@
  *   plan text        `plan:${toolUseId}`
  */
 import type { ChatItem, ImageRef, TextItem, ThinkingItem, ToolItem, ToolStatus } from '@phone-code/protocol';
+import { open } from 'node:fs/promises';
 import type { AgentEvents } from './types.ts';
 import { arr, isRec, num, rec, str, truncateOutput, type Rec } from './shared/common.ts';
 import {
@@ -60,6 +61,8 @@ export class ClaudeMapper {
   readonly denied = new Set<string>();
   /** Called after a tool item's detail was refined (so pending permissions can follow). */
   onToolRefined: ((toolId: string) => void) | undefined;
+  /** Background commands still running, by the CLI's task id. */
+  private readonly background = new Map<string, BackgroundTask>();
 
   constructor(
     private readonly sink: Sink,
@@ -368,6 +371,21 @@ export class ClaudeMapper {
         const d = fileDiff(rawName, rec(tool.input), this.cwd, original);
         if (d) detail = d;
       }
+      // A command started in the background: its call returns at once, saying where its
+      // output goes. The card stays running and shows that file as it grows.
+      const bg = this.live && !isError && rawName === 'Bash' ? backgroundTask(text) : undefined;
+      if (bg !== undefined) {
+        if (detail?.type === 'command') detail = { ...detail, background: true };
+        this.upsert({ ...tool, status: 'running', output: '', ...(detail ? { detail } : {}) });
+        this.followBackground(id, bg.taskId, bg.file);
+        continue;
+      }
+      // Stopping a background command (TaskStop, KillShell) ends its card.
+      if (!isError && (rawName === 'TaskStop' || rawName === 'KillShell')) {
+        const input = rec(tool.input);
+        const target = str(input.task_id) ?? str(input.shell_id) ?? str(input.bash_id);
+        if (target) this.endBackground(target, 'stopped');
+      }
       const { output, truncated } = truncateOutput(outputText);
       const images = this.resultImages(block.content);
       this.upsert({
@@ -412,6 +430,88 @@ export class ClaudeMapper {
     this.upsert({ kind: 'text', id, ts, text: '```\n' + out + '\n```', streaming: false });
   }
 
+  // ------------------------------------------------- background commands
+
+  private followBackground(toolId: string, taskId: string, file: string): void {
+    this.background.get(taskId)?.stop();
+    let size = -1;
+    let busy = false;
+    const read = async (): Promise<void> => {
+      if (busy) return;
+      busy = true;
+      try {
+        const text = await tailFile(file, size);
+        if (text !== undefined) {
+          size = text.size;
+          const tool = this.tools.get(toolId);
+          if (tool !== undefined) {
+            const { output, truncated } = truncateOutput(text.tail);
+            this.upsert({
+              ...tool,
+              output,
+              ...(truncated || text.cut ? { outputTruncated: true } : { outputTruncated: undefined }),
+            });
+          }
+        }
+      } catch {
+        // Not written yet, or gone: the next read tries again.
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = setInterval(() => void read(), BACKGROUND_POLL_MS);
+    // Never forever: a command nobody reports the end of is left as it is after this.
+    const giveUp = setTimeout(() => clearInterval(timer), BACKGROUND_MAX_MS);
+    this.background.set(taskId, {
+      toolId,
+      read,
+      stop: () => {
+        clearInterval(timer);
+        clearTimeout(giveUp);
+      },
+    });
+    void read();
+  }
+
+  /** A background command ended (the CLI's task notification) or was stopped. */
+  endBackground(taskId: string, how: string): void {
+    const task = this.background.get(taskId);
+    if (task === undefined) return;
+    task.stop();
+    this.background.delete(taskId);
+    void task.read().then(() => {
+      const tool = this.tools.get(task.toolId);
+      if (tool === undefined || tool.status !== 'running') return undefined;
+      const failed = how === 'failed' || how === 'error';
+      this.upsert({
+        ...tool,
+        status: failed ? 'error' : 'done',
+        ...(how === 'stopped' || how === 'killed'
+          ? { output: `${tool.output ?? ''}${tool.output ? '\n' : ''}Stopped` }
+          : {}),
+      });
+      return undefined;
+    });
+  }
+
+  /**
+   * `<task-notification>` text the CLI hands the model when a background command
+   * ends (`<task-id>…</task-id>`, `<status>completed|failed|killed</status>`).
+   */
+  onTaskNotifications(text: string): void {
+    for (const m of text.matchAll(/<task-id>([^<]+)<\/task-id>[\s\S]*?<status>([^<]+)<\/status>/g)) {
+      const id = m[1]?.trim();
+      const status = m[2]?.trim();
+      if (id && status && status !== 'running' && status !== 'pending') this.endBackground(id, status);
+    }
+  }
+
+  /** The session is going away: stop watching files. The commands themselves are the CLI's. */
+  dispose(): void {
+    for (const t of this.background.values()) t.stop();
+    this.background.clear();
+  }
+
   /** End of turn: close streams; tools that never got a result failed unless the turn completed. */
   endTurn(outcome: 'completed' | 'interrupted' | 'error'): void {
     this.closeStreams();
@@ -420,6 +520,7 @@ export class ClaudeMapper {
       const tool = this.tools.get(id);
       if (tool?.status === 'running') {
         const input = rec(tool.input);
+        // A background command outlives the turn: its card ends when the command does.
         if (input.run_in_background === true) continue;
         this.upsert({
           ...tool,
@@ -428,6 +529,46 @@ export class ClaudeMapper {
         });
       }
     }
+  }
+}
+
+interface BackgroundTask {
+  toolId: string;
+  read: () => Promise<void>;
+  stop: () => void;
+}
+
+const BACKGROUND_POLL_MS = Number(process.env['PHONECODE_BACKGROUND_POLL_MS']) || 1000;
+const BACKGROUND_MAX_MS = 12 * 60 * 60_000;
+/** The end of the output file that is shown (truncateOutput trims further). */
+const BACKGROUND_TAIL_BYTES = 64 * 1024;
+
+/**
+ * What a Bash call with `run_in_background` answers: "Command running in
+ * background with ID: <id>. Output is being written to: <file>. …".
+ */
+export function backgroundTask(text: string): { taskId: string; file: string } | undefined {
+  const m = /running in background with ID: ([\w-]+)\. Output is being written to: (\S+)/.exec(text);
+  const taskId = m?.[1];
+  const file = m?.[2]?.replace(/[.,;]+$/, '');
+  return taskId && file ? { taskId, file } : undefined;
+}
+
+/** The end of `file` when its size is not `knownSize` (nothing new: undefined). */
+async function tailFile(
+  file: string,
+  knownSize: number,
+): Promise<{ tail: string; size: number; cut: boolean } | undefined> {
+  const fh = await open(file, 'r');
+  try {
+    const { size } = await fh.stat();
+    if (size === knownSize) return undefined;
+    const length = Math.min(size, BACKGROUND_TAIL_BYTES);
+    const buf = Buffer.alloc(length);
+    await fh.read(buf, 0, length, size - length);
+    return { tail: buf.toString('utf8'), size, cut: size > length };
+  } finally {
+    await fh.close();
   }
 }
 

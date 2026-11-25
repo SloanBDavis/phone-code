@@ -26,6 +26,7 @@ import { openMenu, toast } from '../../ui/overlay';
 import { openComputer } from '../sidebar';
 import { AskBar } from './asks';
 import { Composer } from './composer';
+import { RunningStrip } from './tools';
 import { PendingBubble } from './items';
 import { Transcript, type ScrollApi } from './transcript';
 
@@ -370,6 +371,7 @@ export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Eleme
       </button>
       <div class="dock" ref={dockRef}>
         {s && <AskBar sessionId={s.id} agent={agent} />}
+        {chat && <RunningStrip chat={chat} />}
         <Composer
           session={s}
           text={text}

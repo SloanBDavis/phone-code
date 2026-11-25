@@ -305,3 +305,24 @@ function claudeTranscript(home: string): string {
   }
   return out;
 }
+
+test('a command started in the background: its card keeps running and shows the output as it grows', async ({
+  phone,
+  daemon,
+}) => {
+  await startChat(phone, 'claude', 'start the dev server', { folder: daemon.folder('background') });
+  await waitTurn(phone, 1);
+  // The turn is over; the command is not.
+  const tool = phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
+  await expect(tool).toHaveAttribute('data-status', 'running');
+  await expect(tool).toHaveAttribute('data-background', 'true');
+  await tool.locator('.tool-head').click();
+  await expect(tool).toContainText('ready on http://localhost:3000');
+  await expect(tool).toContainText('compiled in 120ms');
+  // The strip above the composer names what is still running.
+  await expect(phone.testId('running-strip')).toContainText('npm run dev');
+  await shot(phone, 'claude-background');
+  await expect(tool).toHaveAttribute('data-status', 'done', { timeout: 15_000 });
+  await expect(tool).toContainText('server closed');
+  await expect(phone.testId('running-strip')).toHaveCount(0);
+});

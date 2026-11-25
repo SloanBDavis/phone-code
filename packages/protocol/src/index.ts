@@ -325,7 +325,14 @@ export interface ToolItem extends ItemBase {
 }
 
 export type ToolDetail =
-  | { type: 'command'; command: string; cwd?: string; exitCode?: number }
+  | {
+      type: 'command';
+      command: string;
+      cwd?: string;
+      exitCode?: number;
+      /** Started to keep running after its call returned (a dev server, a watcher): `running` until it ends or is stopped. */
+      background?: boolean;
+    }
   | { type: 'diff'; path: string; /** unified diff text */ patch: string; added: number; removed: number }
   | { type: 'file'; path: string; /** for Write: new content (truncated) */ content?: string }
   | { type: 'todos'; todos: Array<{ text: string; status: 'pending' | 'in_progress' | 'completed' }> }
