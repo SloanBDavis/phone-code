@@ -9,6 +9,7 @@ on:
   push:
     paths:
       - 'apple/**'
+      - 'install-app.sh'
       - '.github/workflows/apple.yml'
   workflow_dispatch:
 
@@ -74,6 +75,36 @@ jobs:
         with:
           name: core-macos-log
           path: core-macos.log
+
+  # The Mac app as a release ships it (release.yml runs the same steps).
+  package-mac:
+    name: Mac app package and install-app.sh
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Build and zip PhoneCode.app
+        run: |
+          status=0
+          apple/scripts/package-mac.sh "$PWD/release-app" > package-mac.log 2>&1 || status=$?
+          grep -E '(error|warning):|BUILD|\*\*' package-mac.log | sort -u | head -200 || true
+          tail -15 package-mac.log
+          exit $status
+      - name: Install with install-app.sh
+        run: |
+          PHONECODE_BASE_URL="file://$PWD/release-app" PHONECODE_APP_DIR="$RUNNER_TEMP/Applications" sh install-app.sh
+          "$RUNNER_TEMP/Applications/PhoneCode.app/Contents/Helpers/phonecode" --version
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-app
+          path: |
+            release-app/PhoneCode-mac.zip
+            package-mac.log
 
   app:
     name: App (${{ matrix.platform }})

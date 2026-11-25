@@ -116,9 +116,38 @@ jobs:
       - name: Pair and run a terminal
         run: bun scripts/smoke-binary.ts "$RUNNER_TEMP/bin/phonecode"
 
+  # The Mac app (apple/), with its own phonecode inside. Ad hoc signed, not notarized:
+  # install-app.sh installs it with curl, which macOS does not hold back.
+  mac-app:
+    name: Build the Mac app
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Build and zip PhoneCode.app
+        run: apple/scripts/package-mac.sh "$PWD/release-app"
+      - name: Install with install-app.sh
+        run: |
+          PHONECODE_BASE_URL="file://$PWD/release-app" PHONECODE_APP_DIR="$RUNNER_TEMP/Applications" sh install-app.sh
+          "$RUNNER_TEMP/Applications/PhoneCode.app/Contents/Helpers/phonecode" --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-app
+          path: |
+            release-app/PhoneCode-mac.zip
+            release-app/PhoneCode-mac.zip.sha256
+          if-no-files-found: error
+
   publish:
     name: Create GitHub release
-    needs: [build, smoke]
+    # A Mac app that does not build does not hold back the release of phonecode itself.
+    needs: [build, smoke, mac-app]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.smoke.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -127,6 +156,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-signed
+          path: release
+      - uses: actions/download-artifact@v4
+        if: needs.mac-app.result == 'success'
+        with:
+          name: mac-app
           path: release
       - name: Create release
         env:
@@ -137,5 +171,11 @@ jobs:
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
           # On a tag push the tag must already exist; on a manual run it is created here.
           if [ "$GITHUB_REF_TYPE" = tag ]; then tagflag="--verify-tag"; else tagflag="--target $GITHUB_SHA"; fi
-          gh release create "$TAG" release/*.tar.gz release/SHA256SUMS \
+          app=""
+          if [ -f release/PhoneCode-mac.zip ]; then
+            app="release/PhoneCode-mac.zip release/PhoneCode-mac.zip.sha256"
+          else
+            echo "::warning::the Mac app did not build: this release has no PhoneCode-mac.zip"
+          fi
+          gh release create "$TAG" release/*.tar.gz release/SHA256SUMS $app \
             --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes $tagflag $prerelease
