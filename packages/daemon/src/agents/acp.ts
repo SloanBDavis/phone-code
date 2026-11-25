@@ -57,6 +57,7 @@ import { DAEMON_VERSION } from '../config.ts';
 import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
 import { AcpClientSide, RpcError, isClientSideMethod } from './acp-client.ts';
 import type { AcpAgentConfig } from './acp-config.ts';
+import { rememberOptions } from './acp-memory.ts';
 import { elicitContent, elicitFields, elicitQuestions, type ElicitField } from './acp-elicitation.ts';
 import {
   PERMISSION_MODE_ORDER,
@@ -1442,6 +1443,11 @@ class AcpSession implements AgentSession {
       const cur = this.models.current;
       if (cur !== undefined && !modelOptions.some((o) => o.id === cur)) modelOptions.unshift({ id: cur });
     }
+    // Kept for the next new chat, which has no session to ask yet.
+    rememberOptions(this.cfg.id, {
+      ...(modelOptions !== undefined ? { modelOptions } : {}),
+      ...(this.modes ? { permissionModes } : {}),
+    });
     this.events.meta({
       ...(this.models?.current !== undefined ? { model: this.models.current } : {}),
       ...(permissionMode !== undefined ? { permissionMode } : {}),

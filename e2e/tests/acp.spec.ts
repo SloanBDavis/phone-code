@@ -25,11 +25,27 @@ test('streams an answer from Gemini CLI', async ({ phone }) => {
   await phone.page.keyboard.press('Escape');
   await newChat(phone, 'gemini');
   await expect(phone.testId('composer-input')).toHaveAttribute('placeholder', 'Message Gemini CLI');
+  // An ACP agent names its models only inside a session: the first chat ever has none to pick.
+  await expect(phone.testId('composer-model')).toHaveCount(0);
   await send(phone, 'hello gemini');
   await waitTurn(phone, 1);
   await expect(lastText(phone)).toHaveAttribute('data-streaming', 'false');
   await expect(lastText(phone).locator('strong, code, li').first()).toBeVisible();
   await shot(phone, 'acp-hello');
+});
+
+test('a new chat offers the models the agent named in its last session, and starts with the one picked', async ({
+  phone,
+}) => {
+  await phone.page.reload();
+  await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open');
+  await newChat(phone, 'gemini');
+  await phone.testId('composer-model').click();
+  await phone.testId('model-menu').getByTestId('model-fake-flash').click();
+  await expect(phone.testId('composer-model')).toHaveText('fake-flash');
+  await send(phone, 'hello again');
+  await waitTurn(phone, 1);
+  await expect(phone.testId('composer-model')).toHaveText('fake-flash');
 });
 
 test('permissions: allow, deny (no feedback), always allow', async ({ phone }) => {

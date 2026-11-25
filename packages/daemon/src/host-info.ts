@@ -1,3 +1,4 @@
+import { rememberedOptions } from './agents/acp-memory.ts';
 import { cursorStatus } from './cursor/hooks.ts';
 import { homedir, hostname, userInfo } from 'node:os';
 import type {
@@ -120,7 +121,20 @@ export class HostInfoProvider {
   }
 
   async full(): Promise<HostInfo> {
-    const catalog = await this.catalog;
+    // An ACP agent names its models and modes only inside a session: until it does
+    // again, a new chat offers what its last session said.
+    const catalog = (await this.catalog).map((a) => {
+      const kept = a.impl === 'acp' ? rememberedOptions(a.id) : undefined;
+      if (kept === undefined) return a;
+      const info: AgentInfo = Object.assign({}, a);
+      if (info.modelOptions === undefined && kept.modelOptions !== undefined) {
+        info.modelOptions = kept.modelOptions;
+        info.models = kept.modelOptions.map((m) => m.id);
+      }
+      if (info.permissionModes === undefined && kept.permissionModes !== undefined)
+        info.permissionModes = kept.permissionModes;
+      return info;
+    });
     // `agents` keeps its old shape (native kinds only) for older clients.
     const agents: AgentAvailability[] = catalog.flatMap((a) =>
       a.impl === 'native' && isNativeKind(a.id)

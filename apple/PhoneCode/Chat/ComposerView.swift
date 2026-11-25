@@ -283,7 +283,7 @@ struct ComposerView: View {
     return Menu {
       Section("Model") {
         if options.isEmpty {
-          Text("This agent picks its model itself")
+          Text("Its models appear after the first message")
         }
         ForEach(options) { o in
           Button {
