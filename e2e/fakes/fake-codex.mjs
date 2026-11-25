@@ -580,6 +580,80 @@ scenario(/think/i, async (c) => {
   await c.message('The answer is **42**.');
 });
 
+// A sub-agent: the call that starts it, its own thread's items (other threadId),
+// then a wait call that reports how it ended.
+scenario(/sub-?agent/i, async (c) => {
+  await c.message("I'll hand that to a sub-agent.");
+  const subThread = `thread_sub_${randomUUID()}`;
+  const spawn = {
+    type: 'collabAgentToolCall',
+    id: `collab_${randomUUID()}`,
+    tool: 'spawnAgent',
+    status: 'inProgress',
+    senderThreadId: thread.id,
+    receiverThreadIds: [],
+    prompt: 'List the files and report back.',
+    agentsStates: {},
+  };
+  c.started(spawn);
+  await sleep(80);
+  c.completed({
+    ...spawn,
+    status: 'completed',
+    receiverThreadIds: [subThread],
+    agentsStates: { [subThread]: { status: 'running', message: null } },
+  });
+  const sub = { threadId: subThread, turnId: `turn_sub_${randomUUID()}` };
+  const cmd = {
+    type: 'commandExecution',
+    id: `cmd_${randomUUID()}`,
+    command: "/bin/bash -lc 'ls'",
+    cwd: thread.cwd,
+    status: 'inProgress',
+    aggregatedOutput: null,
+    exitCode: null,
+  };
+  notify('item/started', { item: { ...cmd, startedAtMs: Date.now(), completedAtMs: null }, ...sub });
+  await sleep(150);
+  notify('item/completed', {
+    item: {
+      ...cmd,
+      status: 'completed',
+      aggregatedOutput: 'README.md\nsrc\n',
+      exitCode: 0,
+      completedAtMs: Date.now(),
+    },
+    ...sub,
+  });
+  notify('item/completed', {
+    item: {
+      type: 'agentMessage',
+      id: `msg_${randomUUID()}`,
+      text: 'Two entries: README.md and src.',
+      completedAtMs: Date.now(),
+    },
+    ...sub,
+  });
+  const wait = {
+    type: 'collabAgentToolCall',
+    id: `collab_${randomUUID()}`,
+    tool: 'wait',
+    status: 'inProgress',
+    senderThreadId: thread.id,
+    receiverThreadIds: [subThread],
+    prompt: null,
+    agentsStates: { [subThread]: { status: 'running', message: null } },
+  };
+  c.started(wait);
+  await sleep(80);
+  c.completed({
+    ...wait,
+    status: 'completed',
+    agentsStates: { [subThread]: { status: 'completed', message: 'Two entries: README.md and src.' } },
+  });
+  await c.message('The sub-agent found **2 entries**.');
+});
+
 scenario(/run tests?/i, async (c, turn) => {
   await c.message("I'll run the tests.");
   const ok = await command(c, turn, 'npm test', {

@@ -173,3 +173,23 @@ test('stop declines an approval asked after the turn ended', async ({ phone }) =
   await waitTurn(phone, 2);
   await expect(lastText(phone)).toContainText('Background request: decline');
 });
+
+test('a sub-agent: its card, what it did and said inside, and its report', async ({ phone }) => {
+  await newChat(phone, 'codex');
+  await send(phone, 'use a sub-agent to list the files');
+  await waitTurn(phone, 1);
+  // One card, for the call that started the agent: the later wait call updates it.
+  const task = phone.testId('chat-item-task');
+  await expect(task).toHaveCount(1);
+  await expect(task).toHaveAttribute('data-status', 'done');
+  await expect(task.locator('.task-title')).toContainText('List the files');
+  await expect(task.locator('.task-count')).toHaveText('1 step');
+  const nested = task.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
+  await expect(nested).toHaveAttribute('data-status', 'done');
+  await expect(task.locator('.task-result')).toContainText('Two entries: README.md and src.');
+  // Its message is the report, shown once, and nothing of the agent's is in the main thread.
+  await expect(phone.page.getByText('Two entries: README.md and src.')).toHaveCount(1);
+  await expect(phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveCount(1);
+  await expect(lastText(phone)).toContainText('2 entries');
+  await shot(phone, 'codex-subagent');
+});

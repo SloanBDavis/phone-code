@@ -38,6 +38,7 @@ import type {
   SlashCommand,
   ToolItem,
   TurnItem,
+  ToolStatus,
 } from '@phone-code/protocol';
 import type { AgentAdapter, AgentAttachment, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
 import { fileChangeDetail, mapThreadItem, unwrapShell } from './codex-map.ts';
@@ -179,6 +180,8 @@ class CodexSession implements AgentSession {
   private effort: string | undefined;
   private mode: PermissionMode;
   private readonly items = new Map<string, ChatItem>();
+  /** Sub-agent thread id -> the Task card of the call that started it. */
+  private readonly subThreads = new Map<string, string>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly byRpc = new Map<string, string>();
   /** Cumulative thread token totals at the start of the current turn. */
@@ -517,8 +520,93 @@ class CodexSession implements AgentSession {
     this.events.upsert(item);
   }
 
+  /**
+   * A collab call (collabAgentToolCall: spawnAgent, sendInput, wait, closeAgent...).
+   * The call that starts a sub-agent is its card; later calls about the same
+   * agent update that card (running, done with the agent's last message, failed)
+   * and are not cards of their own. Returns false when there is no card to update.
+   */
+  private onCollab(it: Rec): boolean {
+    const receivers = arr(it.receiverThreadIds)
+      .map((t) => str(t))
+      .filter((t): t is string => t !== undefined);
+    const states = rec(it.agentsStates);
+    const known = receivers.filter((t) => this.subThreads.has(t));
+    const id = str(it.id);
+    if (it.tool === 'spawnAgent' || known.length === 0) {
+      if (id) for (const t of receivers) if (!this.subThreads.has(t)) this.subThreads.set(t, id);
+      if (it.tool !== 'spawnAgent') return false;
+    }
+    for (const thread of receivers) {
+      const cardId = this.subThreads.get(thread);
+      const card = cardId === undefined ? undefined : this.items.get(cardId);
+      if (card?.kind !== 'tool') continue;
+      const state = rec(states[thread]);
+      const s = str(state.status);
+      const message = str(state.message);
+      const status: ToolStatus =
+        s === 'completed' || s === 'shutdown'
+          ? 'done'
+          : s === 'errored' || s === 'notFound'
+            ? 'error'
+            : s === undefined
+              ? card.status
+              : 'running';
+      const output = message && status !== 'running' ? truncateOutput(message) : undefined;
+      this.upsertItem({
+        ...card,
+        status,
+        ...(output ? { output: output.output, ...(output.truncated ? { outputTruncated: true } : {}) } : {}),
+      });
+    }
+    return it.tool !== 'spawnAgent';
+  }
+
+  /** What a sub-agent's thread reports: its commands, edits, messages and thinking go inside its card. */
+  private onSubNotification(method: string, p: Rec, parentId: string): void {
+    switch (method) {
+      case 'item/started':
+      case 'item/completed': {
+        const it = rec(p.item);
+        const id = str(it.id);
+        if (!id) return;
+        if (it.type === 'collabAgentToolCall' && this.onCollab(it)) return;
+        const prev = this.items.get(id);
+        const mapped = mapThreadItem(it, this.opts.cwd, { prev, ts: Date.now(), history: false });
+        if (!mapped || (mapped.kind !== 'tool' && mapped.kind !== 'text' && mapped.kind !== 'thinking'))
+          return;
+        // Messages arrive whole when they complete: no half-written rows inside the card.
+        if (mapped.kind !== 'tool') {
+          if (method !== 'item/completed' || mapped.text === '') return;
+          mapped.streaming = false;
+        }
+        if (prev?.kind === 'tool' && mapped.kind === 'tool' && prev.images) mapped.images = prev.images;
+        this.upsertItem({
+          ...mapped,
+          parentId: mapped.kind === 'tool' ? (mapped.parentId ?? parentId) : parentId,
+        });
+        return;
+      }
+      case 'item/commandExecution/outputDelta': {
+        const id = str(p.itemId);
+        const cur = id ? this.items.get(id) : undefined;
+        if (cur?.kind !== 'tool') return;
+        const { output, truncated } = truncateOutput((cur.output ?? '') + (str(p.delta) ?? ''));
+        this.upsertItem({ ...cur, output, ...(truncated ? { outputTruncated: true } : {}) });
+        return;
+      }
+      default:
+        return; // the sub-agent's turns, token counts and deltas are its own
+    }
+  }
+
   private onNotification(method: string, p: Rec): void {
-    if (p.threadId !== undefined && this.threadId && p.threadId !== this.threadId) return; // other threads (sub-agents)
+    if (p.threadId !== undefined && this.threadId && p.threadId !== this.threadId) {
+      // Another thread: a sub-agent's, when one of our collab calls started it.
+      const parent = this.subThreads.get(str(p.threadId) ?? '');
+      if (parent !== undefined) this.onSubNotification(method, p, parent);
+      return;
+    }
     switch (method) {
       case 'turn/started': {
         const turn = rec(p.turn);
@@ -535,6 +623,7 @@ class CodexSession implements AgentSession {
         const id = str(it.id);
         if (!id) return;
         if (it.type === 'fileChange') this.fileChanges.set(id, it.changes);
+        if (it.type === 'collabAgentToolCall' && this.onCollab(it)) return;
         const prev = this.items.get(id);
         const mapped = mapThreadItem(it, this.opts.cwd, { prev, ts: Date.now(), history: false });
         if (!mapped) return;
@@ -549,8 +638,14 @@ class CodexSession implements AgentSession {
         )
           mapped.status = 'denied';
         if (prev?.kind === 'tool' && mapped.kind === 'tool' && prev.images) mapped.images = prev.images;
+        // A sub-agent's card stays open until a later call says how the agent ended (or the turn does).
+        if (it.type === 'collabAgentToolCall' && mapped.kind === 'tool' && mapped.status === 'done') {
+          mapped.status = prev?.kind === 'tool' && prev.status !== 'running' ? prev.status : 'running';
+          if (prev?.kind === 'tool' && prev.output !== undefined) mapped.output = prev.output;
+        }
         if (method === 'item/completed') this.attachImages(it, mapped);
         this.upsertItem(mapped);
+        if (it.type === 'collabAgentToolCall') this.onCollab(it);
         return;
       }
       case 'item/agentMessage/delta':

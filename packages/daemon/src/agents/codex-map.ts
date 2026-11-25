@@ -240,6 +240,7 @@ export function mapThreadItem(
         name: 'Task',
         title: oneLine(prompt, 60),
         status: s === 'inProgress' ? 'running' : s === 'failed' ? 'error' : 'done',
+        // `prompt` is what the web and Mac cards show as the sub-agent's brief.
         input: { tool: item.tool, prompt: item.prompt, model: item.model },
       };
     }
