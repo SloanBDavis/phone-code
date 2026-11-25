@@ -448,13 +448,50 @@ export function TodoCard({ item }: { item: Signal<ChatItem> }): JSX.Element | nu
   );
 }
 
-/** Sub-agent: a card with its nested calls and final report. */
+/** One thing a sub-agent did or said, inside its card. */
+function TaskChild({ chat, id }: { chat: ChatState; id: string }): JSX.Element | null {
+  const s = chat.items.get(id);
+  if (!s) return null;
+  const item = s.value;
+  if (item.kind === 'tool') {
+    // A sub-agent's own sub-agent: a card of its own, with what it did inside.
+    return item.name === 'Task' ? (
+      <TaskCard chat={chat} item={s} />
+    ) : (
+      <ToolRow item={s} nested sessionId={chat.sessionId} />
+    );
+  }
+  if (item.kind === 'text') {
+    return item.text.trim() === '' ? null : (
+      <div class="task-say" data-testid="task-say">
+        <Markdown text={item.text} />
+      </div>
+    );
+  }
+  if (item.kind === 'thinking') {
+    return (
+      <div class="task-thought" data-testid="task-thought">
+        {item.text}
+      </div>
+    );
+  }
+  return null;
+}
+
+/** Sub-agent: a card with what it did and said, in order, and its final report. */
 export function TaskCard({ chat, item }: { chat: ChatState; item: Signal<ChatItem> }): JSX.Element | null {
   const t = item.value;
   const kids = childrenOf(chat, t.id).value;
   const [open, setOpen] = useState(false);
   if (t.kind !== 'tool') return null;
   const prompt = t.input && typeof t.input === 'object' && 'prompt' in t.input ? String(t.input.prompt) : '';
+  const steps = kids.filter((id) => chat.kinds.get(id) === 'tool').length;
+  // The report is the sub-agent's last message: shown once, as the report.
+  const report = t.status !== 'running' ? (t.output ?? '').trim() : '';
+  const shown = kids.filter((id) => {
+    const k = chat.items.get(id)?.value;
+    return !(report !== '' && k?.kind === 'text' && k.text.trim() === report);
+  });
   return (
     <div class={`task-card st-${t.status}`} data-testid="chat-item-task" data-status={t.status}>
       <button type="button" class="task-head" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -465,27 +502,28 @@ export function TaskCard({ chat, item }: { chat: ChatState; item: Signal<ChatIte
           <span class="tool-verb">Agent</span>
           <span class="task-title">{t.title}</span>
         </span>
-        <span class="task-count">{kids.length} steps</span>
+        <span class="task-count">
+          {steps} {steps === 1 ? 'step' : 'steps'}
+        </span>
         <StatusMark t={t} />
         <Icon name={open ? 'up' : 'down'} size={14} stroke={2.4} class="tool-chev" />
       </button>
       {open && prompt && <div class="task-prompt">{prompt}</div>}
-      {kids.length > 0 && (
+      {shown.length > 0 && (
         <div class="task-children">
-          {(open ? kids : kids.slice(-3)).map((id) => {
-            const s = chat.items.get(id);
-            return s ? <ToolRow key={id} item={s} nested sessionId={chat.sessionId} /> : null;
-          })}
-          {!open && kids.length > 3 && (
+          {(open ? shown : shown.slice(-3)).map((id) => (
+            <TaskChild key={id} chat={chat} id={id} />
+          ))}
+          {!open && shown.length > 3 && (
             <button type="button" class="task-more" onClick={() => setOpen(true)}>
-              {kids.length - 3} earlier steps
+              {shown.length - 3} earlier
             </button>
           )}
         </div>
       )}
-      {t.output && t.status !== 'running' && (
+      {report !== '' && (
         <div class="task-result">
-          <Markdown text={t.output} />
+          <Markdown text={report} />
         </div>
       )}
     </div>

@@ -992,6 +992,31 @@
   cursor: pointer;
 }
 
+/* What a sub-agent says between its steps: quieter than the main thread. */
+.task-say {
+  padding: 6px 4px;
+}
+
+.task-say .md {
+  font-size: 14.5px;
+  color: var(--label-2);
+}
+
+.task-thought {
+  display: -webkit-box;
+  overflow: hidden;
+  padding: 4px;
+  color: var(--label-3);
+  font: italic 400 13.5px/1.4 var(--font);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.task-children .task-card {
+  margin: 6px 0;
+}
+
 .task-result {
   margin: 8px 14px 12px;
   padding-top: 10px;

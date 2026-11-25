@@ -196,7 +196,14 @@ test('resuming restores the sub-agent tool calls inside the agent card', async (
   });
   await waitTurn(phone, 1);
   const task = phone.testId('chat-item-task');
-  await expect(task.locator('.task-count')).toHaveText('1 steps');
+  await expect(task.locator('.task-count')).toHaveText('1 step');
+  // What the sub-agent said and thought is inside its card, not in the main thread;
+  // its last message is the report, shown once.
+  await expect(task.getByTestId('task-say')).toHaveText('Looking at the top level first.');
+  await expect(task.getByTestId('task-thought')).toHaveText('A listing is enough here.');
+  await expect(task.locator('.task-result')).toContainText('README.md, package.json and src');
+  await expect(phone.page.getByText('Looking at the top level first.')).toHaveCount(1);
+  await expect(phone.testId('chat-item-text')).toHaveCount(1);
   await phone.testId('chat-title').click();
   await phone.testId('menu-delete').click();
   await phone.testId('delete-dialog-confirm').click();
@@ -205,7 +212,8 @@ test('resuming restores the sub-agent tool calls inside the agent card', async (
 
   await (await searchAll(phone, 'walrus')).filter({ hasText: 'walrus' }).first().click();
   await expect(phone.testId('screen-chat')).toBeVisible();
-  await expect(task.locator('.task-count')).toHaveText('1 steps');
+  await expect(task.locator('.task-count')).toHaveText('1 step');
+  await expect(task.getByTestId('task-say')).toHaveText('Looking at the top level first.');
   const nested = task.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
   await expect(nested).toHaveAttribute('data-status', 'done');
   // Nested only: no top-level Bash row.

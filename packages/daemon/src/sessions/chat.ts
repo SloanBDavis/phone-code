@@ -73,6 +73,12 @@ function oneLine(text: string, max = 140): string {
 }
 
 function previewOf(item: ChatItem): string | undefined {
+  // What a sub-agent says or does is inside its card: the chat's preview stays the main thread's.
+  if (
+    (item.kind === 'text' || item.kind === 'thinking' || item.kind === 'tool') &&
+    item.parentId !== undefined
+  )
+    return undefined;
   if (item.kind === 'text') return item.text === '' ? undefined : oneLine(item.text);
   if (item.kind === 'user') return `You: ${oneLine(item.text, 120)}`;
   if (item.kind === 'tool') return oneLine(`${item.name}: ${item.title}`);

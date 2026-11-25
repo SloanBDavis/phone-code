@@ -930,6 +930,9 @@ scenario(/agent|task/i, async (t) => {
   sub.parent = id;
   sub.agentId = randomUUID().replace(/-/g, '').slice(0, 17);
   startSubagent(sub.agentId, id, taskInput.description, taskInput.prompt);
+  // What the sub-agent says and thinks on the way is shown inside its card too.
+  sub.assistant({ type: 'thinking', thinking: 'A listing is enough here.' });
+  sub.assistant({ type: 'text', text: 'Looking at the top level first.' });
   const bashInput = { command: 'ls', description: 'List files' };
   const bid = `toolu_fake_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
   sub.assistant({ type: 'tool_use', id: bid, name: 'Bash', input: bashInput });

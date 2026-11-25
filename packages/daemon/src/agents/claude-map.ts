@@ -211,7 +211,7 @@ export class ClaudeMapper {
       const streamed = this.blocks.get(itemId);
       switch (block.type) {
         case 'text': {
-          if (parent) break; // sub-agent prose stays inside the Task card
+          // A sub-agent's prose arrives as whole messages and goes inside its Task card.
           const text = str(block.text) ?? '';
           if (streamed) streamed.done = true;
           if (!text && !streamed?.shown) break;
@@ -221,11 +221,11 @@ export class ClaudeMapper {
             ts: this.texts.get(itemId)?.ts ?? ts,
             text,
             streaming: false,
+            ...(parent ? { parentId: parent } : {}),
           });
           break;
         }
         case 'thinking': {
-          if (parent) break;
           const finalText = str(block.thinking) ?? '';
           const text = finalText || streamed?.text || '';
           if (streamed) streamed.done = true;
@@ -236,6 +236,7 @@ export class ClaudeMapper {
             ts: this.texts.get(itemId)?.ts ?? ts,
             text,
             streaming: false,
+            ...(parent ? { parentId: parent } : {}),
           });
           break;
         }

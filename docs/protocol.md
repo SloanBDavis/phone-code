@@ -396,12 +396,16 @@ export interface TextItem extends ItemBase {
   streaming: boolean;
   /** Images the agent produced or referenced in this message (e.g. local image files linked from the markdown). */
   images?: ImageRef[];
+  /** What a sub-agent said: id of the Task tool item it runs under. Shown inside that card. */
+  parentId?: string;
 }
 
 export interface ThinkingItem extends ItemBase {
   kind: 'thinking';
   text: string;
   streaming: boolean;
+  /** A sub-agent's thinking: id of the Task tool item it runs under. */
+  parentId?: string;
 }
 
 export type ToolStatus = 'running' | 'done' | 'error' | 'denied';

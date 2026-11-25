@@ -98,6 +98,13 @@ function settlePending(c: ChatState, itemId: string): void {
   if (p.some((x) => x.awaitId === itemId)) c.pending.value = p.filter((x) => x.awaitId !== itemId);
 }
 
+/** The card an item is shown inside: a sub-agent's calls and messages go under its Task. */
+function parentOf(item: ChatItem): string | undefined {
+  return (item.kind === 'tool' || item.kind === 'text' || item.kind === 'thinking') && item.parentId
+    ? item.parentId
+    : undefined;
+}
+
 export function resetChat(sessionId: string, items: ChatItem[]): void {
   const c = chatOf(sessionId);
   c.items.clear();
@@ -108,8 +115,9 @@ export function resetChat(sessionId: string, items: ChatItem[]): void {
   for (const item of items) {
     c.items.set(item.id, signal(item));
     c.kinds.set(item.id, item.kind);
-    if (item.kind === 'tool' && item.parentId) {
-      const ch = childrenOf(c, item.parentId);
+    const parent = parentOf(item);
+    if (parent) {
+      const ch = childrenOf(c, parent);
       ch.value = [...ch.value, item.id];
     } else top.push(item.id);
     if (isPendingAsk(item)) asks.push(item.id);
@@ -128,8 +136,8 @@ export function upsertItem(sessionId: string, item: ChatItem): void {
     const before = existing.value;
     existing.value = item;
     // A tool row can be nested later (ACP: under the question card that stands for it).
-    const from = before.kind === 'tool' ? before.parentId : undefined;
-    const to = item.kind === 'tool' ? item.parentId : undefined;
+    const from = parentOf(before);
+    const to = parentOf(item);
     if (from !== to) {
       if (from === undefined) c.ids.value = c.ids.value.filter((x) => x !== item.id);
       else {
@@ -145,8 +153,9 @@ export function upsertItem(sessionId: string, item: ChatItem): void {
   } else {
     c.items.set(item.id, signal(item));
     c.kinds.set(item.id, item.kind);
-    if (item.kind === 'tool' && item.parentId) {
-      const ch = childrenOf(c, item.parentId);
+    const parent = parentOf(item);
+    if (parent) {
+      const ch = childrenOf(c, parent);
       ch.value = [...ch.value, item.id];
     } else {
       c.ids.value = [...c.ids.value, item.id];

@@ -246,6 +246,8 @@ public struct TextItem: Codable, Hashable, Sendable {
   public var text: String
   public var streaming: Bool
   public var images: [ImageRef]?
+  /// What a sub-agent said: the Task tool item it runs under.
+  public var parentId: String?
 }
 
 public struct ThinkingItem: Codable, Hashable, Sendable {
@@ -253,6 +255,8 @@ public struct ThinkingItem: Codable, Hashable, Sendable {
   public var ts: Double
   public var text: String
   public var streaming: Bool
+  /// A sub-agent's thinking: the Task tool item it runs under.
+  public var parentId: String?
 }
 
 public struct ToolStatus: OpenEnum {
@@ -502,10 +506,14 @@ public enum ChatItem: Codable, Hashable, Sendable, Identifiable {
     }
   }
 
-  /// Parent Task id for nested tool calls.
+  /// The Task a sub-agent's call, message or thinking is shown under.
   public var parentId: String? {
-    if case .tool(let t) = self { return t.parentId }
-    return nil
+    switch self {
+    case .tool(let t): t.parentId
+    case .text(let t): t.parentId
+    case .thinking(let t): t.parentId
+    default: nil
+    }
   }
 
   /// A permission or question still waiting for the user.
