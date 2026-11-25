@@ -47,6 +47,9 @@ final class Daemon: @unchecked Sendable {
     try "# project\n".write(to: project.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try "PS1='$ '\n".write(to: userHome.appendingPathComponent(".bashrc"), atomically: true, encoding: .utf8)
     try ". ~/.bashrc\n".write(to: userHome.appendingPathComponent(".bash_profile"), atomically: true, encoding: .utf8)
+    // Someone is at the computer (PHONECODE_IDLE_FILE: milliseconds without input). A CI
+    // Mac is idle for real, and the daemon would hold a finished Cursor turn for a reply.
+    try "0".write(to: root.appendingPathComponent("idle"), atomically: true, encoding: .utf8)
   }
 
   static func start(env: [String: String] = [:]) async throws -> Daemon {
@@ -94,6 +97,7 @@ final class Daemon: @unchecked Sendable {
     env["CLAUDE_CONFIG_DIR"] = userHome.appendingPathComponent(".claude").path
     env["CODEX_HOME"] = userHome.appendingPathComponent(".codex").path
     env["FAKE_SPEED"] = "2"
+    env["PHONECODE_IDLE_FILE"] = root.appendingPathComponent("idle").path
     env["FAKE_ACP_HOME"] = root.appendingPathComponent("fake-acp").path
     for (k, v) in extraEnv { env[k] = v }
     return env
