@@ -29,9 +29,9 @@ test('command approval: allow, deny, allow for the session', async ({ phone }) =
 
   await send(phone, 'run tests again');
   await expect(perm.nth(1)).toHaveAttribute('data-status', 'pending');
-  await perm.nth(1).getByTestId('permission-deny-feedback').click();
-  await perm.nth(1).getByTestId('permission-deny-message').fill('not now');
-  await perm.nth(1).getByTestId('permission-deny-send').click();
+  // Codex's approval takes no reason back: a note is not offered, plain Deny is.
+  await expect(perm.nth(1).getByTestId('permission-deny-feedback')).toHaveCount(0);
+  await perm.nth(1).getByTestId('permission-deny').click();
   await waitTurn(phone, 2);
   await expect(perm.nth(1)).toHaveAttribute('data-status', 'denied');
 

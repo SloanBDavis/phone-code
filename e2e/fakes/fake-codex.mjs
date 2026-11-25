@@ -258,7 +258,14 @@ function onMessage(msg) {
     case 'thread/turns/list': {
       if (!thread || thread.id !== p.threadId) return rpcError(msg.id, 'thread not loaded');
       const list = p.sortDirection === 'desc' ? thread.turns.toReversed() : thread.turns;
-      return result(msg.id, { data: list.slice(0, p.limit ?? 50), nextCursor: null, backwardsCursor: null });
+      const limit = p.limit ?? 50;
+      const from = p.cursor ? Number(p.cursor) : 0;
+      const next = from + limit < list.length ? String(from + limit) : null;
+      return result(msg.id, {
+        data: list.slice(from, from + limit),
+        nextCursor: next,
+        backwardsCursor: null,
+      });
     }
     case 'model/list':
       return result(msg.id, {

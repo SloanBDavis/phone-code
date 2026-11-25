@@ -69,6 +69,10 @@ const DEFAULT_MODELS: ModelOption[] = [{ id: 'gpt-5-codex' }, { id: 'gpt-5' }];
  * `skills/list` are added per session and sent the way the TUI's composer
  * does, as a `$skill` mention in the text.
  */
+/** Past turns loaded when a conversation is opened: pages of 50, up to 500 turns. */
+const HISTORY_PAGE = 50;
+const HISTORY_PAGES = 10;
+
 const CODEX_COMMANDS: SlashCommand[] = [
   { name: 'compact', description: 'Summarize the conversation to free up context', source: 'builtin' },
   {
@@ -351,15 +355,26 @@ class CodexSession implements AgentSession {
 
   private async loadHistory(threadId: string): Promise<void> {
     try {
-      const res = rec(
-        await this.call('thread/turns/list', {
-          threadId,
-          itemsView: 'full',
-          sortDirection: 'desc',
-          limit: 50,
-        }),
-      );
-      const turns = arr(res.data).map(rec).toReversed();
+      // Newest first, a page at a time, until the start of the conversation (or a long way back).
+      const newestFirst: Rec[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < HISTORY_PAGES; page++) {
+        const res = rec(
+          // oxlint-disable-next-line no-await-in-loop -- each page needs the cursor of the one before
+          await this.call('thread/turns/list', {
+            threadId,
+            itemsView: 'full',
+            sortDirection: 'desc',
+            limit: HISTORY_PAGE,
+            ...(cursor === undefined ? {} : { cursor }),
+          }),
+        );
+        const data = arr(res.data).map(rec);
+        newestFirst.push(...data);
+        cursor = str(res.nextCursor);
+        if (cursor === undefined || data.length === 0) break;
+      }
+      const turns = newestFirst.toReversed();
       for (const turn of turns) {
         const started = (num(turn.startedAt) ?? 0) * 1000;
         for (const it of arr(turn.items)) {
@@ -941,6 +956,14 @@ class CodexSession implements AgentSession {
   }
 
   private addPending(p: PendingRequest): void {
+    // Only the older approval requests can carry a reason back to Codex: do not
+    // offer "deny with a note" where the note would be dropped.
+    if (
+      p.item.kind === 'permission' &&
+      p.method !== 'execCommandApproval' &&
+      p.method !== 'applyPatchApproval'
+    )
+      p.item.canDenyWithMessage = false;
     this.pending.set(p.item.id, p);
     this.byRpc.set(String(p.rpcId), p.item.id);
     this.status.pending.add(p.item.id);
