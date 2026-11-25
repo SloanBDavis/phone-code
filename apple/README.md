@@ -11,6 +11,18 @@ the computer.
 > Status: early. See [What is verified](#what-is-verified) for what has been
 > built and tested where. Nothing here has run on a physical device yet.
 
+## Just want the Mac app?
+
+No Xcode needed. On macOS 26 or newer, paste this into a terminal:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install-app.sh | sh
+```
+
+It installs the latest release's `PhoneCode.app` into `/Applications`; run it again to update. The app is not notarized (there is no Apple Developer account behind it), which is why it comes through `curl` and not a download link: macOS holds back an app downloaded in a browser until you allow it in **System Settings > Privacy & Security**.
+
+The rest of this page is for building the apps yourself, which is the only way to get the iPhone app.
+
 ## What you need
 
 - A Mac with **Xcode 26** or newer (free from the Mac App Store).

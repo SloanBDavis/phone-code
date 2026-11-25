@@ -76,21 +76,21 @@ Works with Claude Code, Codex, Antigravity, Gemini CLI, OpenCode and other agent
 
 Want to look before installing? The app has a built-in demo: tap "Try the demo" on its first screen.
 
-## Mac and iPhone app (optional)
+## Mac app (optional)
 
-The app from the QR code is a web app and needs nothing else. There is also a native app for Mac and iPhone, with a tiled workspace on the Mac. It is early, and there is no download or App Store version yet: you build it yourself with Xcode.
+The app from the QR code is a web app and needs nothing else. There is also a native Mac app with a tiled workspace that shows several chats at once. It needs macOS 26 or newer. Paste this into a terminal:
 
-1. Install Xcode 26 or newer from the Mac App Store. The Mac needs macOS 26 or newer.
-2. Get the code: `git clone https://github.com/SloanBDavis/phone-code.git`
-3. Open `apple/PhoneCode.xcodeproj` in Xcode.
-4. Pick your team under **Signing & Capabilities** (a free Apple Account works).
-5. Choose **My Mac** as the destination and press **⌘R**.
+```sh
+curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install-app.sh | sh
+```
 
-The Mac app finds the `phonecode` running on that Mac by itself. The full steps, including the iPhone app and the limits of a free Apple Account, are in [apple/README.md](apple/README.md).
+Then open **PhoneCode** from Launchpad or Spotlight. The app has its own `phonecode` inside, so it works without step 1 above, and it finds a `phonecode` that is already running on that Mac by itself.
+
+Run the same command again to update. There is a native iPhone app too, which you build yourself with Xcode: see [apple/README.md](apple/README.md).
 
 ## More
 
-- [Mac and iPhone app](apple/README.md): building and running the native app
+- [Mac and iPhone app](apple/README.md): building the native apps from source
 - [Guide](docs/guide.md): all commands and options, connection details, features, agent support, how it is built
 - [Security](SECURITY.md): what is protected, what is not, and what has been formally checked
 - [Contributing](CONTRIBUTING.md): building from source and running the tests
