@@ -188,6 +188,8 @@ class CodexSession implements AgentSession {
   /** null until the first usage report after (re)start: a resumed thread's totals include old turns. */
   private tokensAtTurnStart: { input: number; output: number } | null = null;
   private tokensNow = { input: 0, output: 0 };
+  /** Tokens in the context as of the last model call, and the model's window. */
+  private context: { tokens?: number; window?: number } = {};
   private turnStartedAt = 0;
   private interruptRequested = false;
   private disposed = false;
@@ -701,6 +703,12 @@ class CodexSession implements AgentSession {
       case 'thread/tokenUsage/updated': {
         const total = rec(rec(p.tokenUsage).total);
         this.tokensNow = { input: num(total.inputTokens) ?? 0, output: num(total.outputTokens) ?? 0 };
+        {
+          const last = rec(rec(p.tokenUsage).last);
+          const tokens = num(last.totalTokens);
+          const window = num(rec(p.tokenUsage).modelContextWindow);
+          this.context = { ...(tokens ? { tokens } : {}), ...(window ? { window } : {}) };
+        }
         if (this.tokensAtTurnStart === null) {
           const last = rec(rec(p.tokenUsage).last);
           this.tokensAtTurnStart = {
@@ -811,6 +819,8 @@ class CodexSession implements AgentSession {
       durationMs: num(turn.durationMs) ?? Date.now() - this.turnStartedAt,
       ...(input > 0 ? { inputTokens: input } : {}),
       ...(output > 0 ? { outputTokens: output } : {}),
+      ...(this.context.tokens ? { contextTokens: this.context.tokens } : {}),
+      ...(this.context.tokens && this.context.window ? { contextWindow: this.context.window } : {}),
       ...(outcome === 'error' ? { error: err ?? 'Turn failed' } : {}),
     });
     this.tokensAtTurnStart = { ...this.tokensNow };

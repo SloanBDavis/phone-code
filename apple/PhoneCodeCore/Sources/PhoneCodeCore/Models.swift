@@ -421,6 +421,9 @@ public struct TurnItem: Codable, Hashable, Sendable {
   public var costUsd: Double?
   public var inputTokens: Double?
   public var outputTokens: Double?
+  /// Tokens in the model's context after this turn, and the size of its window.
+  public var contextTokens: Double?
+  public var contextWindow: Double?
   public var error: String?
 }
 

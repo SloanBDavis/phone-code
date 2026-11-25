@@ -386,6 +386,10 @@ export interface TurnItem extends ItemBase {
   costUsd?: number;
   inputTokens?: number;
   outputTokens?: number;
+  /** Tokens in the model's context after this turn, where the agent reports it. */
+  contextTokens?: number;
+  /** The size of the model's context window in tokens (with `contextTokens`: how full it is). */
+  contextWindow?: number;
   error?: string;
 }
 

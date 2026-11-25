@@ -22,6 +22,8 @@ test('streams a markdown answer', async ({ phone }) => {
   await expect(text).toHaveAttribute('data-streaming', 'false');
   await expect(text.locator('strong, code, li').first()).toBeVisible();
   await shot(phone, 'chat-hello');
+  // The turn's footer says how full the model's context is.
+  await expect(phone.testId('chat-item-turn')).toContainText('context 21%');
 });
 
 test('Bash permission: allow, deny, deny with feedback, always allow', async ({ phone }) => {

@@ -144,6 +144,14 @@ struct TurnFooter: View {
       parts.append(Duration.milliseconds(Int64(ms)).formatted(.units(allowed: [.minutes, .seconds], width: .narrow)))
     }
     if let c = item.costUsd, c > 0 { parts.append(c.formatted(.currency(code: "USD").precision(.fractionLength(2...4)))) }
+    let tokens = (item.inputTokens ?? 0) + (item.outputTokens ?? 0)
+    if tokens > 0 {
+      parts.append(tokens >= 1000 ? String(format: "%.1fk tokens", tokens / 1000) : "\(Int(tokens)) tokens")
+    }
+    // How full the model's context is after this turn.
+    if let used = item.contextTokens, let window = item.contextWindow, used > 0, window > 0 {
+      parts.append("context \(min(100, Int((used / window * 100).rounded())))%")
+    }
     return parts.joined(separator: " · ")
   }
 

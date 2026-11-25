@@ -203,6 +203,8 @@ class AcpSession implements AgentSession {
   private promptRpcId: number | undefined;
   private costAtTurnStart: number | undefined;
   private costNow: number | undefined;
+  /** Tokens in the context and the model's window, as the agent last reported them. */
+  private context: { tokens?: number; window?: number } = {};
 
   private modes: Selector | undefined;
   private modeMap = new Map<PermissionMode, string>();
@@ -615,6 +617,10 @@ class AcpSession implements AgentSession {
         const cost = rec(u.cost);
         const amount = num(cost.amount);
         if (amount !== undefined && str(cost.currency) === 'USD') this.costNow = amount;
+        const used = num(u.used);
+        const size = num(u.size);
+        if (used !== undefined && used > 0)
+          this.context = { tokens: used, ...(size !== undefined && size > 0 ? { window: size } : {}) };
         return;
       }
       case 'notice': {
@@ -1057,6 +1063,8 @@ class AcpSession implements AgentSession {
       ...(cost !== undefined && cost > 0 ? { costUsd: cost } : {}),
       ...(input !== undefined && input > 0 ? { inputTokens: input } : {}),
       ...(output !== undefined && output > 0 ? { outputTokens: output } : {}),
+      ...(live && this.context.tokens ? { contextTokens: this.context.tokens } : {}),
+      ...(live && this.context.tokens && this.context.window ? { contextWindow: this.context.window } : {}),
       ...(error !== undefined ? { error } : {}),
     });
   }

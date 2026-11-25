@@ -126,6 +126,12 @@ export function TurnFooter({ item }: { item: Signal<ChatItem> }): JSX.Element | 
   if (t.costUsd !== undefined) parts.push(`$${t.costUsd.toFixed(2)}`);
   const tokens = (t.inputTokens ?? 0) + (t.outputTokens ?? 0);
   if (tokens) parts.push(`${tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : tokens} tokens`);
+  // How full the model's context is after this turn (a fuller one is compacted sooner).
+  const full =
+    t.contextTokens && t.contextWindow
+      ? Math.min(100, Math.round((t.contextTokens / t.contextWindow) * 100))
+      : 0;
+  if (full > 0) parts.push(`context ${full}%`);
   return (
     <div class={`turn turn-${t.outcome}`} data-testid="chat-item-turn" data-outcome={t.outcome}>
       <span class="turn-line" />

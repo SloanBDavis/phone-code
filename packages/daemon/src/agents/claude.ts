@@ -178,6 +178,8 @@ class ClaudeSession implements AgentSession {
   private interruptRequested = false;
   private disposed = false;
   private lastCostTotal = 0;
+  /** Tokens in the context as of the main thread's last model call. */
+  private contextTokens: number | undefined;
   private turnStartedAt = 0;
   private noticeSeq = 0;
   private lastRateLimit = '';
@@ -464,11 +466,21 @@ class ClaudeSession implements AgentSession {
         this.markBusy();
         this.mapper.onStreamEvent(msg.event, str(msg.parent_tool_use_id) ?? null);
         return;
-      case 'assistant':
+      case 'assistant': {
         this.markBusy();
+        // The main thread's last call says how full the context is (a sub-agent has its own).
+        const u = rec(rec(msg.message).usage);
+        if (!str(msg.parent_tool_use_id) && num(u.input_tokens) !== undefined) {
+          this.contextTokens =
+            (num(u.input_tokens) ?? 0) +
+            (num(u.cache_read_input_tokens) ?? 0) +
+            (num(u.cache_creation_input_tokens) ?? 0) +
+            (num(u.output_tokens) ?? 0);
+        }
         this.mapper.onAssistant(msg);
         if (str(msg.error)) this.onAssistantError(msg);
         return;
+      }
       case 'user':
         // The core already shows the prompt; tool results and local command output matter live.
         this.mapper.onToolResults(msg);
@@ -623,6 +635,11 @@ class ClaudeSession implements AgentSession {
       cost = Math.round((total >= this.lastCostTotal ? total - this.lastCostTotal : total) * 1e6) / 1e6;
       this.lastCostTotal = total;
     }
+    // The window of the model that ran the turn (the largest, when sub-agents used others).
+    const windows = Object.values(rec(msg.modelUsage))
+      .map((m) => num(rec(m).contextWindow) ?? 0)
+      .filter((w) => w > 0);
+    const contextWindow = windows.length > 0 ? Math.max(...windows) : undefined;
     const errors = arr(msg.errors).map((e) => String(e));
     const error =
       outcome === 'error'
@@ -639,6 +656,8 @@ class ClaudeSession implements AgentSession {
       ...(cost !== undefined ? { costUsd: cost } : {}),
       ...(input ? { inputTokens: input } : {}),
       ...(num(usage.output_tokens) !== undefined ? { outputTokens: num(usage.output_tokens) } : {}),
+      ...(this.contextTokens ? { contextTokens: this.contextTokens } : {}),
+      ...(this.contextTokens && contextWindow ? { contextWindow } : {}),
       ...(error ? { error } : {}),
     };
     this.events.upsert(turn);

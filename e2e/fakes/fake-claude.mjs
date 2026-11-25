@@ -472,7 +472,8 @@ function makeTurn() {
           content: [block],
           stop_reason: stop,
           stop_sequence: null,
-          usage: usage(12, 8),
+          // What the context holds as of this call: 42k of the 200k window.
+          usage: usage(41960, 40),
         },
         parent_tool_use_id: t.parent,
         session_id: sessionId,
@@ -1154,7 +1155,7 @@ async function runTurn(msg) {
     session_id: sessionId,
     total_cost_usd: Number(totalCost.toFixed(6)),
     usage: usage(1200 + turnIndex, 85),
-    modelUsage: { [model]: { inputTokens: 1200, outputTokens: 85, costUSD: cost } },
+    modelUsage: { [model]: { inputTokens: 1200, outputTokens: 85, costUSD: cost, contextWindow: 200000 } },
     permission_denials: [],
     uuid: randomUUID(),
     ...(msg.uuid ? { user_message_uuids: [msg.uuid] } : {}),
