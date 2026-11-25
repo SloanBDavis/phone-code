@@ -410,24 +410,28 @@ struct SearchResultsView: View {
           .disabled(loadingMore)
           .accessibilityIdentifier("search-more")
         }
-      } header: {
-        VStack(alignment: .leading, spacing: 8) {
-          HStack {
-            Text(query.isEmpty ? "All chats on this computer" : "Results")
-              .font(.footnote.weight(.semibold))
-            Spacer()
-            Button("Done", action: onClose)
-              .buttonStyle(.borderless)
-              .font(.footnote)
-              .accessibilityIdentifier("search-done")
-          }
-          filters
-        }
-        .textCase(nil)
-        .padding(.bottom, 4)
       }
     }
     .listStyle(.sidebar)
+    // Above the list, not a section header: a header's buttons are out of reach of
+    // keyboard and assistive control on macOS.
+    .safeAreaInset(edge: .top, spacing: 0) {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack {
+          Text(query.isEmpty ? "All chats on this computer" : "Results")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+          Spacer()
+          Button("Done", action: onClose)
+            .buttonStyle(.borderless)
+            .font(.footnote)
+            .accessibilityIdentifier("search-done")
+        }
+        filters
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 8)
+    }
     .overlay {
       if loading && results.isEmpty {
         ProgressView()

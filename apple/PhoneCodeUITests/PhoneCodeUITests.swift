@@ -319,8 +319,7 @@ final class PhoneCodeUITests: XCTestCase {
       press(wait("browse-all"))
       wait("search-result", 30)
       shot("20-mac-all-chats")
-      // A button in a list section header loses its identifier on macOS: its title finds it.
-      press(menuEntry("search-done", "Done"))
+      press(wait("search-done"))
       wait("session-row")
     }
   #endif
