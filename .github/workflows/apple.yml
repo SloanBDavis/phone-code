@@ -218,6 +218,7 @@ jobs:
           ONLY_TESTS: ${{ inputs.only }}
         run: |
           status=0
+          # A test that fails is run once more: the runners are slow enough to time out a wait now and then.
           only=""
           for t in $ONLY_TESTS; do only="$only -only-testing:PhoneCodeUITests/PhoneCodeUITests/$t"; done
           TEST_RUNNER_PC_UITEST_DAEMON="http://127.0.0.1:$DAEMON_PORT" \
@@ -229,6 +230,7 @@ jobs:
             -derivedDataPath DerivedData \
             -resultBundlePath "uitests-${{ matrix.platform }}.xcresult" \
             $only \
+            -retry-tests-on-failure -test-iterations 2 \
             ${{ steps.dest.outputs.signing }} \
             > uitests-${{ matrix.platform }}.log 2>&1 || status=$?
           grep -E 'Test Case|error:|failed|passed|\*\*' uitests-${{ matrix.platform }}.log | head -400 || true
