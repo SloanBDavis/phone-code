@@ -13,7 +13,7 @@ the computer.
 
 ## Just want the Mac app?
 
-No Xcode needed. On macOS 26 or newer, paste this into a terminal:
+No Xcode needed. On a Mac with Apple silicon and macOS 26 or newer, paste this into a terminal:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install-app.sh | sh

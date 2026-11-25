@@ -1,9 +1,13 @@
 name: Apple
 
-# The native iOS and macOS app (apple/). Builds it with xcodebuild, runs the
-# Core package's end-to-end tests against the real daemon, and runs the
-# XCUITests on the iOS simulator and on macOS against the daemon with the
-# scripted fake agents, uploading a screenshot of every main screen.
+# The native iOS and macOS app (apple/). On a push: the Core package's
+# end-to-end tests against the real daemon, the Mac app as a release ships it,
+# and the XCUITests on macOS against the daemon with the scripted fake agents
+# (a screenshot of every main screen is uploaded).
+#
+# The iOS simulator tests are slow, so they run only when asked for: "Run
+# workflow" runs the XCUITests alone, on the platform chosen there, all of them
+# or only the ones named.
 
 on:
   push:
@@ -11,7 +15,18 @@ on:
       - 'apple/**'
       - 'install-app.sh'
       - '.github/workflows/apple.yml'
+      - '!**/*.md'
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Where to run the UI tests
+        type: choice
+        options: [ios, macos, both]
+        default: ios
+      only:
+        description: 'Only these tests, separated by spaces (e.g. "test01PairAndFirstChat test05Terminal"); empty runs all'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -28,6 +43,7 @@ env:
 jobs:
   core-linux:
     name: Core end-to-end (Linux)
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -56,6 +72,7 @@ jobs:
 
   core-macos:
     name: Core end-to-end (macOS, URLSession WebSocket)
+    if: github.event_name != 'workflow_dispatch'
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -79,6 +96,7 @@ jobs:
   # The Mac app as a release ships it (release.yml runs the same steps).
   package-mac:
     name: Mac app package and install-app.sh
+    if: github.event_name != 'workflow_dispatch'
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -87,6 +105,12 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      # Compiled packages and Xcode's compilation cache, so only what changed is built again.
+      - uses: actions/cache@v4
+        with:
+          path: DerivedData/mac-release
+          key: mac-app-${{ runner.os }}-${{ hashFiles('apple/**', 'packages/**', 'bun.lock') }}
+          restore-keys: mac-app-${{ runner.os }}-
       - name: Build and zip PhoneCode.app
         run: |
           status=0
@@ -113,7 +137,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ios, macos]
+        # A push: macOS. "Run workflow": the platform chosen there.
+        platform: ${{ fromJSON(github.event_name != 'workflow_dispatch' && '["macos"]' || inputs.platform == 'both' && '["ios","macos"]' || format('["{0}"]', inputs.platform)) }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -189,8 +214,12 @@ jobs:
           curl -sf "http://127.0.0.1:$DAEMON_PORT/api/health"
 
       - name: UI tests
+        env:
+          ONLY_TESTS: ${{ inputs.only }}
         run: |
           status=0
+          only=""
+          for t in $ONLY_TESTS; do only="$only -only-testing:PhoneCodeUITests/PhoneCodeUITests/$t"; done
           TEST_RUNNER_PC_UITEST_DAEMON="http://127.0.0.1:$DAEMON_PORT" \
           TEST_RUNNER_PC_UITEST_CODE="$PHONECODE_PAIR_CODE" \
           TEST_RUNNER_PC_UITEST_HOME="$RUNNER_TEMP/pc/state" \
@@ -199,6 +228,7 @@ jobs:
             -destination "${{ steps.dest.outputs.destination }}" \
             -derivedDataPath DerivedData \
             -resultBundlePath "uitests-${{ matrix.platform }}.xcresult" \
+            $only \
             ${{ steps.dest.outputs.signing }} \
             > uitests-${{ matrix.platform }}.log 2>&1 || status=$?
           grep -E 'Test Case|error:|failed|passed|\*\*' uitests-${{ matrix.platform }}.log | head -400 || true

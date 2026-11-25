@@ -22,6 +22,8 @@ die() {
 }
 
 [ "$(uname -s)" = Darwin ] || die "the app is for macOS; on Linux use install.sh"
+[ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ] ||
+  die "the app is for Macs with Apple silicon; on an Intel Mac use install.sh and the web app"
 major="$(sw_vers -productVersion | cut -d . -f 1)"
 [ "$major" -ge 26 ] || die "the app needs macOS 26 or newer (this Mac has $(sw_vers -productVersion)); use install.sh and the web app instead"
 

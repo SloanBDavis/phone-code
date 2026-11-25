@@ -1,6 +1,6 @@
 #!/bin/sh
-# Builds the Mac app for a release: PhoneCode.app, for Apple silicon and Intel,
-# with its own phonecode inside (build-daemon.sh), zipped next to its checksum.
+# Builds the Mac app for a release: PhoneCode.app for Apple silicon, with its
+# own phonecode inside (build-daemon.sh), zipped next to its checksum.
 #
 #   apple/scripts/package-mac.sh [output directory]   (default: release/)
 #
@@ -24,7 +24,7 @@ xcodebuild build \
   -project "$ROOT/apple/PhoneCode.xcodeproj" -scheme PhoneCode -configuration Release \
   -destination 'generic/platform=macOS' -derivedDataPath "$DERIVED" \
   -skipPackagePluginValidation -skipMacroValidation \
-  ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+  ARCHS=arm64 ONLY_ACTIVE_ARCH=NO COMPILATION_CACHE_ENABLE_CACHING=YES \
   CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= ENABLE_HARDENED_RUNTIME=NO \
   PC_BUNDLE_ID_PREFIX=io.github.sloanbdavis
 

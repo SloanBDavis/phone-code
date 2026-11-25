@@ -78,7 +78,7 @@ Want to look before installing? The app has a built-in demo: tap "Try the demo" 
 
 ## Mac app (optional)
 
-The app from the QR code is a web app and needs nothing else. There is also a native Mac app with a tiled workspace that shows several chats at once. It needs macOS 26 or newer. Paste this into a terminal:
+The app from the QR code is a web app and needs nothing else. There is also a native Mac app with a tiled workspace that shows several chats at once. It needs a Mac with Apple silicon and macOS 26 or newer. Paste this into a terminal:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install-app.sh | sh

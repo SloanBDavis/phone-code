@@ -129,6 +129,12 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      # The cache the Apple workflow fills on main: only what changed is built again.
+      - uses: actions/cache@v4
+        with:
+          path: DerivedData/mac-release
+          key: mac-app-${{ runner.os }}-${{ hashFiles('apple/**', 'packages/**', 'bun.lock') }}
+          restore-keys: mac-app-${{ runner.os }}-
       - name: Build and zip PhoneCode.app
         run: apple/scripts/package-mac.sh "$PWD/release-app"
       - name: Install with install-app.sh
