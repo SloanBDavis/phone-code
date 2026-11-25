@@ -259,9 +259,8 @@ struct TranscriptView: View {
         }
         Color.clear.frame(height: 4).id("bottom")
       }
-      .padding(.horizontal, 16)
+      .padding(.horizontal, 20)
       .padding(.vertical, 12)
-      .frame(maxWidth: 860)
       // Fill the view even when the chat is short: the empty top of a scroll
       // view under the toolbar is drawn in the toolbar's color on macOS.
       .frame(maxWidth: .infinity, minHeight: viewport, alignment: .bottom)

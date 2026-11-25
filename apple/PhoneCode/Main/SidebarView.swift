@@ -11,6 +11,10 @@ struct SidebarView: View {
   @State private var renaming: SessionInfo?
   @State private var renameText = ""
   @State private var deleting: SessionInfo?
+  /// Looking through every conversation on the computer, without a search text.
+  @State private var browsing = false
+  /// Chats followed from Cursor's app: folded away until asked for.
+  @AppStorage("pc.sidebar.cursorOpen") private var cursorOpen = false
   @FocusState private var searchFocused: Bool
 
   var body: some View {
@@ -77,8 +81,15 @@ struct SidebarView: View {
 
   @ViewBuilder
   private var list: some View {
-    if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-      SearchResultsView(query: query, onOpen: onOpen)
+    if browsing || !query.trimmingCharacters(in: .whitespaces).isEmpty {
+      SearchResultsView(query: query.trimmingCharacters(in: .whitespaces)) {
+        browsing = false
+        query = ""
+        onOpen()
+      } onClose: {
+        browsing = false
+        query = ""
+      }
     } else {
       let groups = model.client.sidebar
       List {
@@ -97,13 +108,36 @@ struct SidebarView: View {
         } header: {
           if !groups.needsYou.isEmpty { Text("Chats").font(.footnote.weight(.semibold)) }
         }
+        if !groups.cursor.isEmpty {
+          Section(isExpanded: $cursorOpen) {
+            ForEach(groups.cursor) { row($0) }
+          } header: {
+            Text("Cursor · \(groups.cursor.count)").font(.footnote.weight(.semibold))
+          }
+          .axContainer("section-cursor")
+        }
+        if model.client.sessionsLoaded {
+          Section {
+            Button {
+              browsing = true
+            } label: {
+              Label("All chats on this computer", systemImage: "clock.arrow.circlepath")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("browse-all")
+          }
+        }
       }
       .listStyle(.sidebar)
       #if os(iOS)
         .listSectionSpacing(.compact)
       #endif
       .overlay {
-        if model.client.sessionsLoaded && groups.needsYou.isEmpty && groups.chats.isEmpty {
+        if model.client.sessionsLoaded && groups.needsYou.isEmpty && groups.chats.isEmpty && groups.cursor.isEmpty {
           ContentUnavailableView("No chats yet", systemImage: "bubble.left.and.text.bubble.right", description: Text("Start one with the composer."))
         } else if !model.client.sessionsLoaded {
           ProgressView()
@@ -332,47 +366,66 @@ struct AppMark: View {
   }
 }
 
-/// "All chats": every conversation on the computer, from every harness.
+/// "All chats": every conversation on the computer, from every harness, started
+/// here or at the computer, archived or not. Newest first; a search text and the
+/// agent filter narrow it. Opening one puts it in the sidebar.
 struct SearchResultsView: View {
   @Environment(AppModel.self) private var model
   let query: String
   var onOpen: () -> Void
+  var onClose: () -> Void = {}
   @State private var results: [ResumableSession] = []
   @State private var loading = true
+  @State private var loadingMore = false
+  @State private var more = false
+  @State private var agent: String?
   @State private var error: String?
 
+  private static let page = 50
+
+  private struct Key: Hashable {
+    let query: String
+    let agent: String?
+  }
+
   var body: some View {
-    List(results) { r in
-      Button {
-        Task {
-          await model.open(r)
-          onOpen()
+    List {
+      Section {
+        ForEach(results) { r in
+          row(r)
         }
-      } label: {
-        HStack(alignment: .top, spacing: 12) {
-          HarnessGlyph(id: r.agent)
-          VStack(alignment: .leading, spacing: 3) {
+        if more {
+          Button {
+            Task { await loadMore() }
+          } label: {
             HStack {
-              Text(r.title).lineLimit(1)
-              if r.archived == true {
-                Text("Archived").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(.fill.tertiary, in: .capsule)
-              }
+              Text(loadingMore ? "Loading…" : "Show older chats")
               Spacer()
-              Text(Date.short(r.updatedAt)).font(.caption).foregroundStyle(.secondary)
             }
-            Text("\(r.agentName ?? r.agent) · \(tildePath(r.cwd, home: model.client.host?.home))")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
-            if let s = r.snippet {
-              Text(s).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .contentShape(.rect)
           }
+          .buttonStyle(.plain)
+          .disabled(loadingMore)
+          .accessibilityIdentifier("search-more")
         }
-        .contentShape(.rect)
+      } header: {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack {
+            Text(query.isEmpty ? "All chats on this computer" : "Results")
+              .font(.footnote.weight(.semibold))
+            Spacer()
+            Button("Done", action: onClose)
+              .buttonStyle(.borderless)
+              .font(.footnote)
+              .accessibilityIdentifier("search-done")
+          }
+          filters
+        }
+        .textCase(nil)
+        .padding(.bottom, 4)
       }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("search-result")
     }
     .listStyle(.sidebar)
     .overlay {
@@ -381,22 +434,111 @@ struct SearchResultsView: View {
       } else if let error {
         ContentUnavailableView("Search failed", systemImage: "exclamationmark.magnifyingglass", description: Text(error))
       } else if results.isEmpty {
-        ContentUnavailableView.search(text: query)
+        if query.isEmpty {
+          ContentUnavailableView("No chats yet", systemImage: "bubble.left.and.text.bubble.right")
+        } else {
+          ContentUnavailableView.search(text: query)
+        }
       }
     }
-    .task(id: query) {
+    .task(id: Key(query: query, agent: agent)) {
       loading = true
-      try? await Task.sleep(for: .milliseconds(250))
+      // Typing: wait for a pause. Browsing or a filter: right away.
+      if !query.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }
       if Task.isCancelled { return }
       do {
-        results = try await model.client.history(HistoryQuery(text: query, limit: 50))
+        let list = try await model.client.history(HistoryQuery(text: query.isEmpty ? nil : query, limit: Self.page), agent: agent)
+        if Task.isCancelled { return }
+        results = list
+        more = list.count >= Self.page
         error = nil
       } catch {
+        if Task.isCancelled { return }
         self.error = "\(error)"
       }
       loading = false
     }
     .axContainer("search-results")
+  }
+
+  /// One chip per agent that has chats to list; none when there is only one.
+  @ViewBuilder
+  private var filters: some View {
+    let agents = model.client.agents.filter { $0.available }
+    if agents.count > 1 {
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 6) {
+          chip("All", id: nil)
+          ForEach(agents) { a in chip(a.name, id: a.id) }
+        }
+      }
+      .accessibilityIdentifier("search-filters")
+    }
+  }
+
+  private func chip(_ name: String, id: String?) -> some View {
+    let on = agent == id
+    return Button {
+      agent = id
+    } label: {
+      Text(name)
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .foregroundStyle(on ? Theme.onInk : Color.primary)
+        .background(on ? Theme.ink : Theme.chip, in: .capsule)
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(on ? .isSelected : [])
+    .accessibilityIdentifier("search-filter-\(id ?? "all")")
+  }
+
+  private func row(_ r: ResumableSession) -> some View {
+    Button {
+      Task {
+        await model.open(r)
+        onOpen()
+      }
+    } label: {
+      HStack(alignment: .top, spacing: 12) {
+        HarnessGlyph(id: r.agent)
+        VStack(alignment: .leading, spacing: 3) {
+          HStack {
+            Text(r.title).lineLimit(1)
+            if r.archived == true {
+              Text("Archived").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(.fill.tertiary, in: .capsule)
+            }
+            Spacer()
+            Text(Date.short(r.updatedAt)).font(.caption).foregroundStyle(.secondary)
+          }
+          Text("\(r.agentName ?? r.agent) · \(tildePath(r.cwd, home: model.client.host?.home))")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+          if let s = r.snippet {
+            Text(s).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+          }
+        }
+      }
+      .contentShape(.rect)
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("search-result")
+  }
+
+  private func loadMore() async {
+    guard let last = results.last, !loadingMore else { return }
+    loadingMore = true
+    defer { loadingMore = false }
+    let q = HistoryQuery(text: query.isEmpty ? nil : query, limit: Self.page, before: last.updatedAt)
+    guard let list = try? await model.client.history(q, agent: agent) else {
+      more = false
+      return
+    }
+    let known = Set(results.map(\.id))
+    let fresh = list.filter { !known.contains($0.id) }
+    results += fresh
+    more = list.count >= Self.page && !fresh.isEmpty
   }
 }
 

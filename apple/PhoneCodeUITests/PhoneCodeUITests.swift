@@ -296,5 +296,31 @@ final class PhoneCodeUITests: XCTestCase {
       shot("17-mac-workspace-rearranged")
       XCTAssertEqual(tiles.count, 3)
     }
+
+    /// The sidebar's edge drags to make it wider, and "All chats on this
+    /// computer" lists every conversation with the agent filter.
+    func test09MacSidebarResizeAndAllChats() throws {
+      launch()
+      pair()
+      send("hello, remember the word heron")
+      wait("chat-item-turn", 30)
+      let sidebar = wait("sidebar")
+      let before = sidebar.frame.width
+      let splitter = app.splitters.firstMatch
+      let start =
+        splitter.waitForExistence(timeout: 3)
+        ? splitter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        : sidebar.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: 8, dy: 0))
+      start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 140, dy: 0)))
+      sleep(1)
+      let after = el("sidebar").frame.width
+      shot("19-mac-sidebar-wider")
+      XCTAssertGreaterThan(after, before + 40, "the sidebar did not get wider: \(before) -> \(after), splitter: \(splitter.exists)")
+      press(wait("browse-all"))
+      wait("search-result", 30)
+      shot("20-mac-all-chats")
+      press(wait("search-done"))
+      wait("session-row")
+    }
   #endif
 }

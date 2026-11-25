@@ -5,6 +5,8 @@ import Foundation
 public enum Agents {
   static let nativeNames = ["claude": "Claude Code", "codex": "Codex"]
   static let shortNames = ["claude": "Claude", "codex": "Codex"]
+  /// Cursor's desktop app, followed through its hooks (its chats start in Cursor).
+  public static let cursorApp = "cursor-app"
 
   /// Every agent the host offers; older daemons only send `agents`.
   public static func catalog(_ h: HostInfo?) -> [AgentInfo] {

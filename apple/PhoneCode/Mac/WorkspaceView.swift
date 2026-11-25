@@ -53,7 +53,7 @@
     var body: some View {
       NavigationSplitView(columnVisibility: $columns) {
         SidebarView()
-          .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 400)
+          .navigationSplitViewColumnWidth(min: 200, ideal: 280, max: 560)
       } detail: {
         WorkspaceView(store: store)
           .navigationTitle(model.client.session(store.focusedSessionId ?? "")?.title ?? "New chat")

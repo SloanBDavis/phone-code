@@ -70,36 +70,66 @@ struct MarkdownView: View {
   }
 }
 
+/// A table as a table: a header band, a line under every row and between the
+/// columns, as wide as the chat. One too wide for it scrolls sideways.
 struct MarkdownTable: View {
   let header: [String]
   let aligns: [MarkdownAlignment]
   let rows: [[String]]
 
   var body: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-        GridRow {
-          ForEach(Array(header.enumerated()), id: \.offset) { i, h in
-            Text(MarkdownView.inline(h)).bold().gridColumnAlignment(alignment(i))
-          }
-        }
-        Divider()
-        ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
-          GridRow {
-            ForEach(Array(r.enumerated()), id: \.offset) { _, c in
-              Text(MarkdownView.inline(c))
-            }
-          }
-        }
-      }
-      .padding(12)
+    ViewThatFits(in: .horizontal) {
+      grid(fill: true)
+      ScrollView(.horizontal, showsIndicators: false) { grid(fill: false) }
     }
-    .background(Theme.card, in: .rect(cornerRadius: 12))
-    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
+    .background(Theme.codeBackground, in: .rect(cornerRadius: 10))
+    .clipShape(.rect(cornerRadius: 10))
+    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
     .axContainer("markdown-table")
   }
 
+  private func grid(fill: Bool) -> some View {
+    Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+      GridRow {
+        ForEach(0..<header.count, id: \.self) { i in
+          cell(header[i], column: i, fill: fill)
+            .fontWeight(.semibold)
+            .background(Theme.chip)
+        }
+      }
+      ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+        Rectangle().fill(Theme.hairline).frame(height: 1).gridCellUnsizedAxes(.horizontal)
+        GridRow {
+          // Every row has the header's columns: a short one is padded, a long one cut.
+          ForEach(0..<header.count, id: \.self) { i in
+            cell(i < r.count ? r[i] : "", column: i, fill: fill)
+          }
+        }
+      }
+    }
+  }
+
+  private func cell(_ text: String, column i: Int, fill: Bool) -> some View {
+    Text(MarkdownView.inline(text))
+      .multilineTextAlignment(textAlignment(i))
+      .fixedSize(horizontal: !fill, vertical: true)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 7)
+      .frame(maxWidth: fill ? .infinity : nil, maxHeight: .infinity, alignment: Alignment(horizontal: alignment(i), vertical: .top))
+      .overlay(alignment: .leading) {
+        if i > 0 { Rectangle().fill(Theme.hairline).frame(width: 1) }
+      }
+  }
+
   private func alignment(_ i: Int) -> HorizontalAlignment {
+    switch i < aligns.count ? aligns[i] : .leading {
+    case .center: .center
+    case .trailing: .trailing
+    case .leading: .leading
+    }
+  }
+
+  private func textAlignment(_ i: Int) -> TextAlignment {
     switch i < aligns.count ? aligns[i] : .leading {
     case .center: .center
     case .trailing: .trailing

@@ -109,12 +109,9 @@ struct ThinkingRow: View {
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
     } label: {
-      HStack(spacing: 6) {
-        Image(systemName: "brain")
-        Text(item.streaming ? "Thinking…" : "Thought")
-      }
-      .font(.callout)
-      .foregroundStyle(.secondary)
+      Text(item.streaming ? "Thinking…" : "Thought")
+        .font(.callout)
+        .foregroundStyle(.secondary)
     }
     .axContainer("chat-item-thinking")
   }
@@ -357,6 +354,8 @@ struct TodoList: View {
 
 struct DiffView: View {
   let patch: String
+  /// The card's width: rows are at least this wide, so their tint reaches the edge.
+  @State private var width: CGFloat = 0
 
   var body: some View {
     let lines = UnifiedDiff.lines(patch).filter { $0.kind != .meta }
@@ -364,19 +363,20 @@ struct DiffView: View {
       VStack(alignment: .leading, spacing: 0) {
         ForEach(lines) { l in
           HStack(spacing: 8) {
-            Text(l.oldLine.map(String.init) ?? "").frame(width: 30, alignment: .trailing).foregroundStyle(.tertiary)
-            Text(l.newLine.map(String.init) ?? "").frame(width: 30, alignment: .trailing).foregroundStyle(.tertiary)
+            Text(l.oldLine.map(String.init) ?? "").frame(width: 28, alignment: .trailing).foregroundStyle(.tertiary)
+            Text(l.newLine.map(String.init) ?? "").frame(width: 28, alignment: .trailing).foregroundStyle(.tertiary)
             Text(prefix(l.kind) + l.text)
               .foregroundStyle(l.kind == .hunk ? Color.secondary : Color.primary)
           }
           .font(.caption.monospaced())
           .padding(.vertical, 1)
           .padding(.trailing, 8)
-          .frame(maxWidth: .infinity, alignment: .leading)
+          .frame(minWidth: width, alignment: .leading)
           .background(background(l.kind))
         }
       }
     }
+    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     .background(.fill.tertiary, in: .rect(cornerRadius: 8))
     .clipShape(.rect(cornerRadius: 8))
     .axContainer("diff-view")
