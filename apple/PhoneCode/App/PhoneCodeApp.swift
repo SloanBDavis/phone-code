@@ -13,6 +13,9 @@ struct PhoneCodeApp: App {
       RootView()
         .environment(model)
         .onOpenURL { model.handle(url: $0) }
+        #if os(macOS)
+          .modifier(UpdatePrompt())
+        #endif
     }
     #if os(macOS)
       .defaultSize(width: 1280, height: 820)

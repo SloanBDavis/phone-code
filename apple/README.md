@@ -13,13 +13,13 @@ the computer.
 
 ## Just want the Mac app?
 
-No Xcode needed. On a Mac with Apple silicon and macOS 26 or newer, paste this into a terminal:
+No Xcode needed. On a Mac with Apple silicon and macOS 26 or newer, paste this into a terminal and choose the Mac app (or both):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install-app.sh | sh
+curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install.sh | sh
 ```
 
-It installs the latest release's `PhoneCode.app` into `/Applications`; run it again to update. The app is not notarized (there is no Apple Developer account behind it), which is why it comes through `curl` and not a download link: macOS holds back an app downloaded in a browser until you allow it in **System Settings > Privacy & Security**.
+It installs the latest release's `PhoneCode.app` into `/Applications`. The app looks for a newer version when it opens and updates itself (**PhoneCode > Check for Updates…**, or **Settings > Updates**). It is not notarized (there is no Apple Developer account behind it), which is why it comes through `curl` and not a download link: macOS holds back an app downloaded in a browser until you allow it in **System Settings > Privacy & Security**.
 
 The rest of this page is for building the apps yourself, which is the only way to get the iPhone app.
 

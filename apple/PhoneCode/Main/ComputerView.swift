@@ -195,6 +195,9 @@ struct CursorToggle: View {
           }
           .formStyle(.grouped)
         }
+        Tab("Updates", systemImage: "arrow.down.circle") {
+          UpdatesView()
+        }
       }
     }
   }

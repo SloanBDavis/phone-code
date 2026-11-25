@@ -525,6 +525,11 @@
     @FocusedValue(\.workspace) private var workspace
 
     var body: some Commands {
+      CommandGroup(after: .appInfo) {
+        Button("Check for Updates…") {
+          Task { await Updater.shared.check(userAsked: true) }
+        }
+      }
       CommandGroup(replacing: .newItem) {
         Button("New Chat") {
           workspace?.newChat()

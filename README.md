@@ -12,7 +12,7 @@ The agents keep running on your own computer. Your phone is just the screen.
 
 ## Get started
 
-**1. Install it on your computer** (Mac or Linux). Paste this into a terminal:
+**1. Install it on your computer** (Mac or Linux). Paste this into a terminal; on a Mac it asks whether you want the command, [the Mac app](#mac-app-and-updates) or both:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install.sh | sh
@@ -76,17 +76,20 @@ Works with Claude Code, Codex, Antigravity, Gemini CLI, OpenCode and other agent
 
 Want to look before installing? The app has a built-in demo: tap "Try the demo" on its first screen.
 
-## Mac app (optional)
+## Mac app and updates
 
-The app from the QR code is a web app and needs nothing else. There is also a native Mac app with a tiled workspace that shows several chats at once. It needs a Mac with Apple silicon and macOS 26 or newer. Paste this into a terminal:
+On a Mac with Apple silicon and macOS 26 or newer, the install command in step 1 asks what you want:
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/SloanBDavis/phone-code/main/install-app.sh | sh
-```
+1. Both the `phonecode` command and the Mac app
+2. The `phonecode` command only
+3. The Mac app only
 
-Then open **PhoneCode** from Launchpad or Spotlight. The app has its own `phonecode` inside, so it works without step 1 above, and it finds a `phonecode` that is already running on that Mac by itself.
+The Mac app is a native window onto the same chats, with a tiled workspace that shows several at once. It has its own `phonecode` inside, so choosing only the app is enough, and it finds a `phonecode` that is already running on that Mac by itself. There is a native iPhone app too, which you build yourself with Xcode: see [apple/README.md](apple/README.md).
 
-Run the same command again to update. There is a native iPhone app too, which you build yourself with Xcode: see [apple/README.md](apple/README.md).
+To update:
+
+- **The command:** `phonecode update`. When a newer version is out, `phonecode` also offers it when you start it.
+- **The Mac app:** it tells you when it opens, or choose **PhoneCode > Check for Updates…**. It downloads the new version and reopens.
 
 ## More
 

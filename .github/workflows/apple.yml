@@ -13,7 +13,7 @@ on:
   push:
     paths:
       - 'apple/**'
-      - 'install-app.sh'
+      - 'install.sh'
       - '.github/workflows/apple.yml'
       - '!**/*.md'
   workflow_dispatch:
@@ -95,7 +95,7 @@ jobs:
 
   # The Mac app as a release ships it (release.yml runs the same steps).
   package-mac:
-    name: Mac app package and install-app.sh
+    name: Mac app package, install and update
     if: github.event_name != 'workflow_dispatch'
     runs-on: macos-26
     timeout-minutes: 45
@@ -118,9 +118,19 @@ jobs:
           grep -E '(error|warning):|BUILD|\*\*' package-mac.log | sort -u | head -200 || true
           tail -15 package-mac.log
           exit $status
-      - name: Install with install-app.sh
+      - name: Install with install.sh --app
         run: |
-          PHONECODE_BASE_URL="file://$PWD/release-app" PHONECODE_APP_DIR="$RUNNER_TEMP/Applications" sh install-app.sh
+          PHONECODE_BASE_URL="file://$PWD/release-app" PHONECODE_APP_DIR="$RUNNER_TEMP/Applications" sh install.sh --app
+          "$RUNNER_TEMP/Applications/PhoneCode.app/Contents/Helpers/phonecode" --version
+      # As the app updates itself: the installer says when the download is ready,
+      # waits for the app (here a stand-in process) to quit, then swaps the bundle.
+      - name: Update the way the app does
+        run: |
+          sleep 4 &
+          PHONECODE_BASE_URL="file://$PWD/release-app" PHONECODE_APP_DIR="$RUNNER_TEMP/Applications" \
+            PHONECODE_WAIT_PID=$! PHONECODE_READY_FILE="$RUNNER_TEMP/update-ready" PHONECODE_QUIET=1 \
+            sh install.sh --app
+          test -f "$RUNNER_TEMP/update-ready"
           "$RUNNER_TEMP/Applications/PhoneCode.app/Contents/Helpers/phonecode" --version
       - if: always()
         uses: actions/upload-artifact@v4

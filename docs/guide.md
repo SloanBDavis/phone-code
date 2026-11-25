@@ -13,6 +13,7 @@ phonecode revoke <id>      remove a paired phone
 phonecode cursor connect   follow Cursor desktop chats (see "Cursor desktop app")
 phonecode cursor disconnect
 phonecode cursor status
+phonecode update            install the latest version
 ```
 
 Options: `--port <n>` (default 7777, or `$PHONECODE_PORT`), `--url <https url>`, `--tunnel`, `--local`, `--insecure`, `--host <addr>`, `--no-qr`. Run `phonecode --help` for details. State (paired devices, chats, images, push keys) lives in `~/.phonecode`, or `$PHONECODE_HOME`.
@@ -22,6 +23,12 @@ Pairing codes expire after 5 minutes and work once. Press Enter in the `phonecod
 ## Install options
 
 The install script picks the binary for your OS and CPU, checks it against the release's `SHA256SUMS`, and installs `phonecode` to `~/.local/bin` (set `PHONECODE_INSTALL` to change that, `PHONECODE_VERSION=v0.1.0` to pin a version). Read it first if you like: [install.sh](../install.sh).
+
+On a Mac that can run the Mac app (Apple silicon, macOS 26 or newer) the script asks whether to install the command, the app or both. To skip the question, add `-s -- --cli`, `-s -- --app` or `-s -- --all` after `sh`. Anywhere else, and when there is no terminal to ask on, it installs the command.
+
+### Updates
+
+`phonecode update` installs the latest release over the `phonecode` you are running, with the same script. When you start `phonecode` at a terminal it looks for a newer release (at most once every 12 hours, by asking github.com where its latest release is) and offers to install it; say no and it only mentions it from then on. `PHONECODE_NO_UPDATE_CHECK=1` turns the check off. A `phonecode` installed with npm, built from source or inside the Mac app is not replaced this way; it tells you how to update instead. The Mac app updates itself from **PhoneCode > Check for Updates…**.
 
 The binary is large (about 90 to 110 MB) because it contains the Bun runtime and the whole phone app. Nothing else is needed at runtime.
 

@@ -115,9 +115,11 @@ jobs:
         run: codesign --verify --verbose=2 "$RUNNER_TEMP/bin/phonecode"
       - name: Pair and run a terminal
         run: bun scripts/smoke-binary.ts "$RUNNER_TEMP/bin/phonecode"
+      - name: Update with phonecode update
+        run: bun scripts/smoke-update.ts "$RUNNER_TEMP/bin/phonecode" "$PWD/release"
 
   # The Mac app (apple/), with its own phonecode inside. Ad hoc signed, not notarized:
-  # install-app.sh installs it with curl, which macOS does not hold back.
+  # install.sh installs it with curl, which macOS does not hold back.
   mac-app:
     name: Build the Mac app
     runs-on: macos-26
@@ -136,9 +138,9 @@ jobs:
           restore-keys: mac-app-${{ runner.os }}-
       - name: Build and zip PhoneCode.app
         run: apple/scripts/package-mac.sh "$PWD/release-app"
-      - name: Install with install-app.sh
+      - name: Install with install.sh --app
         run: |
-          PHONECODE_BASE_URL="file://$PWD/release-app" PHONECODE_APP_DIR="$RUNNER_TEMP/Applications" sh install-app.sh
+          PHONECODE_BASE_URL="file://$PWD/release-app" PHONECODE_APP_DIR="$RUNNER_TEMP/Applications" sh install.sh --app
           "$RUNNER_TEMP/Applications/PhoneCode.app/Contents/Helpers/phonecode" --version
       - uses: actions/upload-artifact@v4
         with:

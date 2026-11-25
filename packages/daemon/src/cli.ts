@@ -20,6 +20,7 @@ import { startDaemon, type DaemonOptions } from './daemon.ts';
 import { log } from './log.ts';
 import { isLoopbackHost, isLoopbackUrl, isSecureUrl } from './net/transport.ts';
 import { runSetup, setupHelp } from './setup.ts';
+import { offerUpdate, restart, updateCommand } from './update.ts';
 
 const HELP = `${bold('phonecode')} ${dim(`v${DAEMON_VERSION}`)}: your terminal, Claude Code and Codex on your phone
 
@@ -32,6 +33,7 @@ Usage
   phonecode cursor connect   follow your Cursor app chats on your phone and reply when a turn ends
   phonecode cursor disconnect
                              remove phone-code's hooks from Cursor (keeps your other hooks)
+  phonecode update           install the latest version (phonecode also offers it at startup)
 
 Options
   --port <n>     port to listen on (default ${DEFAULT_PORT}, moves up if busy)
@@ -55,6 +57,8 @@ Environment
   PHONECODE_PORT        port when --port is not given (default 7777)
   PHONECODE_ECHO_AGENT  1 = use a built-in fake agent (development)
   PHONECODE_LOG         debug | info | warn | error
+  PHONECODE_NO_UPDATE_CHECK
+                        1 = do not look for a newer version at startup
 `;
 
 function fmtTime(ms: number): string {
@@ -259,7 +263,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   switch (command) {
     case undefined:
     case 'start':
+      // A newer release, at a terminal: offer it, and carry on as the new version.
+      if (await offerUpdate(home)) return restart(argv);
       return serve(values);
+    case 'update':
+      return updateCommand(home);
     case 'pair':
       return pairCommand(home, values['no-qr'] === true);
     case 'cursor':
