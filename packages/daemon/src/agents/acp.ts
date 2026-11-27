@@ -1325,7 +1325,13 @@ class AcpSession implements AgentSession {
           this.modes?.configId === configId ? (this.modeMap.get('default') ?? current) : current;
         this.modes = { via: 'config', configId, choices, current };
         this.modeMap = mapModes(choices, initial);
-      } else if (cat === 'thought_level' && (!this.thought || this.thought.configId === configId)) {
+      } else if (
+        // The spec's category, or an option an agent left uncategorized but named for it
+        // ("Thinking", "Reasoning effort", "thought_level").
+        (cat === 'thought_level' ||
+          (cat === undefined && /think|thought|reason|effort/i.test(`${configId} ${str(o.name) ?? ''}`))) &&
+        (!this.thought || this.thought.configId === configId)
+      ) {
         this.thought = { via: 'config', configId, choices, current };
       }
     }
@@ -1443,30 +1449,37 @@ class AcpSession implements AgentSession {
       const cur = this.models.current;
       if (cur !== undefined && !modelOptions.some((o) => o.id === cur)) modelOptions.unshift({ id: cur });
     }
-    // Kept for the next new chat, which has no session to ask yet.
+    // Levels the agent names itself; well-known ids get phone-code's names.
+    const efforts = this.thought?.choices.map((c) => {
+      const known = effortOptions([{ id: c.id }])[0];
+      const name = c.name && c.name !== c.id ? c.name : known?.name;
+      return {
+        id: c.id,
+        ...(name ? { name } : {}),
+        ...(c.description ? { description: c.description } : {}),
+      };
+    });
+    // Kept for the next new chat, which has no session to ask yet. The levels are
+    // the ones of the model this session runs: they are kept with that model.
+    const model = this.models?.current;
     rememberOptions(this.cfg.id, {
-      ...(modelOptions !== undefined ? { modelOptions } : {}),
+      ...(modelOptions !== undefined
+        ? {
+            modelOptions:
+              efforts === undefined
+                ? modelOptions
+                : modelOptions.map((o) => (o.id === model ? Object.assign({}, o, { efforts }) : o)),
+          }
+        : {}),
       ...(this.modes ? { permissionModes } : {}),
     });
     this.events.meta({
-      ...(this.models?.current !== undefined ? { model: this.models.current } : {}),
+      ...(model !== undefined ? { model } : {}),
       ...(permissionMode !== undefined ? { permissionMode } : {}),
       permissionModes,
       ...(modelOptions !== undefined ? { models: modelOptions.map((o) => o.id), modelOptions } : {}),
-      // Levels the agent names itself; well-known ids get phone-code's names.
-      ...(this.thought
-        ? {
-            efforts: this.thought.choices.map((c) => {
-              const known = effortOptions([{ id: c.id }])[0];
-              const name = c.name && c.name !== c.id ? c.name : known?.name;
-              return {
-                id: c.id,
-                ...(name ? { name } : {}),
-                ...(c.description ? { description: c.description } : {}),
-              };
-            }),
-            ...(this.thought.current !== undefined ? { effort: this.thought.current } : {}),
-          }
+      ...(efforts !== undefined
+        ? { efforts, ...(this.thought?.current !== undefined ? { effort: this.thought.current } : {}) }
         : {}),
     });
   }

@@ -187,6 +187,18 @@ test("thinking level: the agent's own levels, through its config option", async 
   await send(phone, 'what is your thinking level');
   await waitTurn(phone, 2);
   await expect(lastText(phone)).toContainText('Thinking level: deep');
+
+  // The next new chat offers that model's levels before its first message, and starts on the one picked.
+  await phone.page.reload();
+  await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open');
+  await newChat(phone, 'gemini');
+  await phone.testId('composer-model').click();
+  await phone.testId('model-menu').getByTestId('model-fake-pro').click();
+  await chip.click();
+  await menu.getByTestId('effort-deep').click();
+  await send(phone, 'what is your thinking level');
+  await waitTurn(phone, 1);
+  await expect(lastText(phone)).toContainText('Thinking level: deep');
 });
 
 test('Antigravity: an executor error sent as a reply is an error, for that preset only', async ({

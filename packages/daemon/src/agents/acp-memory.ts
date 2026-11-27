@@ -54,7 +54,17 @@ export function rememberedOptions(id: string): AcpOptions | undefined {
 /** Keeps what a session of agent `id` reported, when it differs from what is kept. */
 export function rememberOptions(id: string, options: AcpOptions): void {
   const all = load();
-  const next: AcpOptions = { ...all.get(id), ...options };
+  const before = all.get(id);
+  const next: AcpOptions = { ...before, ...options };
+  // A session knows the thinking levels of the model it runs only: the ones learnt
+  // for the agent's other models stay.
+  if (options.modelOptions !== undefined && before?.modelOptions !== undefined) {
+    const kept = new Map(before.modelOptions.map((m) => [m.id, m.efforts]));
+    next.modelOptions = options.modelOptions.map((m) => {
+      const efforts = m.efforts ?? kept.get(m.id);
+      return efforts === undefined ? m : Object.assign({}, m, { efforts });
+    });
+  }
   if (JSON.stringify(all.get(id)) === JSON.stringify(next)) return;
   all.set(id, next);
   void writeFileAtomic(file(), JSON.stringify(Object.fromEntries(all))).catch(() => undefined);
