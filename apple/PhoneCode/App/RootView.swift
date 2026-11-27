@@ -23,7 +23,7 @@ struct RootView: View {
     Group {
       if model.isPaired {
         #if os(macOS)
-          MacMainView()
+          MacShellView()
         #else
           PhoneMainView()
         #endif

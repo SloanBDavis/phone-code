@@ -129,6 +129,7 @@ final class PhoneCodeUITests: XCTestCase {
 
   // MARK: tests
 
+  #if os(iOS)
   func test01PairAndFirstChat() throws {
     launch()
     pair()
@@ -260,67 +261,48 @@ final class PhoneCodeUITests: XCTestCase {
     let saidLow = said("Thinking level: low")
     XCTAssertTrue(saidLow.waitForExistence(timeout: 30), "the change did not reach the agent")
   }
+  #endif
 
   #if os(macOS)
-    func test07MacPairAPhone() throws {
+    // The Mac app's window is the web app in a web view (Mac/WebShell.swift). What the
+    // page itself does is tested in a browser (e2e/); these check the app around it:
+    // it pairs by itself, the page works inside it, and the menu reaches the app's own parts.
+
+    /// Something in the page, by its accessible name (an aria-label or its text).
+    private func inPage(_ name: String) -> XCUIElement {
+      app.webViews.descendants(matching: .any)
+        .matching(NSPredicate(format: "label == %@ OR title == %@ OR placeholderValue == %@", name, name, name)).firstMatch
+    }
+
+    func test01MacShellChat() throws {
       try XCTSkipIf(stateHome == nil, "needs PC_UITEST_HOME")
       launch()
-      pair()
-      press(wait("pair-phone"))
+      XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 30), "no web view")
+      // No code to type: the app hands the page its pairing.
+      let input = inPage("Message")
+      XCTAssertTrue(input.waitForExistence(timeout: 30), "the page did not get to a chat")
+      shot("01-shell-new-chat")
+      input.click()
+      input.typeText("hello there")
+      let sendButton = inPage("Send")
+      XCTAssertTrue(sendButton.waitForExistence(timeout: 5), "no send button")
+      sendButton.click()
+      let reply = app.webViews.staticTexts
+        .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "fake Claude", "fake Claude")).firstMatch
+      XCTAssertTrue(reply.waitForExistence(timeout: 30), "no reply in the page")
+      sleep(2)
+      shot("02-shell-chat")
+    }
+
+    func test02MacShellPairAPhone() throws {
+      try XCTSkipIf(stateHome == nil, "needs PC_UITEST_HOME")
+      launch()
+      XCTAssertTrue(inPage("Message").waitForExistence(timeout: 30), "the page did not get to a chat")
+      app.typeKey("p", modifierFlags: [.command, .shift])
       wait("pair-phone-qr", 15)
       let code = el("pair-phone-code")
       XCTAssertFalse(code.label.isEmpty && (code.value as? String ?? "").isEmpty, "no pairing code shown")
-      shot("18-mac-pair-a-phone")
-    }
-
-    func test06MacWorkspaceThreeTiles() throws {
-      launch()
-      pair()
-      send("hello from tile one")
-      wait("chat-item-turn", 30)
-      app.typeKey("d", modifierFlags: .command)
-      XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "tile").element(boundBy: 1).waitForExistence(timeout: 10))
-      let inputs = app.descendants(matching: .any).matching(identifier: "composer-input")
-      press(inputs.element(boundBy: 1))
-      inputs.element(boundBy: 1).typeText("hello from tile two\r")
-      app.typeKey("d", modifierFlags: [.command, .shift])
-      XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "tile").element(boundBy: 2).waitForExistence(timeout: 10))
-      sleep(3)
-      shot("16-mac-workspace-three-tiles")
-      // Rearrange: drag the first tile's title bar onto the bottom edge of the last tile.
-      let titles = app.descendants(matching: .any).matching(identifier: "tile-title")
-      let tiles = app.descendants(matching: .any).matching(identifier: "tile")
-      let target = tiles.element(boundBy: 2).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
-      titles.element(boundBy: 0).coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).press(forDuration: 0.5, thenDragTo: target)
-      sleep(1)
-      shot("17-mac-workspace-rearranged")
-      XCTAssertEqual(tiles.count, 3)
-    }
-
-    /// The sidebar's edge drags to make it wider, and "All chats on this
-    /// computer" lists every conversation with the agent filter.
-    func test09MacSidebarResizeAndAllChats() throws {
-      launch()
-      pair()
-      send("hello, remember the word heron")
-      wait("chat-item-turn", 30)
-      let sidebar = wait("sidebar")
-      let before = sidebar.frame.width
-      let splitter = app.splitters.firstMatch
-      let start =
-        splitter.waitForExistence(timeout: 3)
-        ? splitter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        : sidebar.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: 8, dy: 0))
-      start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 140, dy: 0)))
-      sleep(1)
-      let after = el("sidebar").frame.width
-      shot("19-mac-sidebar-wider")
-      XCTAssertGreaterThan(after, before + 40, "the sidebar did not get wider: \(before) -> \(after), splitter: \(splitter.exists)")
-      press(wait("browse-all"))
-      wait("search-result", 30)
-      shot("20-mac-all-chats")
-      press(wait("search-done"))
-      wait("session-row")
+      shot("03-shell-pair-a-phone")
     }
   #endif
 }

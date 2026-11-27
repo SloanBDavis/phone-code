@@ -19,8 +19,8 @@ struct PhoneCodeApp: App {
     }
     #if os(macOS)
       .defaultSize(width: 1280, height: 820)
+      .windowStyle(.hiddenTitleBar)
       .commands {
-        SidebarCommands()
         AppCommands(model: model)
       }
     #endif

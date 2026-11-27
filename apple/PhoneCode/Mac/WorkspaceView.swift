@@ -519,10 +519,10 @@
     }
   }
 
-  /// Menu bar commands for the focused window's workspace.
+  /// Menu bar commands. The window is the web app, which has its own controls;
+  /// the menu keeps what the app itself does.
   struct AppCommands: Commands {
     let model: AppModel
-    @FocusedValue(\.workspace) private var workspace
 
     var body: some Commands {
       CommandGroup(after: .appInfo) {
@@ -532,28 +532,21 @@
       }
       CommandGroup(replacing: .newItem) {
         Button("New Chat") {
-          workspace?.newChat()
-          model.route = .new
+          NotificationCenter.default.post(name: .shellNewChat, object: nil)
         }
         .keyboardShortcut("n", modifiers: .command)
-        Button("Find in All Chats") {
-          NotificationCenter.default.post(name: .focusSearch, object: nil)
+        if model.hub.isLocal(model.creds) {
+          Button("Pair a Phone…") {
+            NotificationCenter.default.post(name: .pairPhone, object: nil)
+          }
+          .keyboardShortcut("p", modifiers: [.command, .shift])
         }
-        .keyboardShortcut("f", modifiers: .command)
       }
-      CommandMenu("Tiles") {
-        Button("Split Right") { workspace?.splitFocused(.right) }
-          .keyboardShortcut("d", modifiers: .command)
-        Button("Split Down") { workspace?.splitFocused(.bottom) }
-          .keyboardShortcut("d", modifiers: [.command, .shift])
-        Divider()
-        Button("Next Tile") { workspace?.focusNext() }
-          .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
-        Button("Previous Tile") { workspace?.focusPrevious() }
-          .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
-        Divider()
-        Button("Close Tile") { workspace?.closeFocused() }
-          .keyboardShortcut("w", modifiers: [.command, .control])
+      CommandGroup(after: .toolbar) {
+        Button("Reload") {
+          NotificationCenter.default.post(name: .shellReload, object: nil)
+        }
+        .keyboardShortcut("r", modifiers: .command)
       }
     }
   }

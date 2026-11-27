@@ -890,3 +890,29 @@ mark {
   padding: 0;
   justify-content: center;
 }
+
+/* ------------------------------------------------------------ inside the Mac app */
+
+/* The Mac app's window is this page with no title bar: the strip at the top is
+   left empty for the window's buttons and for dragging it, and the page fills
+   the rest at any width (never the phone-sized card of a browser window). */
+html.mac-app body {
+  background: var(--bg-grouped);
+}
+
+html.mac-app .app {
+  top: 28px;
+  right: 0;
+  left: 0;
+  width: auto;
+  height: calc(100dvh - 28px);
+  max-height: none;
+  margin-left: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Plain http to this computer itself is how the app talks to phone-code: nothing to fix. */
+html.mac-app .http-note {
+  display: none;
+}
