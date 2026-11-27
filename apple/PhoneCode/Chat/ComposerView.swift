@@ -215,6 +215,9 @@ struct ComposerView: View {
               .font(.callout)
               .foregroundStyle(.secondary)
               .padding(.horizontal, 6)
+            if let c = model.client.chat(s.id).context {
+              ContextMeter(tokens: c.tokens, window: c.window)
+            }
           }
         }
       }
@@ -491,5 +494,43 @@ struct PreparedImage: Identifiable {
       guard let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else { return nil }
       return PreparedImage(preview: img, attachment: .init(mediaType: "image/jpeg", name: "photo.jpg", data: jpeg.base64EncodedString()))
     #endif
+  }
+}
+
+/// How full the model's context is: a small ring and a percentage beside the
+/// composer's pickers, with the token counts on hover.
+struct ContextMeter: View {
+  let tokens: Double
+  let window: Double
+
+  private var fraction: Double { min(1, max(0, tokens / window)) }
+
+  private var tint: Color {
+    fraction >= 0.9 ? .red : fraction >= 0.75 ? .orange : .secondary
+  }
+
+  private static func short(_ n: Double) -> String {
+    n >= 1_000_000 ? String(format: "%.1fM", n / 1_000_000) : n >= 1000 ? String(format: "%.0fk", n / 1000) : String(Int(n))
+  }
+
+  var body: some View {
+    HStack(spacing: 5) {
+      ZStack {
+        Circle().stroke(Theme.chip, lineWidth: 2.5)
+        Circle()
+          .trim(from: 0, to: max(0.02, fraction))
+          .stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+          .rotationEffect(.degrees(-90))
+      }
+      .frame(width: 13, height: 13)
+      Text("\(Int((fraction * 100).rounded()))%")
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+    }
+    .padding(.horizontal, 6)
+    .help("\(Self.short(tokens)) of \(Self.short(window)) tokens of context used")
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Context \(Int((fraction * 100).rounded())) percent used")
+    .accessibilityIdentifier("context-meter")
   }
 }

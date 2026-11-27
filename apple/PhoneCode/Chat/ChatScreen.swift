@@ -240,24 +240,41 @@ struct TranscriptView: View {
   /// still fills the view (its messages at the bottom).
   @State private var viewport: CGFloat = 0
 
+  /// Above this many rows the transcript is built lazily.
+  private static let lazyAbove = 300
+
+  @ViewBuilder
+  private var rows: some View {
+    ForEach(chat.ids, id: \.self) { id in
+      if let box = chat.box(id) {
+        ItemRow(box: box, chat: chat, session: session)
+          .id(id)
+      }
+    }
+    ForEach(chat.pending) { p in
+      PendingBubble(pending: p) {
+        Task { await model.client.retrySend(session.id, localId: p.localId) }
+      }
+      .padding(.vertical, 8)
+    }
+    if session.status == .running {
+      WorkingIndicator()
+        .padding(.vertical, 8)
+    }
+    Color.clear.frame(height: 4).id("bottom")
+  }
+
   var body: some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: 14) {
-        ForEach(chat.ids, id: \.self) { id in
-          if let box = chat.box(id) {
-            ItemRow(box: box, chat: chat, session: session)
-              .id(id)
-          }
+      // A long transcript builds its rows as they come into view. A shorter one is
+      // laid out whole: every row's height is known, so scrolling never jumps while
+      // heights are being found out.
+      Group {
+        if chat.ids.count > Self.lazyAbove {
+          LazyVStack(alignment: .leading, spacing: 0) { rows }
+        } else {
+          VStack(alignment: .leading, spacing: 0) { rows }
         }
-        ForEach(chat.pending) { p in
-          PendingBubble(pending: p) {
-            Task { await model.client.retrySend(session.id, localId: p.localId) }
-          }
-        }
-        if session.status == .running {
-          WorkingIndicator()
-        }
-        Color.clear.frame(height: 4).id("bottom")
       }
       .padding(.horizontal, 20)
       .padding(.vertical, 12)

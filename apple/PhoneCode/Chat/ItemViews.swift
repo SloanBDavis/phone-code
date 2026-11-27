@@ -9,6 +9,22 @@ struct ItemRow: View {
   let session: SessionInfo
 
   var body: some View {
+    content.padding(.vertical, gap)
+  }
+
+  /// Space above and below a row: a run of tool calls reads as one list,
+  /// messages and cards get room.
+  private var gap: CGFloat {
+    switch box.item {
+    case .tool, .thinking: 1
+    case .permission(let p): p.isPending ? 8 : (p.status == "allowed" ? 0 : 2)
+    case .notice: 4
+    default: 8
+    }
+  }
+
+  @ViewBuilder
+  private var content: some View {
     switch box.item {
     case .user(let u): UserBubble(item: u, sessionId: session.id)
     case .text(let t): AssistantText(item: t, sessionId: session.id)
@@ -190,56 +206,84 @@ struct ToolCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       Button {
-        withAnimation(.snappy) { open = !expanded }
+        withAnimation(.snappy(duration: 0.2)) { open = !expanded }
       } label: {
-        HStack(spacing: 10) {
+        HStack(spacing: 7) {
           Image(systemName: Self.symbol(tool.name))
-            .frame(width: 20)
+            .font(.caption)
+            .frame(width: 16)
+            .foregroundStyle(.tertiary)
+          Text(Self.verb(tool))
             .foregroundStyle(.secondary)
-          Text(tool.title.isEmpty ? tool.name : tool.title)
-            .font(tool.name == "Bash" ? .callout.monospaced() : .callout)
-            .lineLimit(1)
-            .truncationMode(.middle)
-          Spacer(minLength: 6)
+          if !tool.title.isEmpty, tool.title != tool.name {
+            Text(tool.title)
+              .font(tool.name == "Bash" ? .callout.monospaced() : .callout)
+              .lineLimit(1)
+              .truncationMode(.middle)
+          }
           if case .diff(_, _, let added, let removed) = tool.detail {
             Text("+\(added)").foregroundStyle(Theme.diffAddText).font(.caption.monospaced())
             Text("−\(removed)").foregroundStyle(Theme.diffDelText).font(.caption.monospaced())
           }
           ToolStatusIcon(status: tool.status)
           Image(systemName: "chevron.right")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.tertiary)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.quaternary)
             .rotationEffect(.degrees(expanded ? 90 : 0))
+          Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .font(.callout)
+        .padding(.vertical, 4)
         .contentShape(.rect)
       }
       .buttonStyle(.plain)
       if expanded {
-        Divider()
         ToolDetailView(tool: tool, sessionId: session.id)
-          .padding(12)
+          .padding(.leading, 23)
+          .padding(.top, 4)
+          .padding(.bottom, 8)
       } else if let images = tool.images, !images.isEmpty {
         ImageStrip(sessionId: session.id, images: images)
-          .padding([.horizontal, .bottom], 12)
+          .padding(.leading, 23)
+          .padding(.bottom, 8)
       }
+      // What a sub-agent did and said, in order, hanging off a rule under its line.
       let kids = chat.children[tool.id] ?? []
       if !kids.isEmpty {
-        Divider()
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
           ForEach(kids, id: \.self) { id in
             if let b = chat.box(id) {
               ItemRow(box: b, chat: chat, session: session)
             }
           }
         }
-        .padding(10)
+        .padding(.leading, 14)
+        .overlay(alignment: .leading) {
+          Rectangle().fill(Theme.hairline).frame(width: 1.5).padding(.vertical, 2)
+        }
+        .padding(.leading, 7)
+        .padding(.bottom, 6)
       }
     }
-    .background(Theme.card, in: .rect(cornerRadius: 14))
-    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.hairline))
+    .frame(maxWidth: .infinity, alignment: .leading)
     .axContainer("chat-item-tool")
+  }
+
+  /// "Ran", "Read", "Edited": what the line says before the command, file or query.
+  static func verb(_ tool: ToolItem) -> String {
+    let running = tool.status == .running
+    switch tool.name {
+    case "Bash": return running ? "Running" : "Ran"
+    case "Read": return running ? "Reading" : "Read"
+    case "Write": return running ? "Writing" : "Wrote"
+    case "Edit": return running ? "Editing" : "Edited"
+    case "Glob", "Grep": return running ? "Searching" : "Searched"
+    case "WebFetch": return running ? "Fetching" : "Fetched"
+    case "WebSearch": return running ? "Searching the web" : "Searched the web"
+    case "Todo", "TodoWrite": return "Plan"
+    case "Task": return "Agent"
+    default: return tool.name
+    }
   }
 
   static func symbol(_ name: String) -> String {
@@ -263,8 +307,9 @@ struct ToolStatusIcon: View {
 
   var body: some View {
     switch status {
-    case .running: ProgressView().controlSize(.small)
-    case .done: Image(systemName: "checkmark").foregroundStyle(.green).font(.caption.bold())
+    case .running: ProgressView().controlSize(.mini)
+    // Done is the ordinary case: only what is unusual gets a mark.
+    case .done: EmptyView()
     case .error: Image(systemName: "xmark").foregroundStyle(.red).font(.caption.bold())
     case .denied: Image(systemName: "hand.raised").foregroundStyle(.orange).font(.caption.bold())
     default: EmptyView()
@@ -362,32 +407,37 @@ struct TodoList: View {
 
 struct DiffView: View {
   let patch: String
-  /// The card's width: rows are at least this wide, so their tint reaches the edge.
-  @State private var width: CGFloat = 0
 
   var body: some View {
     let lines = UnifiedDiff.lines(patch).filter { $0.kind != .meta }
-    ScrollView(.horizontal) {
-      VStack(alignment: .leading, spacing: 0) {
-        ForEach(lines) { l in
-          HStack(spacing: 8) {
-            Text(l.oldLine.map(String.init) ?? "").frame(width: 28, alignment: .trailing).foregroundStyle(.tertiary)
-            Text(l.newLine.map(String.init) ?? "").frame(width: 28, alignment: .trailing).foregroundStyle(.tertiary)
-            Text(prefix(l.kind) + l.text)
-              .foregroundStyle(l.kind == .hunk ? Color.secondary : Color.primary)
-          }
-          .font(.caption.monospaced())
-          .padding(.vertical, 1)
-          .padding(.trailing, 8)
-          .frame(minWidth: width, alignment: .leading)
-          .background(background(l.kind))
-        }
-      }
+    // As wide as its place when the lines fit (their tint then reaches the edge);
+    // sideways scrolling only for a diff with longer lines.
+    ViewThatFits(in: .horizontal) {
+      rows(lines, fill: true)
+      ScrollView(.horizontal) { rows(lines, fill: false) }
     }
-    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     .background(.fill.tertiary, in: .rect(cornerRadius: 8))
     .clipShape(.rect(cornerRadius: 8))
     .axContainer("diff-view")
+  }
+
+  private func rows(_ lines: [DiffLine], fill: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(lines) { l in
+        HStack(spacing: 8) {
+          Text(l.oldLine.map(String.init) ?? "").frame(width: 28, alignment: .trailing).foregroundStyle(.tertiary)
+          Text(l.newLine.map(String.init) ?? "").frame(width: 28, alignment: .trailing).foregroundStyle(.tertiary)
+          Text(prefix(l.kind) + l.text)
+            .foregroundStyle(l.kind == .hunk ? Color.secondary : Color.primary)
+            .fixedSize()
+        }
+        .font(.caption.monospaced())
+        .padding(.vertical, 1)
+        .padding(.trailing, 8)
+        .frame(maxWidth: fill ? .infinity : nil, alignment: .leading)
+        .background(background(l.kind))
+      }
+    }
   }
 
   private func prefix(_ k: DiffLine.Kind) -> String {
@@ -427,7 +477,10 @@ struct PermissionCard: View {
   }
 
   var body: some View {
-    if !item.isPending {
+    if item.status == "allowed" {
+      // The command, edit or call it allowed is in the transcript as its own line.
+      EmptyView()
+    } else if !item.isPending {
       HStack(spacing: 6) {
         Image(systemName: item.status == "allowed" ? "checkmark" : "xmark")
         Text(item.status == "allowed" ? "Allowed" : item.status == "denied" ? "Denied" : "Cancelled")

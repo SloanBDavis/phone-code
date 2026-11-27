@@ -59,6 +59,16 @@ public final class ChatState {
     return out
   }
 
+  /// How full the model's context is, as of the last turn that reported it.
+  public var context: (tokens: Double, window: Double)? {
+    for id in ids.reversed() {
+      if case .turn(let t) = boxes[id]?.item, let used = t.contextTokens, let window = t.contextWindow, used > 0, window > 0 {
+        return (used, window)
+      }
+    }
+    return nil
+  }
+
   /// The text of the last assistant message (for "Copy last response").
   public var lastResponse: String? {
     for id in ids.reversed() {
