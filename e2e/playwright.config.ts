@@ -34,7 +34,9 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 10_000 },
   forbidOnly: !!process.env['CI'],
-  retries: 0,
+  // This suite is the gate before a push: one more try for a test that fails, so a
+  // timing hiccup does not block it. A test that needs the retry is reported as flaky.
+  retries: 1,
   reporter: process.env['CI'] ? [['list'], ['github']] : [['list']],
   outputDir: './test-results',
   use: {

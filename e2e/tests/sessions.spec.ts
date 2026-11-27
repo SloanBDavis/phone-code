@@ -25,7 +25,18 @@ function swipeRow(phone: Phone, sessionId: string): Locator {
 
 /** Swipe a session row left with a real touch gesture: `full` runs Archive, otherwise it reveals it. */
 async function swipe(phone: Phone, sessionId: string, full = false): Promise<void> {
-  const box = await row(phone, sessionId).boundingBox();
+  // The drawer may still be sliding in: swipe where the row comes to rest.
+  let box = await row(phone, sessionId).boundingBox();
+  for (let i = 0; i < 20; i++) {
+    // oxlint-disable-next-line no-await-in-loop -- waiting for the row to stop moving
+    await phone.page.waitForTimeout(60);
+    // oxlint-disable-next-line no-await-in-loop -- see above
+    const next = await row(phone, sessionId).boundingBox();
+    const still =
+      box !== null && next !== null && Math.abs(next.x - box.x) < 0.5 && Math.abs(next.y - box.y) < 0.5;
+    box = next;
+    if (still) break;
+  }
   if (box === null) throw new Error('row not visible');
   const y = box.y + box.height / 2;
   const x0 = box.x + box.width - 20;
@@ -33,8 +44,17 @@ async function swipe(phone: Phone, sessionId: string, full = false): Promise<voi
   const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number): Promise<unknown> =>
     cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
   const dist = full ? box.width * 0.85 : 140;
+  // A finger, not a teleport: the row follows the moves frame by frame, and a
+  // gesture dispatched faster than the page paints is sometimes not taken as a swipe.
+  const frame = (): Promise<void> =>
+    phone.page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
   await touch('touchStart', x0);
-  for (let i = 1; i <= 10; i++) await touch('touchMove', x0 - (dist * i) / 10);
+  for (let i = 1; i <= 10; i++) {
+    // oxlint-disable-next-line no-await-in-loop -- one move per frame, in order
+    await touch('touchMove', x0 - (dist * i) / 10);
+    // oxlint-disable-next-line no-await-in-loop -- see above
+    await frame();
+  }
   await touch('touchEnd', x0 - dist);
   await cdp.detach();
   if (!full) await expect(swipeRow(phone, sessionId)).toHaveAttribute('data-open', 'true');
