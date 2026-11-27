@@ -152,9 +152,9 @@ jobs:
 
   publish:
     name: Create GitHub release
-    # A Mac app that does not build does not hold back the release of phonecode itself.
+    # All of it or none: a release without the Mac app would be offered to the app as an
+    # update it cannot download.
     needs: [build, smoke, mac-app]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.smoke.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -165,7 +165,6 @@ jobs:
           name: release-signed
           path: release
       - uses: actions/download-artifact@v4
-        if: needs.mac-app.result == 'success'
         with:
           name: mac-app
           path: release
@@ -174,15 +173,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
         run: |
+          test -f release/PhoneCode-mac.zip
+          files="release/*.tar.gz release/SHA256SUMS release/PhoneCode-mac.zip release/PhoneCode-mac.zip.sha256"
+          # A run for a version that is already released completes it (same files, replaced).
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" $files --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
           prerelease=""
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
           # On a tag push the tag must already exist; on a manual run it is created here.
           if [ "$GITHUB_REF_TYPE" = tag ]; then tagflag="--verify-tag"; else tagflag="--target $GITHUB_SHA"; fi
-          app=""
-          if [ -f release/PhoneCode-mac.zip ]; then
-            app="release/PhoneCode-mac.zip release/PhoneCode-mac.zip.sha256"
-          else
-            echo "::warning::the Mac app did not build: this release has no PhoneCode-mac.zip"
-          fi
-          gh release create "$TAG" release/*.tar.gz release/SHA256SUMS $app \
+          gh release create "$TAG" $files \
             --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes $tagflag $prerelease

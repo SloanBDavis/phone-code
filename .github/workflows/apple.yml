@@ -11,6 +11,8 @@ name: Apple
 
 on:
   push:
+    # Not main: what lands there was tested on its branch, and a release needs the Mac runners.
+    branches-ignore: [main]
     paths:
       - 'apple/**'
       - 'install.sh'
