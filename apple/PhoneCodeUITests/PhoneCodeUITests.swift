@@ -311,6 +311,13 @@ final class PhoneCodeUITests: XCTestCase {
       let opened = inDialog.waitForExistence(timeout: 10)
       sleep(1)
       shot("04-shell-computer")
+      if !opened {
+        // What the page looks like to the test, for the log (the screenshot is in the artifact).
+        print("PCDIAG window \(app.windows.firstMatch.frame) computer \(computer.frame)")
+        for line in app.webViews.firstMatch.debugDescription.split(separator: "\n").prefix(160) {
+          print("PCDIAG \(line)")
+        }
+      }
       XCTAssertTrue(opened, "clicking the computer did not open its dialog")
       app.typeKey(.escape, modifierFlags: [])
       sleep(1)

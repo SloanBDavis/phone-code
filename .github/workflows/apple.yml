@@ -253,7 +253,7 @@ jobs:
             -retry-tests-on-failure -test-iterations 2 \
             ${{ steps.dest.outputs.signing }} \
             > uitests-${{ matrix.platform }}.log 2>&1 || status=$?
-          grep -E 'Test Case|error:|failed|passed|\*\*' uitests-${{ matrix.platform }}.log | head -400 || true
+          grep -E 'Test Case|error:|failed|passed|\*\*|PCDIAG' uitests-${{ matrix.platform }}.log | head -600 || true
           exit $status
 
       - name: Export screenshots
