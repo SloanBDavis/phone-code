@@ -5,6 +5,7 @@ import './styles/glass.css';
 import './styles/overlay.css';
 import './styles/sessions.css';
 import './styles/shell.css';
+import './styles/desktop.css';
 import { App } from './app';
 import { autoCode, mode, readLaunchParams, startDemo, startHost } from './lib/boot';
 import { startClock } from './lib/clock';

@@ -6,7 +6,7 @@ import { client } from '../../lib/client';
 import { groupCommands, sessionCommands, SOURCE_LABEL } from '../../lib/commands';
 import { agentInfo, draft, startChat, starting } from '../../lib/harness';
 import { downscaleImage } from '../../lib/image';
-import { host } from '../../lib/state';
+import { chatOf, host } from '../../lib/state';
 import { loadDraft, saveDraft } from '../../lib/storage';
 import { haptic } from '../../lib/util';
 import { GlassSurface } from '../../ui/glass';
@@ -66,6 +66,57 @@ function Palette({
         ))}
       </div>
     </GlassSurface>
+  );
+}
+
+/** 35900 -> "36k", 1000000 -> "1.0M". */
+const shortCount = (n: number): string =>
+  n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+
+/**
+ * How full the model's context is, as of the last turn that said: a small ring
+ * and a percentage, the token counts on hover.
+ */
+function ContextRing({ sessionId }: { sessionId: string }): JSX.Element | null {
+  const chat = chatOf(sessionId);
+  const ids = chat.ids.value;
+  let used = 0;
+  let size = 0;
+  for (let i = ids.length - 1; i >= 0 && size === 0; i--) {
+    const item = chat.items.get(ids[i] ?? '')?.value;
+    if (item?.kind === 'turn' && item.contextTokens && item.contextWindow) {
+      used = item.contextTokens;
+      size = item.contextWindow;
+    }
+  }
+  if (size === 0) return null;
+  const fraction = Math.min(1, used / size);
+  const pct = Math.round(fraction * 100);
+  const r = 6;
+  const c = 2 * Math.PI * r;
+  return (
+    <span
+      class={`context-ring ${fraction >= 0.9 ? 'full' : fraction >= 0.75 ? 'warn' : ''}`}
+      title={`${shortCount(used)} of ${shortCount(size)} tokens of context used`}
+      aria-label={`Context ${pct}% used`}
+      data-testid="context-ring"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <circle class="ring-track" cx="8" cy="8" r={r} fill="none" stroke-width="2.5" />
+        <circle
+          class="ring-fill"
+          cx="8"
+          cy="8"
+          r={r}
+          fill="none"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-dasharray={c}
+          stroke-dashoffset={c * (1 - Math.max(0.03, fraction))}
+        />
+      </svg>
+      {pct}%
+    </span>
   );
 }
 
@@ -356,6 +407,7 @@ export function Composer({
           <EffortChip session={session} />
           <ModeChip session={session} />
           {isDraft && <FolderChip />}
+          {session && <ContextRing sessionId={session.id} />}
         </div>
       </GlassSurface>
     </>

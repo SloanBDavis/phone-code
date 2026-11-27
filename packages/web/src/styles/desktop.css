@@ -1,0 +1,118 @@
+/* The app on a desktop: the Mac app's window, or a wide browser window. A
+   pointer and a big screen want smaller type and a transcript that reads as a
+   page: tool calls are quiet lines in the flow, not cards. Phones keep their
+   own sizes (touch targets, larger type). */
+
+@media (min-width: 900px) {
+  .wide .chat-screen .transcript,
+  .wide .chat-screen .chat-empty {
+    max-width: 860px;
+  }
+
+  .wide .chat-screen .dock {
+    width: min(860px, calc(100% - 48px));
+  }
+
+  .wide .md {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .wide .bubble {
+    padding: 8px 13px;
+    font-size: 15px;
+  }
+
+  .wide .composer-input {
+    font-size: 15px;
+  }
+
+  .wide .sb-title {
+    font-size: 14px;
+  }
+
+  /* Tool calls: one line each, a run of them a plain list. */
+  .wide .tool-group {
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .wide .tool-row + .tool-row,
+  .wide .tool-summary + .tool-row {
+    border-top: 0;
+  }
+
+  .wide .tool-head,
+  .wide .tool-summary {
+    gap: 8px;
+    min-height: 30px;
+    padding: 3px 8px 3px 4px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+
+  .wide .tool-head:hover:not(:disabled),
+  .wide .tool-summary:hover {
+    background: var(--fill-3);
+  }
+
+  .wide .tool-head .tool-icon {
+    width: 20px;
+    height: 20px;
+    background: none;
+    color: var(--label-3);
+  }
+
+  .wide .tool-head .tool-verb {
+    color: var(--label-2);
+    font-weight: 500;
+  }
+
+  .wide .tool-body {
+    margin-left: 28px;
+  }
+}
+
+/* An allowed permission is the call that follows it in the transcript: saying
+   "Allowed" under each one is noise. Denied and cancelled ones still show. */
+.perm-resolved.ps-allowed {
+  display: none;
+}
+
+/* ------------------------------------------------------------ context ring */
+
+/* How full the model's context is, at the end of the composer's bar. */
+.context-ring {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0 4px;
+  color: var(--label-2);
+  font: 500 12.5px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-ring svg {
+  transform: rotate(-90deg);
+}
+
+.context-ring .ring-track {
+  stroke: var(--fill);
+}
+
+.context-ring .ring-fill {
+  stroke: currentColor;
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.context-ring.warn {
+  color: var(--warn, #d97706);
+}
+
+.context-ring.full {
+  color: var(--danger);
+}
