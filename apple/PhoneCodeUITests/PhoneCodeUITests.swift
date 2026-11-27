@@ -305,9 +305,8 @@ final class PhoneCodeUITests: XCTestCase {
       let computer = inPage("This computer")
       XCTAssertTrue(computer.waitForExistence(timeout: 10), "no computer button")
       computer.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.2)).click()
-      let inDialog = app.webViews.staticTexts
-        .matching(NSPredicate(format: "label CONTAINS[c] %@", "what you can use"))
-        .firstMatch
+      // The dialog's own close button: only there while it is open.
+      let inDialog = inPage("Close")
       let opened = inDialog.waitForExistence(timeout: 10)
       sleep(1)
       shot("04-shell-computer")
