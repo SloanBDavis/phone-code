@@ -201,6 +201,7 @@ jobs:
           fi
 
       - name: Build app and UI tests
+        if: matrix.platform == 'ios'
         run: |
           status=0
           xcodebuild build-for-testing \
@@ -215,6 +216,7 @@ jobs:
           exit $status
 
       - name: Start the daemon with the fake agents
+        if: matrix.platform == 'ios'
         run: |
           ROOT="$RUNNER_TEMP/pc"
           mkdir -p "$ROOT/home/project" "$ROOT/state"
@@ -234,6 +236,7 @@ jobs:
           curl -sf "http://127.0.0.1:$DAEMON_PORT/api/health"
 
       - name: UI tests
+        if: matrix.platform == 'ios'
         env:
           ONLY_TESTS: ${{ inputs.only }}
         run: |
@@ -256,8 +259,16 @@ jobs:
           grep -E 'Test Case|error:|failed|passed|\*\*|PCDIAG' uitests-${{ matrix.platform }}.log | head -600 || true
           exit $status
 
+      # The Mac app: the script a developer runs on their own Mac (build, phone-code with the
+      # fake agents, the tests, the screenshots under their names).
+      - name: Mac UI tests
+        if: matrix.platform == 'macos'
+        env:
+          ONLY_TESTS: ${{ inputs.only }}
+        run: OUT="$PWD/mac-ui-tests" apple/scripts/test-mac.sh $ONLY_TESTS
+
       - name: Export screenshots
-        if: always()
+        if: always() && matrix.platform == 'ios'
         run: |
           mkdir -p screenshots
           if [ -d "uitests-${{ matrix.platform }}.xcresult" ]; then
@@ -274,7 +285,9 @@ jobs:
             build-${{ matrix.platform }}.log
             uitests-${{ matrix.platform }}.log
             daemon-${{ matrix.platform }}.log
-      - if: failure()
+            mac-ui-tests/screenshots/*.png
+            mac-ui-tests/*.log
+      - if: failure() && matrix.platform == 'ios'
         uses: actions/upload-artifact@v4
         with:
           name: apple-${{ matrix.platform }}-xcresult

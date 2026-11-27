@@ -17,3 +17,4 @@ xcuserdata/
 *.xcresult
 apple/Config/Signing.local.xcconfig
 apple/PhoneCodeCore/.swiftpm/
+apple/build/
