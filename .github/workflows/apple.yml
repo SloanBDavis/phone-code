@@ -156,10 +156,19 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      # Listing simulators starts the simulator service (over a minute): only for the iPhone run.
       - name: Toolchain
         run: |
           xcodebuild -version
-          xcrun simctl list devices available | grep -E 'iPhone' | head -20 || true
+          if [ "${{ matrix.platform }}" = ios ]; then
+            xcrun simctl list devices available | grep -E 'iPhone' | head -20 || true
+          fi
+      # Compiled packages and Xcode's compilation cache, so only what changed is built again.
+      - uses: actions/cache@v4
+        with:
+          path: DerivedData
+          key: app-tests-${{ matrix.platform }}-${{ hashFiles('apple/**') }}
+          restore-keys: app-tests-${{ matrix.platform }}-
 
       - name: Generated project is up to date
         continue-on-error: true

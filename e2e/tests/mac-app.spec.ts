@@ -19,8 +19,21 @@ const MARK_MAC_APP = `(function () {
 
 const near = (a: number | undefined, b: number): boolean => Math.abs((a ?? -99) - b) <= 1;
 
+/**
+ * The window's title strip: the app lays a native view over the top 28 points that moves
+ * the window and takes every click there. Here it is an element that does the same, so a
+ * button of the page that slides under it cannot be clicked in these tests either.
+ */
+const WINDOW_STRIP = `addEventListener('DOMContentLoaded', function () {
+  var strip = document.createElement('div');
+  strip.setAttribute('data-testid', 'window-strip');
+  strip.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;z-index:2147483647';
+  document.body.appendChild(strip);
+});`;
+
 async function asMacApp(phone: Phone): Promise<void> {
   await phone.page.addInitScript({ content: MARK_MAC_APP });
+  await phone.page.addInitScript({ content: WINDOW_STRIP });
   await phone.page.setViewportSize({ width: 1280, height: 820 });
   await phone.page.reload();
   await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open');
@@ -75,7 +88,8 @@ test('the sidebar resizes by its edge, the computer opens as a dialog, the conte
   expect((await phone.page.locator('.main').boundingBox())?.x).toBe(250);
 
   // "This computer" is a dialog in the middle of the window, not a phone's sheet.
-  await phone.testId('conn-state').click();
+  // Clicked at its top edge, right under the window's strip.
+  await phone.testId('open-computer').click({ position: { x: 20, y: 2 } });
   const sheet = phone.testId('computer-sheet');
   await expect(sheet).toBeVisible();
   await phone.page.waitForTimeout(400);
@@ -118,7 +132,7 @@ test('tiles: chats side by side, opened from the sidebar, kept for next time, cl
   await expect(phone.testId('pane-close')).toHaveCount(0);
 
   // A new chat beside this one: two tiles, the new one focused, each half of the main area.
-  await phone.testId('pane-split').click();
+  await phone.testId('pane-split').click({ position: { x: 20, y: 2 } });
   await expect(panes).toHaveCount(2);
   await expect(panes.nth(1)).toHaveAttribute('data-focused', 'true');
   for (const i of [0, 1]) {
