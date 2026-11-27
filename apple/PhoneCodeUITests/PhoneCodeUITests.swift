@@ -337,7 +337,11 @@ final class PhoneCodeUITests: XCTestCase {
         .matching(NSPredicate(format: "label BEGINSWITH %@", "Context ")).firstMatch
       XCTAssertTrue(ring.waitForExistence(timeout: 30), "no context ring after a turn")
       // The ring is at the right end of the composer's bar.
-      let onRing = ring.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -24, dy: 0))
+      // Pointed at where it is drawn: right under the send button, in the composer's bar.
+      // (The frame accessibility reports for it is wider and lower than the ring itself.)
+      print("PCDIAG ring \(ring.frame) send \(inPage("Send").frame)")
+      let onRing = inPage("Send").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .withOffset(CGVector(dx: -8, dy: 40))
       onRing.hover()
       sleep(1)
       shot("06-shell-context-hover")
