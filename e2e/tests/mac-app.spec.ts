@@ -17,6 +17,8 @@ const MARK_MAC_APP = `(function () {
   }).observe(document, { childList: true });
 })();`;
 
+const near = (a: number | undefined, b: number): boolean => Math.abs((a ?? -99) - b) <= 1;
+
 async function asMacApp(phone: Phone): Promise<void> {
   await phone.page.addInitScript({ content: MARK_MAC_APP });
   await phone.page.setViewportSize({ width: 1280, height: 820 });
@@ -88,8 +90,12 @@ test('the sidebar resizes by its edge, the computer opens as a dialog, the conte
   await send(phone, 'hello there');
   await waitTurn(phone, 1);
   const ring = phone.testId('context-ring');
-  await expect(ring).toHaveAttribute('data-tip', '42k of 200k tokens');
+  // Pointing at it shows the tokens where the percentage was.
+  await expect(ring).toHaveText('21%', { useInnerText: true });
   await ring.hover();
+  await expect(phone.testId('context-tokens')).toBeVisible();
+  await expect(ring).toHaveText('42k / 200k', { useInnerText: true });
+  await shot(phone, 'mac-context-hover');
   await phone
     .testId('composer-file')
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
@@ -147,9 +153,24 @@ test('tiles: chats side by side, opened from the sidebar, kept for next time, cl
   await expect(panes).toHaveCount(2);
   await rows.filter({ hasText: 'second chat' }).dragTo(panes.nth(0), { targetPosition: { x: 20, y: 300 } });
   await expect(panes).toHaveCount(3);
-  await expect(panes.nth(0).getByTestId('chat-item-user')).toContainText('second chat');
-  await expect(panes.nth(0)).toHaveAttribute('data-focused', 'true');
-  await panes.nth(0).getByTestId('pane-close').click();
+  await expect(panes.nth(2).getByTestId('chat-item-user')).toContainText('second chat');
+  await expect(panes.nth(2)).toHaveAttribute('data-focused', 'true');
+
+  // Four tiles are a 2 by 2 grid; that is as many as there are.
+  await panes.nth(2).getByTestId('pane-split').click();
+  await expect(panes).toHaveCount(4);
+  await expect(phone.testId('pane-split')).toHaveCount(0);
+  const boxes = await Promise.all([0, 1, 2, 3].map(async (i) => panes.nth(i).boundingBox()));
+  // The main area: 960 wide from x 320, 792 tall from y 28.
+  for (const [i, b] of boxes.entries()) {
+    expect(near(b?.width, 480), `tile ${i} width ${b?.width}`).toBe(true);
+    expect(near(b?.height, 396), `tile ${i} height ${b?.height}`).toBe(true);
+    expect(near(b?.x, 320 + (i % 2) * 480), `tile ${i} x ${b?.x}`).toBe(true);
+    expect(near(b?.y, 28 + Math.floor(i / 2) * 396), `tile ${i} y ${b?.y}`).toBe(true);
+  }
+  await shot(phone, 'mac-tiles-grid');
+  await panes.nth(3).getByTestId('pane-close').click();
+  await panes.nth(2).getByTestId('pane-close').click();
   await expect(panes).toHaveCount(2);
   await bothThemes(phone, 'mac-tiles');
 

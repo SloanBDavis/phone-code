@@ -25,7 +25,11 @@
       .ignoresSafeArea()
       // The window has no title bar: this strip at the top moves it, and the
       // page leaves it empty (html.mac-app in the web app's styles).
-      .overlay(alignment: .top) { WindowDragStrip().frame(height: WebShell.dragStripHeight) }
+      // Pinned to the window's top edge: left to the safe area it would sit below the
+      // (hidden) title bar instead, over the page's top buttons, and take their clicks.
+      .overlay(alignment: .top) {
+        WindowDragStrip().frame(height: WebShell.dragStripHeight).ignoresSafeArea()
+      }
       .sheet(isPresented: $pairingPhone) { PairPhoneView() }
       .onReceive(NotificationCenter.default.publisher(for: .pairPhone)) { _ in pairingPhone = true }
     }

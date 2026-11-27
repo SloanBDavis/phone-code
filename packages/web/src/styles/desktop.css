@@ -107,30 +107,19 @@
   outline: none;
 }
 
-.context-ring::after {
-  content: attr(data-tip);
-  position: absolute;
-  z-index: 5;
-  right: 0;
-  bottom: calc(100% + 10px);
-  padding: 6px 10px;
-  border-radius: 9px;
-  background: var(--label);
-  color: var(--bg);
-  font: 500 12.5px/1.2 var(--font);
-  white-space: nowrap;
-  opacity: 0;
-  transform: translateY(3px);
-  pointer-events: none;
-  transition:
-    opacity 120ms,
-    transform 120ms;
+/* Pointing at it (or focusing it) names the tokens in place of the percentage. */
+.context-ring .ring-tokens {
+  display: none;
 }
 
-.context-ring:hover::after,
-.context-ring:focus::after {
-  opacity: 1;
-  transform: none;
+.context-ring:hover .ring-pct,
+.context-ring:focus .ring-pct {
+  display: none;
+}
+
+.context-ring:hover .ring-tokens,
+.context-ring:focus .ring-tokens {
+  display: inline;
 }
 
 .context-ring svg {

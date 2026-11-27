@@ -77,6 +77,7 @@
 
 .wide > .main {
   left: var(--sb-w, 320px);
+  container: main / inline-size;
 }
 
 /* The line between the two panes, to drag. Wider than it looks, so it is easy to catch. */
@@ -1007,8 +1008,37 @@ html.mac-app .http-note {
   container-type: inline-size;
 }
 
-.panes.tiled > .pane + .pane {
-  border-left: 0.5px solid var(--hairline);
+/* Two: side by side. Three: side by side, or in a narrower window one tall and two stacked.
+   Four: a 2 by 2 grid. */
+.panes.tiled {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 1px;
+  background: var(--sep);
+}
+
+.panes.tiled > .pane {
+  background: var(--bg);
+}
+
+.panes[data-panes='4'] {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+@container main (max-width: 1259px) {
+  .panes[data-panes='3'] {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .panes[data-panes='3'] > .pane:first-child {
+    grid-row: span 2;
+  }
 }
 
 /* Which tile the sidebar and the keyboard act on: the others step back a little. */
@@ -1029,21 +1059,15 @@ html.mac-app .http-note {
   pointer-events: none;
 }
 
-/* Where a chat dragged from the sidebar will land. */
+/* A chat dragged from the sidebar over the main area: dropping it adds a tile. */
 .pane-drop {
   position: absolute;
   z-index: 60;
-  top: 8px;
-  bottom: 8px;
-  margin: 0 8px;
-  box-sizing: border-box;
+  inset: 8px;
   border: 2px solid var(--label-2);
   border-radius: 18px;
   background: var(--fill-2);
   pointer-events: none;
-  transition:
-    left 140ms ease,
-    width 140ms ease;
 }
 
 /* A chat that is open in another tile. */

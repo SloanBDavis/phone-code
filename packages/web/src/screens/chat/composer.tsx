@@ -120,7 +120,7 @@ function ContextRing({ sessionId }: { sessionId: string }): JSX.Element | null {
     <button
       type="button"
       class={`context-ring ${fraction >= 0.9 ? 'full' : fraction >= 0.75 ? 'warn' : ''}`}
-      data-tip={`${shortCount(used)} of ${shortCount(size)} tokens`}
+      title={`${shortCount(used)} of ${shortCount(size)} tokens`}
       aria-label={`Context ${pct}% used: ${shortCount(used)} of ${shortCount(size)} tokens`}
       data-testid="context-ring"
     >
@@ -138,7 +138,10 @@ function ContextRing({ sessionId }: { sessionId: string }): JSX.Element | null {
           stroke-dashoffset={c * (1 - Math.max(0.03, fraction))}
         />
       </svg>
-      {pct}%
+      <span class="ring-pct">{pct}%</span>
+      <span class="ring-tokens" data-testid="context-tokens">
+        {shortCount(used)} / {shortCount(size)}
+      </span>
     </button>
   );
 }

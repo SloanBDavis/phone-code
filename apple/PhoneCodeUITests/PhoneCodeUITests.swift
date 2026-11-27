@@ -294,6 +294,46 @@ final class PhoneCodeUITests: XCTestCase {
       shot("02-shell-chat")
     }
 
+    /// The page's buttons right under the window's title strip take clicks (at their top
+    /// edge too, where the strip is nearest), and pointing at the context ring names the tokens.
+    func test03MacShellTopButtonsAndHover() throws {
+      try XCTSkipIf(stateHome == nil, "needs PC_UITEST_HOME")
+      launch()
+      let input = inPage("Message")
+      XCTAssertTrue(input.waitForExistence(timeout: 30), "the page did not get to a chat")
+
+      let computer = inPage("This computer")
+      XCTAssertTrue(computer.waitForExistence(timeout: 10), "no computer button")
+      computer.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.2)).click()
+      let inDialog = app.webViews.staticTexts
+        .matching(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", "what you can use", "what you can use"))
+        .firstMatch
+      XCTAssertTrue(inDialog.waitForExistence(timeout: 10), "clicking the computer did not open its dialog")
+      sleep(1)
+      shot("04-shell-computer")
+      app.typeKey(.escape, modifierFlags: [])
+      sleep(1)
+
+      let split = inPage("New chat beside this one")
+      XCTAssertTrue(split.waitForExistence(timeout: 10), "no split button")
+      split.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).click()
+      XCTAssertTrue(inPage("Close this pane").waitForExistence(timeout: 10), "the split button did not add a pane")
+      shot("05-shell-tiles")
+      inPage("Close this pane").click()
+      sleep(1)
+
+      let again = inPage("Message")
+      again.click()
+      again.typeText("hello there")
+      inPage("Send").click()
+      let ring = app.webViews.descendants(matching: .any)
+        .matching(NSPredicate(format: "label BEGINSWITH %@", "Context ")).firstMatch
+      XCTAssertTrue(ring.waitForExistence(timeout: 30), "no context ring after a turn")
+      ring.hover()
+      sleep(1)
+      shot("06-shell-context-hover")
+    }
+
     func test02MacShellPairAPhone() throws {
       try XCTSkipIf(stateHome == nil, "needs PC_UITEST_HOME")
       launch()

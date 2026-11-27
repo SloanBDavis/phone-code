@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { mode, unpair } from './lib/boot';
-import { MAX_PANES, closePane, focusPane, focused, openBeside, panes, type Pane } from './lib/nav';
+import { closePane, focusPane, focused, openBeside, panes, type Pane } from './lib/nav';
 import { conn, sessionById, sessionsLoaded } from './lib/state';
 import { ChatScreen } from './screens/chat/chat';
 import { PairScreen } from './screens/pair';
@@ -26,28 +26,21 @@ function PaneBody({ p, top }: { p: Pane; top: boolean }): JSX.Element {
   return <ChatScreen session={s} />;
 }
 
-/** Where a chat dragged over the panes would land: its pane index once dropped, of `of` panes. */
-function dropTarget(e: DragEvent): { at: number; of: number } | null {
-  if (!wide.peek() || e.dataTransfer?.types.includes(SESSION_DRAG) !== true) return null;
-  if (!(e.currentTarget instanceof HTMLElement)) return null;
-  const box = e.currentTarget.getBoundingClientRect();
-  const n = panes.peek().length;
-  if (n >= MAX_PANES) return { at: focused.peek(), of: n };
-  const x = Math.max(0, Math.min(0.9999, (e.clientX - box.left) / box.width));
-  return { at: Math.round(x * n), of: n + 1 };
-}
+/** A chat from the sidebar, dragged over the main area on a wide screen. */
+const carriesChat = (e: DragEvent): boolean =>
+  wide.peek() && e.dataTransfer?.types.includes(SESSION_DRAG) === true;
 
 /**
  * The main area: the focused pane, or on a wide screen every pane side by
- * side. A chat dragged from the sidebar lands where the highlight shows.
+ * side (two or three in a row, four in a 2 by 2 grid). A chat dragged from
+ * the sidebar becomes a new tile.
  */
 function Main(): JSX.Element {
   const all = panes.value;
   const f = focused.value;
   const shown = wide.value ? all : all.filter((_, i) => i === f);
   const tiled = shown.length > 1;
-  /** Where a dragged chat would land: its pane index once dropped, of `of` panes. */
-  const [drop, setDrop] = useState<{ at: number; of: number } | null>(null);
+  const [drop, setDrop] = useState(false);
 
   return (
     <div
@@ -55,21 +48,19 @@ function Main(): JSX.Element {
       data-testid="panes"
       data-panes={shown.length}
       onDragOver={(e) => {
-        const t = dropTarget(e);
-        if (!t) return;
+        if (!carriesChat(e)) return;
         e.preventDefault();
-        if (drop?.at !== t.at || drop.of !== t.of) setDrop(t);
+        setDrop(true);
       }}
       onDragLeave={(e) => {
-        if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) setDrop(null);
+        if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) setDrop(false);
       }}
       onDrop={(e) => {
-        const t = dropTarget(e);
-        const id = e.dataTransfer?.getData(SESSION_DRAG);
-        setDrop(null);
-        if (!t || !id) return;
+        const id = carriesChat(e) ? e.dataTransfer?.getData(SESSION_DRAG) : undefined;
+        setDrop(false);
+        if (!id) return;
         e.preventDefault();
-        openBeside({ name: 'session', id }, t.at - 1);
+        openBeside({ name: 'session', id }, panes.peek().length - 1);
       }}
     >
       {shown.map((p) => {
@@ -90,14 +81,7 @@ function Main(): JSX.Element {
           </section>
         );
       })}
-      {drop && (
-        <div
-          class="pane-drop"
-          aria-hidden="true"
-          data-testid="pane-drop"
-          style={{ left: `${(drop.at / drop.of) * 100}%`, width: `${100 / drop.of}%` }}
-        />
-      )}
+      {drop && <div class="pane-drop" aria-hidden="true" data-testid="pane-drop" />}
     </div>
   );
 }
