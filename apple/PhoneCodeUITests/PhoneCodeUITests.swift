@@ -336,9 +336,15 @@ final class PhoneCodeUITests: XCTestCase {
       let ring = app.webViews.descendants(matching: .any)
         .matching(NSPredicate(format: "label BEGINSWITH %@", "Context ")).firstMatch
       XCTAssertTrue(ring.waitForExistence(timeout: 30), "no context ring after a turn")
-      ring.hover()
+      // The ring is at the right end of the composer's bar.
+      let onRing = ring.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -24, dy: 0))
+      onRing.hover()
       sleep(1)
       shot("06-shell-context-hover")
+      onRing.click()
+      app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)).hover()
+      sleep(1)
+      shot("07-shell-context-pinned")
     }
 
     func test02MacShellPairAPhone() throws {

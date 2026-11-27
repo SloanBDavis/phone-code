@@ -111,6 +111,9 @@ function ContextRing({ sessionId }: { sessionId: string }): JSX.Element | null {
       size = item.contextWindow;
     }
   }
+  // Pointing at the ring names the tokens; a click keeps them shown (and is the way on a touch screen).
+  const [pinned, setPinned] = useState(false);
+  const [over, setOver] = useState(false);
   if (size === 0) return null;
   const fraction = Math.min(1, used / size);
   const pct = Math.round(fraction * 100);
@@ -119,7 +122,11 @@ function ContextRing({ sessionId }: { sessionId: string }): JSX.Element | null {
   return (
     <button
       type="button"
-      class={`context-ring ${fraction >= 0.9 ? 'full' : fraction >= 0.75 ? 'warn' : ''}`}
+      class={`context-ring ${fraction >= 0.9 ? 'full' : fraction >= 0.75 ? 'warn' : ''} ${pinned || over ? 'tokens' : ''}`}
+      aria-pressed={pinned}
+      onClick={() => setPinned(!pinned)}
+      onMouseEnter={() => setOver(true)}
+      onMouseLeave={() => setOver(false)}
       title={`${shortCount(used)} of ${shortCount(size)} tokens`}
       aria-label={`Context ${pct}% used: ${shortCount(used)} of ${shortCount(size)} tokens`}
       data-testid="context-ring"

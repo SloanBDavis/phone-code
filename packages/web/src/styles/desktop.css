@@ -100,7 +100,7 @@
   position: relative;
   border: 0;
   background: none;
-  cursor: default;
+  cursor: pointer;
 }
 
 .context-ring:focus-visible {
@@ -113,12 +113,12 @@
 }
 
 .context-ring:hover .ring-pct,
-.context-ring:focus .ring-pct {
+.context-ring.tokens .ring-pct {
   display: none;
 }
 
 .context-ring:hover .ring-tokens,
-.context-ring:focus .ring-tokens {
+.context-ring.tokens .ring-tokens {
   display: inline;
 }
 

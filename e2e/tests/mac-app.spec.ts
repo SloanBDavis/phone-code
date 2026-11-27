@@ -110,6 +110,13 @@ test('the sidebar resizes by its edge, the computer opens as a dialog, the conte
   await expect(phone.testId('context-tokens')).toBeVisible();
   await expect(ring).toHaveText('42k / 200k', { useInnerText: true });
   await shot(phone, 'mac-context-hover');
+  // A click keeps them there with the pointer gone, and another click lets go.
+  await ring.click();
+  await phone.page.mouse.move(600, 300);
+  await expect(ring).toHaveText('42k / 200k', { useInnerText: true });
+  await ring.click();
+  await phone.page.mouse.move(600, 300);
+  await expect(ring).toHaveText('21%', { useInnerText: true });
   await phone
     .testId('composer-file')
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
