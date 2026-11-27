@@ -12,7 +12,7 @@ You need [Bun](https://bun.sh) (the version in `packageManager` in `package.json
 bun install
 ```
 
-`bun install` also installs git hooks with [lefthook](https://lefthook.dev) (skipped when `CI` is set): a format check and lint on staged files before each commit, and a typecheck before each push. Skip them once with `LEFTHOOK=0 git commit ...`.
+`bun install` also installs git hooks with [lefthook](https://lefthook.dev) (skipped when `CI` is set): a format check and lint on staged files before each commit, and `bun run test` (the checks and the end-to-end suite, about four minutes) before each push. That hook is the gate: CI only repeats it on main. Skip a hook once with `LEFTHOOK=0 git commit ...` or `LEFTHOOK=0 git push`.
 
 ## Layout
 
@@ -43,6 +43,7 @@ Without Tailscale the daemon only listens on this computer; open the URL it prin
 ```sh
 bun run check   # oxfmt --check, oxlint --type-aware, typecheck, knip
 bun run e2e     # Playwright (needs Chromium: cd e2e && bunx playwright install chromium)
+bun run test    # both: what the pre-push hook runs
 bash formal/check.sh   # if you touched chat sync or pairing logic (needs Java 11+)
 ```
 

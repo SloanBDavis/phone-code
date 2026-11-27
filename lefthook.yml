@@ -10,7 +10,9 @@ pre-commit:
       run: bunx oxlint --type-aware --deny-warnings {staged_files}
       glob: '*.{ts,tsx,js,mjs,cjs}'
 
+# Everything a push must pass, run here: the checks and the end-to-end suite
+# (about four minutes). CI only repeats it on main as a backstop.
 pre-push:
   jobs:
-    - name: typecheck
-      run: bun run typecheck
+    - name: test
+      run: bun run test

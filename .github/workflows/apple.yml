@@ -1,13 +1,13 @@
 name: Apple
 
-# The native iOS and macOS app (apple/). On a push: the Core package's
-# end-to-end tests against the real daemon, the Mac app as a release ships it,
-# and the XCUITests on macOS against the daemon with the scripted fake agents
-# (a screenshot of every main screen is uploaded).
+# The Mac app (a native shell around the web app) and the native iPhone app (apple/).
 #
-# The iOS simulator tests are slow, so they run only when asked for: "Run
-# workflow" runs the XCUITests alone, on the platform chosen there, all of them
-# or only the ones named.
+# A push that touches them builds the Mac app as a release ships it, installs
+# and updates it with install.sh, and runs the Mac UI tests: the app pairs by
+# itself, the page works inside it, the menu reaches the app's own parts.
+#
+# Everything slower runs only from "Run workflow": the iPhone UI tests on the
+# simulator (all, or the ones named), and the Core package's end-to-end tests.
 
 on:
   push:
@@ -19,9 +19,9 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: Where to run the UI tests
+        description: "Where to run the UI tests (core: the Core package's end-to-end tests instead)"
         type: choice
-        options: [ios, macos, both]
+        options: [ios, macos, both, core]
         default: ios
       only:
         description: 'Only these tests, separated by spaces (e.g. "test01PairAndFirstChat test05Terminal"); empty runs all'
@@ -43,7 +43,7 @@ env:
 jobs:
   core-linux:
     name: Core end-to-end (Linux)
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'core'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -72,7 +72,7 @@ jobs:
 
   core-macos:
     name: Core end-to-end (macOS, URLSession WebSocket)
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'core'
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -142,6 +142,7 @@ jobs:
 
   app:
     name: App (${{ matrix.platform }})
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'core'
     runs-on: macos-26
     timeout-minutes: 60
     strategy:
