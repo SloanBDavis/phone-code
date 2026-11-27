@@ -149,6 +149,17 @@ export function openBeside(r: Route, after = focused.peek()): void {
   commit([...list.slice(0, i), pane(r), ...list.slice(i)], i);
 }
 
+/** In the pane at `index`, in place of what it shows (or the pane that already shows it). */
+export function openIn(index: number, r: Route): void {
+  const list = panes.peek();
+  const at = list.findIndex((p) => same(p.r, r));
+  if (at >= 0) return commit(list, at);
+  commit(
+    list.map((p, i) => (i === index ? { k: p.k, r } : p)),
+    index,
+  );
+}
+
 export function focusPane(k: number): void {
   const at = panes.peek().findIndex((p) => p.k === k);
   if (at >= 0 && at !== focused.peek()) commit(panes.peek(), at);

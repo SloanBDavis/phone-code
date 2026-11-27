@@ -172,10 +172,34 @@ test('tiles: chats side by side, opened from the sidebar, kept for next time, cl
   await shot(phone, 'mac-tiles-3');
   await panes.nth(2).getByTestId('pane-close').click();
   await expect(panes).toHaveCount(2);
-  await rows.filter({ hasText: 'second chat' }).dragTo(panes.nth(0), { targetPosition: { x: 20, y: 300 } });
+  // Dragged over the main area, the highlight is the tile it will land in (here three tiles
+  // are one tall on the left and two stacked on the right), and it lands there.
+  const row = await rows.filter({ hasText: 'second chat' }).boundingBox();
+  if (row === null) throw new Error('no row');
+  await phone.page.mouse.move(row.x + 60, row.y + row.height / 2);
+  await phone.page.mouse.down();
+  await phone.page.mouse.move(1100, 650, { steps: 8 });
+  const mark = phone.testId('pane-drop');
+  await expect(mark).toBeVisible();
+  await expect
+    .poll(async () => {
+      const b = await mark.boundingBox();
+      return b && [b.x, b.y, b.width, b.height].map(Math.round);
+    })
+    .toEqual([800, 424, 480, 396]);
+  await phone.page.mouse.move(500, 650, { steps: 8 });
+  await expect
+    .poll(async () => {
+      const b = await mark.boundingBox();
+      return b && [b.x, b.y, b.width, b.height].map(Math.round);
+    })
+    .toEqual([320, 28, 480, 792]);
+  await shot(phone, 'mac-tiles-drag');
+  await phone.page.mouse.up();
+  await expect(mark).toHaveCount(0);
   await expect(panes).toHaveCount(3);
-  await expect(panes.nth(2).getByTestId('chat-item-user')).toContainText('second chat');
-  await expect(panes.nth(2)).toHaveAttribute('data-focused', 'true');
+  await expect(panes.nth(0).getByTestId('chat-item-user')).toContainText('second chat');
+  await expect(panes.nth(0)).toHaveAttribute('data-focused', 'true');
 
   // Four tiles are a 2 by 2 grid; that is as many as there are.
   await panes.nth(2).getByTestId('pane-split').click();
@@ -191,7 +215,7 @@ test('tiles: chats side by side, opened from the sidebar, kept for next time, cl
   }
   await shot(phone, 'mac-tiles-grid');
   await panes.nth(3).getByTestId('pane-close').click();
-  await panes.nth(2).getByTestId('pane-close').click();
+  await panes.nth(0).getByTestId('pane-close').click();
   await expect(panes).toHaveCount(2);
   await bothThemes(phone, 'mac-tiles');
 
