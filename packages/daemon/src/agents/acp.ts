@@ -84,6 +84,7 @@ import {
   safeEvents,
   str,
   type Rec,
+  attachmentText,
 } from './shared/common.ts';
 import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
 
@@ -1107,14 +1108,7 @@ class AcpSession implements AgentSession {
         else droppedImages++;
         continue;
       }
-      const body = Buffer.from(a.data, 'base64').toString('utf8');
-      const name = a.name ?? 'attachment.txt';
-      if (caps.embeddedContext === true) {
-        blocks.push({
-          type: 'resource',
-          resource: { uri: `file:///${encodeURIComponent(name)}`, mimeType: a.mediaType, text: body },
-        });
-      } else blocks.push({ type: 'text', text: `<attachment name="${name}">\n${body}\n</attachment>` });
+      blocks.push({ type: 'text', text: attachmentText(a) });
     }
     if (droppedImages > 0)
       this.notice(

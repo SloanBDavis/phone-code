@@ -1,4 +1,5 @@
-import { basename } from 'node:path';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import type {
   AgentId,
   Attachment,
@@ -480,7 +481,10 @@ export class ChatSession implements LiveSession {
       const raw = Buffer.from(a.data, 'base64');
       const looksImage = a.mediaType.startsWith('image/') || sniffImage(raw) !== undefined;
       if (!looksImage) {
-        forAgent.push(a);
+        // Any other file is kept on this computer: the agent gets where, and opens it itself.
+        // oxlint-disable-next-line no-await-in-loop -- at most 10, in order
+        const path = await this.saveUpload(raw, a.name);
+        forAgent.push({ ...a, ...(path === undefined ? {} : { path }) });
         others.push(a);
         continue;
       }
@@ -502,6 +506,24 @@ export class ChatSession implements LiveSession {
       });
     }
     return { forAgent, images, others };
+  }
+
+  /** Where the files sent to this chat are kept (next to its images). */
+  private uploadsDir(): string {
+    return join(dirname(this.deps.images.root), 'uploads', this.info.id);
+  }
+
+  private async saveUpload(bytes: Buffer, name: string | undefined): Promise<string | undefined> {
+    const safe = (name ?? 'file').replace(/[^\w.\- ]+/g, '_').slice(-120) || 'file';
+    const path = join(this.uploadsDir(), `${Date.now().toString(36)}-${randomId().slice(0, 4)}-${safe}`);
+    try {
+      await mkdir(this.uploadsDir(), { recursive: true, mode: 0o700 });
+      await writeFile(path, bytes, { mode: 0o600 });
+      return path;
+    } catch (err) {
+      log.warn(`could not save an attached file for ${this.info.id}`, err);
+      return undefined;
+    }
   }
 
   /** Adds the UserItem and hands the message to the agent. Returns the item id. */
@@ -652,6 +674,10 @@ export class ChatSession implements LiveSession {
   }
 
   async removeFiles(): Promise<void> {
-    await Promise.all([this.file.remove(), this.deps.images.removeSession(this.info.id)]);
+    await Promise.all([
+      this.file.remove(),
+      this.deps.images.removeSession(this.info.id),
+      rm(this.uploadsDir(), { recursive: true, force: true }),
+    ]);
   }
 }

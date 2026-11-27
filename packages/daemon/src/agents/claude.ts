@@ -51,6 +51,7 @@ import {
   str,
   toQuestion,
   type Rec,
+  attachmentText,
 } from './shared/common.ts';
 import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
 
@@ -1040,11 +1041,7 @@ function buildContent(text: string, attachments: Attachment[] | undefined): stri
     } else if (a.mediaType === 'application/pdf') {
       blocks.push({ type: 'document', source: { type: 'base64', media_type: a.mediaType, data: a.data } });
     } else {
-      const body = Buffer.from(a.data, 'base64').toString('utf8');
-      blocks.push({
-        type: 'text',
-        text: `<attachment name="${a.name ?? 'file'}" type="${a.mediaType}">\n${body}\n</attachment>`,
-      });
+      blocks.push({ type: 'text', text: attachmentText(a) });
     }
   }
   if (text) blocks.push({ type: 'text', text });

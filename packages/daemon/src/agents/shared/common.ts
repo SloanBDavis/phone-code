@@ -188,3 +188,31 @@ export function effortOptions(levels: Array<{ id: string; description?: string }
   }
   return out;
 }
+
+/** Text an agent can take in a message as it is: under this size, valid UTF-8, no NUL bytes. */
+const INLINE_TEXT_MAX = 256 * 1024;
+
+/**
+ * A file the user attached that is not an image, as text for the agent's
+ * message. A text file small enough goes in whole; anything else (a binary,
+ * a spreadsheet, a big log) is named with the path it was saved at on this
+ * computer, where the agent can open it with its own tools.
+ */
+export function attachmentText(a: { mediaType: string; name?: string; data: string; path?: string }): string {
+  const name = a.name ?? 'file';
+  const bytes = Buffer.from(a.data, 'base64');
+  let body: string | undefined;
+  if (bytes.length <= INLINE_TEXT_MAX && !bytes.includes(0)) {
+    try {
+      body = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      body = undefined;
+    }
+  }
+  const where = a.path ? ` path="${a.path}"` : '';
+  if (body !== undefined)
+    return `<attachment name="${name}" type="${a.mediaType}"${where}>\n${body}\n</attachment>`;
+  return a.path
+    ? `<attachment name="${name}" type="${a.mediaType}" path="${a.path}">\nThis file is saved at ${a.path} on this computer. Open it from there.\n</attachment>`
+    : `<attachment name="${name}" type="${a.mediaType}">\n(${bytes.length} bytes, not text: it could not be passed on.)\n</attachment>`;
+}

@@ -297,6 +297,33 @@ test('attaching a photo', async ({ phone, daemon }) => {
   await expect.poll(() => claudeTranscript(daemon.userHome)).toContain('"type":"image"');
 });
 
+test('attaching files that are not photos: a text file goes in whole, a binary by where it was saved', async ({
+  phone,
+  daemon,
+}) => {
+  await newChat(phone, 'claude');
+  await phone.testId('composer-file').setInputFiles([
+    { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('remember the heron\n') },
+    { name: 'data.bin', mimeType: 'application/octet-stream', buffer: Buffer.from([0, 1, 2, 3, 255]) },
+  ]);
+  const atts = phone.testId('composer-att');
+  await expect(atts).toHaveCount(2);
+  await expect(atts.nth(0)).toContainText('notes.txt');
+  await shot(phone, 'claude-files');
+  await send(phone, 'read these');
+  await waitTurn(phone, 1);
+  // The message names the files; their bytes are not in the transcript.
+  const files = phone.testId('chat-item-user').getByTestId('bubble-files');
+  await expect(files).toContainText('notes.txt');
+  await expect(files).toContainText('data.bin');
+  const sent = (): string => claudeTranscript(daemon.userHome);
+  await expect.poll(sent).toContain('remember the heron');
+  // The binary is on the computer, and the agent is told where.
+  const path = /attachment name=\\"data\.bin\\"[^>]*path=\\"([^"\\]+)\\"/.exec(sent())?.[1];
+  expect(path).toBeTruthy();
+  expect(readFileSync(path ?? '').equals(Buffer.from([0, 1, 2, 3, 255]))).toBe(true);
+});
+
 function claudeTranscript(home: string): string {
   const root = join(home, '.claude', 'projects');
   let out = '';

@@ -57,6 +57,7 @@ import {
   toQuestion,
   truncateOutput,
   type Rec,
+  attachmentText,
 } from './shared/common.ts';
 import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
 
@@ -1101,14 +1102,7 @@ class CodexSession implements AgentSession {
       if (a.mediaType.startsWith('image/') && a.path) input.push({ type: 'localImage', path: a.path });
       else if (a.mediaType.startsWith('image/'))
         input.push({ type: 'image', url: `data:${a.mediaType};base64,${a.data}` });
-      else {
-        const body = Buffer.from(a.data, 'base64').toString('utf8');
-        input.push({
-          type: 'text',
-          text: `<attachment name="${a.name ?? 'file'}">\n${body}\n</attachment>`,
-          text_elements: [],
-        });
-      }
+      else input.push({ type: 'text', text: attachmentText(a), text_elements: [] });
     }
     input.push({ type: 'text', text: message, text_elements: [] });
     const { approvalPolicy, sandbox } = policyFor(this.mode);

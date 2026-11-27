@@ -17,7 +17,9 @@ import { EffortChip, FolderChip, HarnessChip, ModeChip, ModelChip } from './pick
 export { MODES, modeInfo } from './pickers';
 
 const MAX_ROWS_PX = 168;
-const MAX_PHOTOS = 6;
+const MAX_FILES = 6;
+/** The largest file that is not a photo (photos are downscaled first). */
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const NEW = 'new';
 
 /** `/comp` at the very start, before any space: what the palette filters by. */
@@ -67,6 +69,26 @@ function Palette({
       </div>
     </GlassSurface>
   );
+}
+
+/** Placeholder until the composer's own handler is in place. */
+const addFilesLater = (_files: File[]): void => {};
+
+/** A file as it is (not a photo): its bytes in base64, its name and type. */
+function readAttachment(file: File): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('error', () => reject(new Error('unreadable')));
+    reader.addEventListener('load', () => {
+      const url = typeof reader.result === 'string' ? reader.result : '';
+      resolve({
+        mediaType: file.type || 'application/octet-stream',
+        name: file.name,
+        data: url.slice(url.indexOf(',') + 1),
+      });
+    });
+    reader.readAsDataURL(file);
+  });
 }
 
 /** 35900 -> "36k", 1000000 -> "1.0M". */
@@ -199,6 +221,29 @@ export function Composer({
 
   useEffect(() => () => clearTimeout(saveTimerRef.current), []);
 
+  // Files dropped anywhere on the page go to the message (and never replace the page).
+  const addFilesRef = useRef(addFilesLater);
+  useLayoutEffect(() => {
+    addFilesRef.current = (files) => void addFiles(files);
+  });
+  useEffect(() => {
+    const hasFiles = (e: DragEvent): boolean => e.dataTransfer?.types.includes('Files') === true;
+    const over = (e: DragEvent): void => {
+      if (hasFiles(e)) e.preventDefault();
+    };
+    const drop = (e: DragEvent): void => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      addFilesRef.current([...(e.dataTransfer?.files ?? [])]);
+    };
+    addEventListener('dragover', over);
+    addEventListener('drop', drop);
+    return () => {
+      removeEventListener('dragover', over);
+      removeEventListener('drop', drop);
+    };
+  }, []);
+
   const onInput = (v: string): void => {
     setText(v);
     clearTimeout(saveTimerRef.current);
@@ -234,16 +279,22 @@ export function Composer({
     client.send({ t: 'chat.interrupt', sessionId: session.id });
   };
 
-  const addPhotos = async (files: File[]): Promise<void> => {
-    const images = files.filter((f) => f.type.startsWith('image/'));
-    if (!images.length) return;
-    if (atts.length + images.length > MAX_PHOTOS) toast(`Up to ${MAX_PHOTOS} photos per message`, 'info');
+  /** Photos (downscaled here) and any other file (as it is), picked, pasted or dropped. */
+  const addFiles = async (files: File[]): Promise<void> => {
+    if (!files.length) return;
+    if (atts.length + files.length > MAX_FILES) toast(`Up to ${MAX_FILES} files per message`, 'info');
+    const room = files.slice(0, Math.max(0, MAX_FILES - atts.length));
+    const fits = room.filter((f) => f.type.startsWith('image/') || f.size <= MAX_FILE_BYTES);
+    if (fits.length < room.length) toast('Files up to 10 MB', 'warn');
+    if (!fits.length) return;
     setBusy(true);
     try {
-      const out = await Promise.all(images.slice(0, MAX_PHOTOS).map((f) => downscaleImage(f)));
-      setAtts((a) => [...a, ...out].slice(0, MAX_PHOTOS));
+      const out = await Promise.all(
+        fits.map((f) => (f.type.startsWith('image/') ? downscaleImage(f) : readAttachment(f))),
+      );
+      setAtts((a) => [...a, ...out].slice(0, MAX_FILES));
     } catch {
-      toast('Could not read that image', 'warn');
+      toast('Could not read that file', 'warn');
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -271,12 +322,23 @@ export function Composer({
         {atts.length > 0 && (
           <div class="composer-atts">
             {atts.map((a, i) => (
-              <div class="att" key={a.data.slice(-32)} data-testid="composer-att">
-                <img src={`data:${a.mediaType};base64,${a.data}`} alt={a.name ?? 'Attached photo'} />
+              <div
+                class={`att ${a.mediaType.startsWith('image/') ? '' : 'att-file'}`}
+                key={`${a.name ?? ''}:${a.data.length}:${a.data.slice(-24)}`}
+                data-testid="composer-att"
+              >
+                {a.mediaType.startsWith('image/') ? (
+                  <img src={`data:${a.mediaType};base64,${a.data}`} alt={a.name ?? 'Attached photo'} />
+                ) : (
+                  <span class="att-file-body">
+                    <Icon name="doc" size={16} stroke={2} />
+                    <span class="att-file-name">{a.name ?? 'File'}</span>
+                  </span>
+                )}
                 <button
                   type="button"
                   class="att-x"
-                  aria-label="Remove photo"
+                  aria-label="Remove"
                   data-testid="att-remove"
                   onClick={() => setAtts(atts.filter((_, j) => j !== i))}
                 >
@@ -296,7 +358,7 @@ export function Composer({
           <button
             type="button"
             class="c-btn"
-            aria-label="Add photos"
+            aria-label="Add photos or files"
             onClick={() => fileRef.current?.click()}
             disabled={busy || closed}
             data-testid="composer-attach"
@@ -306,10 +368,9 @@ export function Composer({
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
             multiple
             hidden
-            onChange={(e) => void addPhotos([...(e.currentTarget.files ?? [])])}
+            onChange={(e) => void addFiles([...(e.currentTarget.files ?? [])])}
             data-testid="composer-file"
           />
           <textarea
@@ -326,9 +387,9 @@ export function Composer({
             onInput={(e) => onInput(e.currentTarget.value)}
             onPaste={(e) => {
               const files = [...(e.clipboardData?.files ?? [])];
-              if (files.some((f) => f.type.startsWith('image/'))) {
+              if (files.length > 0) {
                 e.preventDefault();
-                void addPhotos(files);
+                void addFiles(files);
               }
             }}
             onKeyDown={(e) => {

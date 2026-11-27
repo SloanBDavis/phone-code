@@ -25,13 +25,27 @@ export function UserBubble({
   const pics = u.images?.length
     ? picsOf(sessionId, u.images)
     : srcPics((u.attachments ?? []).filter((a) => a.data).map((a) => `data:${a.mediaType};base64,${a.data}`));
-  const missing = u.images?.length ? 0 : (u.attachments ?? []).filter((a) => !a.data).length;
+  // Files that are not photos: named (they are on the computer, not in the transcript).
+  const files = (u.attachments ?? []).filter((a) => !a.data && !a.mediaType.startsWith('image/'));
+  const missing = u.images?.length
+    ? 0
+    : (u.attachments ?? []).filter((a) => !a.data && a.mediaType.startsWith('image/')).length;
   return (
     <div class="msg-user" data-testid="chat-item-user">
       <Thumbs pics={pics} variant="bubble" />
       {missing > 0 && (
         <div class="bubble-att-note">
           <Icon name="photo" size={14} /> {missing} photo{missing > 1 ? 's' : ''}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div class="bubble-files" data-testid="bubble-files">
+          {files.map((f) => (
+            <span class="file-chip" key={`${f.mediaType}:${f.name ?? ''}`}>
+              <Icon name="doc" size={14} stroke={2} />
+              <span class="file-chip-name">{f.name ?? 'File'}</span>
+            </span>
+          ))}
         </div>
       )}
       {u.text && <div class="bubble">{u.text}</div>}
