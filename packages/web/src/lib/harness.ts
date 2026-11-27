@@ -10,7 +10,7 @@ import type {
 import { toast } from '../ui/overlay';
 import { CLASSIC_MODES, agentCatalog, currentModel, modelOptions } from './agents';
 import { client, uid } from './client';
-import { openChat } from './nav';
+import { openChat, openStarted } from './nav';
 import { host, type PendingSend, rememberCreated } from './state';
 import { harnessPrefs, lastHarness, pushRecentDir, setHarnessPrefs, settings } from './storage';
 import { haptic } from './util';
@@ -180,7 +180,7 @@ export async function startChat(text: string, attachments: Attachment[] = []): P
       starting.value = null;
       picked.value = null;
       void client.sendChat(s.id, text, attachments);
-      openChat(s.id);
+      openStarted(s.id);
     });
   } catch (e) {
     if (starting.peek()?.localId !== pending.localId) return;

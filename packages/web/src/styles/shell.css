@@ -70,13 +70,53 @@
   top: 0;
   bottom: 0;
   left: 0;
-  width: 320px;
+  width: var(--sb-w, 320px);
   background: var(--bg-grouped);
   border-right: 0.5px solid var(--sep);
 }
 
 .wide > .main {
-  left: 320px;
+  left: var(--sb-w, 320px);
+}
+
+/* The line between the two panes, to drag. Wider than it looks, so it is easy to catch. */
+.sb-resizer {
+  position: absolute;
+  z-index: 40;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sb-w, 320px) - 4px);
+  width: 9px;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sb-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: transparent;
+  transition: background 120ms;
+}
+
+.sb-resizer:hover::after,
+.sb-resizer.dragging::after,
+.sb-resizer:focus-visible::after {
+  left: 3px;
+  width: 3px;
+  background: var(--accent, var(--label-3));
+}
+
+.sb-resizer:focus-visible {
+  outline: none;
 }
 
 @media (min-width: 900px) {
@@ -224,6 +264,17 @@
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--label-2);
+}
+
+/* A section that folds (the chats followed from Cursor's app). */
+.sb-fold {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
 }
 
 .sb-head.attention {
@@ -912,7 +963,97 @@ html.mac-app .app {
   box-shadow: none;
 }
 
+/* The strip above is the window's own (its buttons, top left): no second margin under it,
+   and it continues each column's colour instead of drawing a band across the window. */
+html.mac-app .wide .sb {
+  padding-top: 0;
+}
+
+html.mac-app .wide .sb-top-bar {
+  padding-top: 2px;
+}
+
+html.mac-app .wide .topbar {
+  top: 0;
+}
+
+html.mac-app .wide .chat-scroll {
+  padding-top: 52px;
+}
+
+@media (min-width: 900px) {
+  html.mac-app body {
+    background: linear-gradient(to right, var(--bg-grouped) var(--sb-w, 320px), var(--bg) var(--sb-w, 320px));
+  }
+}
+
 /* Plain http to this computer itself is how the app talks to phone-code: nothing to fix. */
 html.mac-app .http-note {
   display: none;
+}
+
+/* The main area: one pane, or several side by side (tiles) on a wide screen. */
+.panes {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.pane {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  /* Each pane sizes its own contents: a narrow tile lays out like a narrow window. */
+  container-type: inline-size;
+}
+
+.panes.tiled > .pane + .pane {
+  border-left: 0.5px solid var(--hairline);
+}
+
+/* Which tile the sidebar and the keyboard act on: the others step back a little. */
+.panes.tiled > .pane:not(.focused) .title-capsule {
+  opacity: 0.62;
+}
+
+.panes.tiled > .pane.focused::after {
+  content: '';
+  position: absolute;
+  z-index: 35;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--label-2);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Where a chat dragged from the sidebar will land. */
+.pane-drop {
+  position: absolute;
+  z-index: 60;
+  top: 8px;
+  bottom: 8px;
+  margin: 0 8px;
+  box-sizing: border-box;
+  border: 2px solid var(--label-2);
+  border-radius: 18px;
+  background: var(--fill-2);
+  pointer-events: none;
+  transition:
+    left 140ms ease,
+    width 140ms ease;
+}
+
+/* A chat that is open in another tile. */
+.sb-row.open {
+  background: var(--fill-3);
+}
+
+/* A wide screen's panes have two buttons on the right: the title stays clear of them. */
+.wide .title-capsule {
+  left: 112px;
+  right: 112px;
+  max-width: calc(100% - 224px);
 }

@@ -96,9 +96,17 @@ function hook(daemon: Daemon, event: string, input: Record<string, unknown>): Pr
 const cursorRow = (phone: Phone) =>
   phone.page.locator('[data-testid="session-row"][data-agent="cursor-app"]');
 
+/** Cursor's chats are a folded section of the sidebar: open it (once; it stays open). */
+async function showCursorChats(phone: Phone): Promise<void> {
+  const toggle = phone.testId('section-cursor-toggle');
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+}
+
 /** Opens the Cursor chat from the sidebar and waits for its transcript (the phone follows it). */
 async function openCursorChat(phone: Phone): Promise<void> {
   await openSidebar(phone);
+  await showCursorChats(phone);
   await cursorRow(phone).click();
   await expect(phone.testId('screen-chat')).toHaveAttribute('data-session-id', /.+/);
   await expect(phone.testId('chat-item-user').first()).toContainText(PROMPT);
@@ -150,6 +158,10 @@ test('a Cursor chat shows up live: the prompt as its title, thinking, a command,
 }) => {
   expect(await hook(daemon, 'beforeSubmitPrompt', { generation_id: 'g1', prompt: PROMPT })).toEqual({});
   await openSidebar(phone);
+  // Not mixed in with the chats started here: a folded section, with how many.
+  await expect(phone.testId('section-cursor-toggle')).toContainText('Cursor · 1');
+  await expect(cursorRow(phone)).toHaveCount(0);
+  await showCursorChats(phone);
   const row = cursorRow(phone);
   await expect(row).toHaveCount(1);
   await expect(row.locator('.sb-title')).toHaveText(PROMPT);
@@ -246,7 +258,7 @@ test('a turn that ends while nobody is at the computer waits for a reply, with t
   const stopped = hook(daemon, 'stop', { generation_id: 'g4', status: 'completed', loop_count: 0 });
   await openSidebar(phone);
   await expect(phone.testId('section-waiting').locator('[data-agent="cursor-app"]')).toContainText('Reply');
-  await cursorRow(phone).click();
+  await phone.testId('section-waiting').locator('[data-agent="cursor-app"]').click();
   await expect(phone.testId('chat-title')).toContainText('Waiting for your reply');
   await expect(phone.testId('composer-input')).toBeEnabled();
   await send(phone, REPLY_AWAY);

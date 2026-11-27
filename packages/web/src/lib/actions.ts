@@ -1,7 +1,7 @@
 import type { SessionInfo } from '@phone-code/protocol';
 import { alertDialog, toast } from '../ui/overlay';
 import { client } from './client';
-import { currentSessionId, openChat, openNew } from './nav';
+import { closeSession, openChat } from './nav';
 import { chatOf, dropChat, host, sessions } from './state';
 import { copyText, haptic } from './util';
 
@@ -35,7 +35,7 @@ export async function deleteSession(s: SessionInfo): Promise<void> {
   });
   if (!ok) return;
   haptic('warning');
-  if (currentSessionId() === s.id) openNew();
+  closeSession(s.id);
   try {
     await client.rpc({ t: 'session.delete', sessionId: s.id });
     dropChat(s.id);
@@ -58,7 +58,7 @@ export async function archiveSession(s: SessionInfo, archived = true): Promise<v
   haptic(archived ? 'medium' : 'light');
   setArchivedLocally(s.id, archived);
   if (archived) {
-    if (currentSessionId() === s.id) openNew();
+    closeSession(s.id);
     toast('Archived', 'check', {
       action: { label: 'Undo', run: () => void archiveSession(s, false), testid: 'toast-undo' },
     });

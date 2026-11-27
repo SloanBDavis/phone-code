@@ -70,6 +70,10 @@ export class JsonWriter {
   }
 }
 
+/** A random id. Never starts with `-`: ids are typed as command arguments (`phonecode revoke <id>`). */
 export function randomId(bytes = 9): string {
-  return Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString('base64url');
+  for (;;) {
+    const id = Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString('base64url');
+    if (!id.startsWith('-')) return id;
+  }
 }

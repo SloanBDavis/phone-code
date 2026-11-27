@@ -14,7 +14,7 @@ import { resolvedTheme } from '../lib/theme';
 import { keyboardOpen } from '../lib/viewport';
 import { haptic, isIOS, tildify } from '../lib/util';
 import { TopBar } from '../ui/chrome';
-import { paneButtons } from '../ui/drawer';
+import { usePaneButtons, wide as wideScreen } from '../ui/drawer';
 import { GlassButton, GlassSurface } from '../ui/glass';
 import { Icon } from '../ui/icons';
 import { openMenu, toast } from '../ui/overlay';
@@ -143,6 +143,7 @@ export default function TerminalScreen({
   const alt = useSignal<Mod>('off');
   const exited = useSignal<number | null | undefined>(undefined);
   const ready = useSignal(false);
+  const pane = usePaneButtons();
 
   useEffect(() => {
     const el = boxRef.current;
@@ -313,7 +314,7 @@ export default function TerminalScreen({
       </div>
       <TopBar
         fade
-        left={paneButtons().left}
+        left={pane.left}
         titleSlot={
           <GlassButton class="title-capsule" onClick={menu} testid="term-title">
             <span class="title-main">{s.title}</span>
@@ -324,24 +325,27 @@ export default function TerminalScreen({
           </GlassButton>
         }
         right={
-          <GlassSurface class="glass-group">
-            <button
-              type="button"
-              aria-label="Smaller text"
-              onClick={() => fontBy(-1)}
-              data-testid="term-font-smaller"
-            >
-              <Icon name="minus" size={17} stroke={2.4} />
-            </button>
-            <button
-              type="button"
-              aria-label="Larger text"
-              onClick={() => fontBy(1)}
-              data-testid="term-font-larger"
-            >
-              <Icon name="plus" size={17} stroke={2.4} />
-            </button>
-          </GlassSurface>
+          <>
+            <GlassSurface class="glass-group">
+              <button
+                type="button"
+                aria-label="Smaller text"
+                onClick={() => fontBy(-1)}
+                data-testid="term-font-smaller"
+              >
+                <Icon name="minus" size={17} stroke={2.4} />
+              </button>
+              <button
+                type="button"
+                aria-label="Larger text"
+                onClick={() => fontBy(1)}
+                data-testid="term-font-larger"
+              >
+                <Icon name="plus" size={17} stroke={2.4} />
+              </button>
+            </GlassSurface>
+            {wideScreen.value && pane.right}
+          </>
         }
       />
       <GlassSurface class="keybar" data-testid="term-keybar">

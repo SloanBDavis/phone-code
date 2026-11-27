@@ -117,10 +117,11 @@ function ContextRing({ sessionId }: { sessionId: string }): JSX.Element | null {
   const r = 6;
   const c = 2 * Math.PI * r;
   return (
-    <span
+    <button
+      type="button"
       class={`context-ring ${fraction >= 0.9 ? 'full' : fraction >= 0.75 ? 'warn' : ''}`}
-      title={`${shortCount(used)} of ${shortCount(size)} tokens of context used`}
-      aria-label={`Context ${pct}% used`}
+      data-tip={`${shortCount(used)} of ${shortCount(size)} tokens`}
+      aria-label={`Context ${pct}% used: ${shortCount(used)} of ${shortCount(size)} tokens`}
       data-testid="context-ring"
     >
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -138,7 +139,7 @@ function ContextRing({ sessionId }: { sessionId: string }): JSX.Element | null {
         />
       </svg>
       {pct}%
-    </span>
+    </button>
   );
 }
 
@@ -168,8 +169,9 @@ export function Composer({
   const saveTimerRef = useRef<number | undefined>(undefined);
   const keyRef = useRef(key);
 
-  // Another chat: its own draft (the textarea stays, so the keyboard does too).
-  useEffect(() => {
+  // Another chat: its own draft (the textarea stays, so the keyboard does too). Before the
+  // next paint: typing that starts right after the switch is not wiped by a late reset.
+  useLayoutEffect(() => {
     if (keyRef.current === key) return;
     clearTimeout(saveTimerRef.current);
     keyRef.current = key;
@@ -234,6 +236,10 @@ export function Composer({
     const drop = (e: DragEvent): void => {
       if (!hasFiles(e)) return;
       e.preventDefault();
+      // Several chats side by side: the one the files were dropped on (else the focused one).
+      const mine = taRef.current?.closest('.pane');
+      const hit = e.target instanceof Element ? e.target.closest('.pane') : null;
+      if (mine && mine !== (hit ?? document.querySelector('.pane.focused'))) return;
       addFilesRef.current([...(e.dataTransfer?.files ?? [])]);
     };
     addEventListener('dragover', over);

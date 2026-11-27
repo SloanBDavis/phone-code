@@ -18,7 +18,7 @@ import { chatOf, conn, host, isDemo } from '../../lib/state';
 import { loadDraft, markSeen, seen } from '../../lib/storage';
 import { basename, copyText, haptic, soon, tildify } from '../../lib/util';
 import { TopBar } from '../../ui/chrome';
-import { paneButtons } from '../../ui/drawer';
+import { usePaneButtons } from '../../ui/drawer';
 import { GlassButton } from '../../ui/glass';
 import { Glyph } from '../../ui/glyph';
 import { Icon, Spinner } from '../../ui/icons';
@@ -277,7 +277,7 @@ export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Eleme
   const apiRef = useRef<ScrollApi>(null);
   const jump = useSignal(false);
   const [text, setText] = useState(() => loadDraft(sessionId ?? 'new'));
-  const { left, right } = paneButtons();
+  const { left, right } = usePaneButtons();
 
   useEffect(() => (sessionId ? client.subscribe(sessionId) : undefined), [sessionId]);
 
@@ -330,7 +330,7 @@ export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Eleme
             <NewChatEmpty
               onStarter={(t) => {
                 setText(t);
-                soon(() => document.querySelector<HTMLTextAreaElement>('.composer-input')?.focus());
+                soon(() => screenRef.current?.querySelector<HTMLTextAreaElement>('.composer-input')?.focus());
               }}
             />
           )

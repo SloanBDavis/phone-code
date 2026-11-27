@@ -108,7 +108,6 @@ export function ThinkingBlock({ item }: { item: Signal<ChatItem> }): JSX.Element
       data-testid="chat-item-thinking"
     >
       <button type="button" class="thinking-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Icon name="sparkle" size={14} stroke={2.1} />
         <span class="thinking-label">{t.streaming ? 'Thinking' : 'Thought process'}</span>
         <Icon name={open ? 'up' : 'down'} size={13} stroke={2.5} />
       </button>

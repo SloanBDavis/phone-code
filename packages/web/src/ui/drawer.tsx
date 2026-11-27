@@ -1,7 +1,8 @@
-import type { ComponentChildren, HTMLAttributes, JSX } from 'preact';
+import { createContext, type ComponentChildren, type HTMLAttributes, type JSX } from 'preact';
 import { signal } from '@preact/signals';
-import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import { openNew } from '../lib/nav';
+import { useContext, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import { MAX_PANES, closePane, openBeside, openNew, panes } from '../lib/nav';
+import { load, save } from '../lib/storage';
 import { haptic } from '../lib/util';
 import { GlassButton } from './glass';
 
@@ -42,6 +43,64 @@ interface Drag {
 /** A drag that hears nothing for this long is treated as released (lost end events). */
 const WATCHDOG_MS = 2500;
 const SCRIM = 0.42;
+
+const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+const SB_MIN = 220;
+const SB_MAX = 560;
+const SB_DEFAULT = 320;
+const clampWidth = (w: number): number => Math.min(SB_MAX, Math.max(SB_MIN, Math.round(w)));
+
+/** The sidebar's width on a wide screen, as the user left it. */
+const sidebarWidth = signal(clampWidth(load('pc.sidebarWidth', SB_DEFAULT, isNumber)));
+
+/**
+ * The line between the sidebar and the main pane: drag it to make the sidebar
+ * narrower or wider (kept for next time), double-click for the usual width.
+ */
+function SidebarResizer({ root }: { root: { current: HTMLDivElement | null } }): JSX.Element {
+  const w = sidebarWidth.value;
+  useLayoutEffect(() => {
+    root.current?.style.setProperty('--sb-w', `${w}px`);
+    // Also for what is drawn outside the shell (the Mac app's window strip).
+    document.documentElement.style.setProperty('--sb-w', `${w}px`);
+  }, [root, w]);
+  const move = (e: PointerEvent): void => {
+    const left = root.current?.getBoundingClientRect().left ?? 0;
+    sidebarWidth.value = clampWidth(e.clientX - left);
+  };
+  return (
+    <button
+      type="button"
+      class="sb-resizer"
+      aria-label={`Resize the sidebar (${w} points wide; arrow keys move it)`}
+      data-testid="sidebar-resizer"
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        e.currentTarget.classList.add('dragging');
+      }}
+      onPointerMove={(e) => {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) move(e);
+      }}
+      onPointerUp={(e) => {
+        e.currentTarget.classList.remove('dragging');
+        save('pc.sidebarWidth', sidebarWidth.value);
+      }}
+      onDblClick={() => {
+        sidebarWidth.value = SB_DEFAULT;
+        save('pc.sidebarWidth', SB_DEFAULT);
+      }}
+      onKeyDown={(e) => {
+        const step = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
+        if (step === 0) return;
+        e.preventDefault();
+        sidebarWidth.value = clampWidth(sidebarWidth.value + step);
+        save('pc.sidebarWidth', sidebarWidth.value);
+      }}
+    />
+  );
+}
 
 export function Shell({
   sidebar,
@@ -246,6 +305,7 @@ export function Shell({
       <main class="main" inert={open}>
         {children}
       </main>
+      {isWide && <SidebarResizer root={rootRef} />}
       {!isWide && <div class="drawer-scrim" aria-hidden="true" data-testid="drawer-scrim" {...handlers(1)} />}
       {!isWide && !open && (
         <div class="edge-swipe" aria-hidden="true" data-testid="edge-swipe" {...handlers(0)} />
@@ -254,9 +314,48 @@ export function Shell({
   );
 }
 
-/** The two buttons every main pane has on a phone: the chats drawer and a new chat. */
-export function paneButtons(): { left: JSX.Element | null; right: JSX.Element | null } {
-  if (wide.value) return { left: null, right: null };
+/** Which pane a screen is in (its key in `panes`). */
+export const PaneContext = createContext(0);
+
+/** What a chat row dragged out of the sidebar carries: the session's id. */
+export const SESSION_DRAG = 'application/x-phonecode-session';
+
+/**
+ * The buttons every main pane has. On a phone: the chats drawer and a new
+ * chat. On a wide screen: a new chat beside this one, and closing the pane
+ * when there are several.
+ */
+export function usePaneButtons(): { left: JSX.Element | null; right: JSX.Element | null } {
+  const k = useContext(PaneContext);
+  if (wide.value) {
+    const all = panes.value;
+    const at = all.findIndex((p) => p.k === k);
+    return {
+      left: null,
+      right: (
+        <>
+          {all.length < MAX_PANES && (
+            <GlassButton
+              icon="split"
+              label="New chat beside this one"
+              iconSize={20}
+              onClick={() => openBeside({ name: 'new' }, at)}
+              testid="pane-split"
+            />
+          )}
+          {all.length > 1 && (
+            <GlassButton
+              icon="close"
+              label="Close this pane"
+              iconSize={18}
+              onClick={() => closePane(k)}
+              testid="pane-close"
+            />
+          )}
+        </>
+      ),
+    };
+  }
   return {
     left: (
       <GlassButton icon="sidebar" label="Chats" iconSize={22} onClick={openDrawer} testid="open-sidebar" />

@@ -8,17 +8,19 @@ import { exitDemo } from '../lib/boot';
 import { client } from '../lib/client';
 import { now } from '../lib/clock';
 import { connectionOf } from '../lib/connection';
-import { openNew, route } from '../lib/nav';
+import { MAX_PANES, openBeside, openIds, openNew, panes, route } from '../lib/nav';
 import { conn, host, isDemo, sessions, sessionsLoaded } from '../lib/state';
-import { creds } from '../lib/storage';
+import { creds, load, save } from '../lib/storage';
 import { relTime } from '../lib/util';
-import { closeDrawer, wide } from '../ui/drawer';
+import { SESSION_DRAG, closeDrawer, wide } from '../ui/drawer';
 import { GlassButton } from '../ui/glass';
 import { Glyph, glyphOf } from '../ui/glyph';
 import { Icon, Spinner } from '../ui/icons';
 import { lazy } from '../ui/lazy';
 import { openMenu, openSheet } from '../ui/overlay';
 import { SwipeRow } from '../ui/swipe-row';
+
+const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
 
 const AllChats = lazy(() => import('./all-chats'));
 const ComputerSheet = lazy(() => import('./settings'));
@@ -134,6 +136,16 @@ function rowMenu(anchor: Element, s: SessionInfo): void {
     [
       {
         items: [
+          ...(wide.peek() && !openIds.peek().has(s.id)
+            ? [
+                {
+                  label: panes.peek().length < MAX_PANES ? 'Open beside' : 'Open in this pane',
+                  icon: 'split' as const,
+                  onSelect: () => openBeside({ name: 'session', id: s.id }),
+                  testid: 'menu-open-beside',
+                },
+              ]
+            : []),
           { label: 'Rename', icon: 'pencil', onSelect: () => void renameSession(s), testid: 'menu-rename' },
           {
             label: 'Archive',
@@ -159,7 +171,7 @@ function rowMenu(anchor: Element, s: SessionInfo): void {
   );
 }
 
-function SessionRow({ s, active }: { s: SessionInfo; active: boolean }): JSX.Element {
+function SessionRow({ s, active, open }: { s: SessionInfo; active: boolean; open: boolean }): JSX.Element {
   const press = useLongPress((el) => rowMenu(el, s));
   const sub =
     s.status === 'waiting'
@@ -180,15 +192,23 @@ function SessionRow({ s, active }: { s: SessionInfo; active: boolean }): JSX.Ele
     >
       <button
         type="button"
-        class={`sb-row status-${s.status} ${active ? 'active' : ''}`}
+        class={`sb-row status-${s.status} ${active ? 'active' : open ? 'open' : ''}`}
+        draggable={wide.value}
+        onDragStart={(e) => {
+          e.dataTransfer?.setData(SESSION_DRAG, s.id);
+          e.dataTransfer?.setData('text/plain', s.title);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copyMove';
+        }}
         aria-current={active ? 'page' : undefined}
         data-testid="session-row"
         data-session-id={s.id}
         data-agent={s.kind === 'agent' ? (s.agent ?? 'claude') : undefined}
         data-status={s.status}
         {...press.handlers}
-        onClick={() => {
+        onClick={(e) => {
           if (press.fired()) return;
+          // Cmd/Ctrl-click: beside the open chats, in a pane of its own.
+          if (wide.peek() && (e.metaKey || e.ctrlKey)) return openBeside({ name: 'session', id: s.id });
           openSession(s.id);
           closeDrawer();
         }}
@@ -215,13 +235,19 @@ function SessionRow({ s, active }: { s: SessionInfo; active: boolean }): JSX.Ele
 function ChatList(): JSX.Element {
   const groups = useComputed(() => {
     const shown = sessions.value.filter((s) => !s.archived);
+    const rest = shown.filter((s) => s.status !== 'waiting');
     return {
       waiting: shown.filter((s) => s.status === 'waiting'),
-      rest: shown.filter((s) => s.status !== 'waiting'),
+      // The chats started here. Cursor's app adds one for every chat in Cursor: those
+      // are a folded section of their own (one that waits for a reply is above, like any).
+      rest: rest.filter((s) => !isCursorChat(s)),
+      cursor: rest.filter((s) => isCursorChat(s)),
     };
   });
+  const [cursorOpen, setCursorOpen] = useState(() => load('pc.sidebar.cursorOpen', false, isBoolean));
   const r = route.value;
   const activeId = r.name === 'session' ? r.id : null;
+  const open = openIds.value;
   const g = groups.value;
   if (!sessionsLoaded.value)
     return (
@@ -229,7 +255,7 @@ function ChatList(): JSX.Element {
         <Spinner size={20} />
       </div>
     );
-  if (!g.waiting.length && !g.rest.length)
+  if (!g.waiting.length && !g.rest.length && !g.cursor.length)
     return (
       <p class="sb-empty" data-testid="sessions-empty">
         Your chats show up here. Search above to find the ones you started on your computer.
@@ -241,7 +267,7 @@ function ChatList(): JSX.Element {
         <section class="sb-section" data-testid="section-waiting">
           <h2 class="sb-head attention">Needs you</h2>
           {g.waiting.map((s) => (
-            <SessionRow key={s.id} s={s} active={s.id === activeId} />
+            <SessionRow key={s.id} s={s} active={s.id === activeId} open={open.has(s.id)} />
           ))}
         </section>
       )}
@@ -249,8 +275,29 @@ function ChatList(): JSX.Element {
         <section class="sb-section" data-testid="section-chats">
           {g.waiting.length > 0 && <h2 class="sb-head">Chats</h2>}
           {g.rest.map((s) => (
-            <SessionRow key={s.id} s={s} active={s.id === activeId} />
+            <SessionRow key={s.id} s={s} active={s.id === activeId} open={open.has(s.id)} />
           ))}
+        </section>
+      )}
+      {g.cursor.length > 0 && (
+        <section class="sb-section" data-testid="section-cursor">
+          <button
+            type="button"
+            class="sb-head sb-fold"
+            aria-expanded={cursorOpen}
+            data-testid="section-cursor-toggle"
+            onClick={() => {
+              save('pc.sidebar.cursorOpen', !cursorOpen);
+              setCursorOpen(!cursorOpen);
+            }}
+          >
+            <Icon name={cursorOpen ? 'down' : 'forward'} size={11} stroke={2.6} />
+            Cursor · {g.cursor.length}
+          </button>
+          {cursorOpen &&
+            g.cursor.map((s) => (
+              <SessionRow key={s.id} s={s} active={s.id === activeId} open={open.has(s.id)} />
+            ))}
         </section>
       )}
     </>
