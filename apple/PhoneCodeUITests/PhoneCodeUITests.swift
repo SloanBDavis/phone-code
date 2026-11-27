@@ -306,11 +306,12 @@ final class PhoneCodeUITests: XCTestCase {
       XCTAssertTrue(computer.waitForExistence(timeout: 10), "no computer button")
       computer.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.2)).click()
       let inDialog = app.webViews.staticTexts
-        .matching(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", "what you can use", "what you can use"))
+        .matching(NSPredicate(format: "label CONTAINS[c] %@", "what you can use"))
         .firstMatch
-      XCTAssertTrue(inDialog.waitForExistence(timeout: 10), "clicking the computer did not open its dialog")
+      let opened = inDialog.waitForExistence(timeout: 10)
       sleep(1)
       shot("04-shell-computer")
+      XCTAssertTrue(opened, "clicking the computer did not open its dialog")
       app.typeKey(.escape, modifierFlags: [])
       sleep(1)
 
