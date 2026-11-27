@@ -19,6 +19,7 @@ import {
   send,
   shot,
   startNewChat,
+  unfold,
 } from '../lib/ui.ts';
 
 // Cursor counts as installed when its folder exists; hooks.json goes there.
@@ -185,6 +186,7 @@ test('a Cursor chat shows up live: the prompt as its title, thinking, a command,
   });
   await hook(daemon, 'afterAgentResponse', { generation_id: 'g1', text: ANSWER });
 
+  await unfold(phone);
   await expect(phone.testId('chat-item-thinking')).toHaveCount(1);
   const bash = phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
   await expect(bash).toContainText('npm test');

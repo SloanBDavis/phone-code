@@ -1594,11 +1594,33 @@
   flex: none;
   align-items: center;
   gap: 5px;
-  max-width: 220px;
+  max-width: 340px;
   padding: 5px 9px;
+  border: 0;
   border-radius: 999px;
   background: var(--fill-3);
   color: var(--label);
+  font: inherit;
+  cursor: pointer;
+}
+
+.running-chip:hover {
+  background: var(--fill-2);
+}
+
+.running-steps {
+  flex: none;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label-3);
+  font: 400 12px/1.2 var(--font);
+}
+
+.watch-body {
+  padding-left: 14px;
+  padding-right: 14px;
 }
 
 .running-title {
@@ -1807,4 +1829,97 @@
 .att.att-file .att-x:hover {
   background: var(--label);
   color: var(--bg);
+}
+
+/* ------------------------------------------------------------ a turn's work, folded */
+
+.work {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.work-head {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 0 10px 0 8px;
+  margin-left: -8px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--label-2);
+  font: 500 14px/1.2 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.work-head:hover {
+  background: var(--fill-3);
+}
+
+.work-head:active {
+  background: var(--fill-2);
+}
+
+.work-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work.live .work-label,
+.working-label {
+  background: linear-gradient(90deg, var(--label-3) 0%, var(--label) 40%, var(--label-3) 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.6s linear infinite;
+}
+
+.work-meta {
+  flex: none;
+  color: var(--label-3);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-chev {
+  flex: none;
+  color: var(--label-3);
+}
+
+/* The steps, opened: set in from the line that holds them. */
+.work-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin-left: 6px;
+  padding-left: 14px;
+  border-left: 2px solid var(--fill);
+}
+
+.working {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  color: var(--label-2);
+  font: 500 14px/1.2 var(--font);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work.live .work-label,
+  .working-label {
+    animation: none;
+    background: none;
+    color: var(--label-2);
+  }
 }

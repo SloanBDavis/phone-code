@@ -1,16 +1,98 @@
 import type { JSX, RefObject } from 'preact';
-import { useComputed, type Signal } from '@preact/signals';
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import type { Signal } from '@preact/signals';
+import type { ChatItem } from '@phone-code/protocol';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ChatState } from '../../lib/state';
-import { Spinner } from '../../ui/icons';
+import { duration } from '../../lib/util';
+import { Icon, Spinner } from '../../ui/icons';
 import { PermissionCard, QuestionCard } from './asks';
 import { NoticeRow, PendingBubble, TextBlock, ThinkingBlock, TurnFooter, UserBubble } from './items';
-import { TaskCard, TodoCard, ToolGroup } from './tools';
+import { TaskCard, TodoCard, ToolGroup, activityOf } from './tools';
 
-type Block = { k: 'one'; id: string } | { k: 'tools'; ids: string[] };
+type Block =
+  | { k: 'one'; id: string }
+  | { k: 'tools'; ids: string[] }
+  /** What the agent did on the way to its answer, folded into one line. */
+  | { k: 'work'; ids: string[]; live: boolean; turnId?: string };
+
+/** A turn's steps fold into one line from this many on; fewer are shown as they are. */
+const FOLD_FROM = 3;
+
+/** Consecutive tool calls share one group; everything else is a block of its own. */
+function grouped(chat: ChatState, ids: string[]): Block[] {
+  const out: Block[] = [];
+  let run: string[] | null = null;
+  for (const id of ids) {
+    const item = chat.items.get(id)?.peek();
+    const groupable = item?.kind === 'tool' && item.name !== 'Todo' && item.name !== 'Task';
+    if (groupable) {
+      if (!run) {
+        run = [];
+        out.push({ k: 'tools', ids: run });
+      }
+      run.push(id);
+    } else {
+      run = null;
+      out.push({ k: 'one', id });
+    }
+  }
+  return out;
+}
+
+/**
+ * The transcript as blocks. A turn is what follows a message of the user's up
+ * to the turn's end: its answer is the text it ends with, and everything
+ * before that (thinking, tool calls, what the agent said along the way) is
+ * the work, folded into one line that opens. Something waiting for the user
+ * (an approval, a question), warnings and the current plan stay in view.
+ */
+function blocksOf(chat: ChatState, ids: string[], asks: string[], running: boolean): Block[] {
+  const out: Block[] = [];
+  let body: string[] = [];
+  const flush = (turnId: string | undefined, last: boolean): void => {
+    if (body.length === 0) return;
+    const kindOf = (id: string): ChatItem['kind'] | undefined => chat.kinds.get(id);
+    let end = body.length;
+    while (end > 0 && kindOf(body[end - 1] ?? '') === 'text') end--;
+    const answer = body.slice(end);
+    const work: string[] = [];
+    const inView: string[] = [];
+    const before = body.slice(0, end);
+    // The plan as it stands now: the turn's latest list of to-dos.
+    const plan = before.findLast((id) => {
+      const item = chat.items.get(id)?.peek();
+      return item?.kind === 'tool' && item.name === 'Todo';
+    });
+    for (const id of before) {
+      const item = chat.items.get(id)?.peek();
+      const stays = id === plan || asks.includes(id) || (item?.kind === 'notice' && item.level !== 'info');
+      (stays ? inView : work).push(id);
+    }
+    const live = turnId === undefined && last && running;
+    if (work.length >= FOLD_FROM) out.push({ k: 'work', ids: work, live, ...(turnId ? { turnId } : {}) });
+    else out.push(...grouped(chat, work));
+    out.push(...grouped(chat, inView), ...grouped(chat, answer));
+    body = [];
+  };
+  for (const id of ids) {
+    const kind = chat.kinds.get(id);
+    if (kind === 'user') {
+      flush(undefined, false);
+      out.push({ k: 'one', id });
+    } else if (kind === 'turn') {
+      flush(id, false);
+      out.push({ k: 'one', id });
+    } else body.push(id);
+  }
+  flush(undefined, true);
+  return out;
+}
+
+const keyOf = (b: Block): string => (b.k === 'one' ? b.id : `${b.k}:${b.ids[0] ?? ''}`);
 
 const PAGE = 60;
 const STICK_PX = 72;
+const JUMP_PX = 240;
 
 export interface ScrollApi {
   toBottom(smooth?: boolean): void;
@@ -30,36 +112,23 @@ export function Transcript({
   apiRef,
   scrollRef,
   jump,
+  running,
 }: {
   chat: ChatState;
   sessionId: string;
   agent: string;
   apiRef: RefObject<ScrollApi | null>;
   scrollRef: RefObject<HTMLDivElement | null>;
-  /** Whether new contentRef arrived below while the reader is scrolled up. */
+  /** Whether the reader is away from the bottom (the button that goes back there shows). */
   jump: Signal<boolean>;
+  /** Whether the agent is at work on a turn. */
+  running: boolean;
 }): JSX.Element {
-  const blocks = useComputed<Block[]>(() => {
-    const out: Block[] = [];
-    let run: string[] | null = null;
-    for (const id of chat.ids.value) {
-      const kind = chat.kinds.get(id);
-      const item = chat.items.get(id)?.peek();
-      const groupable =
-        kind === 'tool' && item?.kind === 'tool' && item.name !== 'Todo' && item.name !== 'Task';
-      if (groupable) {
-        if (!run) {
-          run = [];
-          out.push({ k: 'tools', ids: run });
-        }
-        run.push(id);
-      } else {
-        run = null;
-        out.push({ k: 'one', id });
-      }
-    }
-    return out;
-  });
+  const ids = chat.ids.value;
+  const asks = chat.asks.value;
+  const all = useMemo(() => blocksOf(chat, ids, asks, running), [chat, ids, asks, running]);
+  const countRef = useRef(all.length);
+  countRef.current = all.length;
   const [limit, setLimit] = useState(PAGE);
   const contentRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -69,7 +138,6 @@ export function Transcript({
   };
   const anchorRef = useRef<{ h: number; top: number } | null>(null);
 
-  const all = blocks.value;
   const hidden = Math.max(0, all.length - limit);
   const shown = hidden ? all.slice(hidden) : all;
   const pending = chat.pending.value;
@@ -105,8 +173,9 @@ export function Transcript({
         frame = 0;
         const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
         stickRef.current = dist < STICK_PX;
-        if (stickRef.current) setShowJump(false);
-        if (el.scrollTop < 600) setLimit((l) => (l < blocks.peek().length ? growFrom(el, l) : l));
+        // Away from the bottom by more than a glance: the way back is one click.
+        setShowJump(dist > JUMP_PX);
+        if (el.scrollTop < 600) setLimit((l) => (l < countRef.current ? growFrom(el, l) : l));
       });
     };
     const growFrom = (sc: HTMLElement, l: number): number => {
@@ -132,7 +201,7 @@ export function Transcript({
       el.removeEventListener('touchcancel', up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setShowJump only writes a stable signal
-  }, [scrollRef, blocks]);
+  }, [scrollRef]);
 
   // Keep the reading position when older blocks are mounted above.
   useLayoutEffect(() => {
@@ -158,24 +227,155 @@ export function Transcript({
             <Spinner size={16} />
           </div>
         )}
-        {shown.map((b) =>
-          b.k === 'tools' ? (
-            <div class="block" key={b.ids[0]}>
-              <ToolGroup chat={chat} ids={b.ids} />
-            </div>
-          ) : (
-            <div class="block" key={b.id}>
-              <Item chat={chat} id={b.id} sessionId={sessionId} agent={agent} />
-            </div>
-          ),
-        )}
+        {shown.map((b) => (
+          <div class="block" key={keyOf(b)}>
+            <BlockView b={b} chat={chat} sessionId={sessionId} agent={agent} />
+          </div>
+        ))}
         {pending.map((p) => (
           <div class="block" key={p.localId}>
             <PendingBubble p={p} sessionId={sessionId} />
           </div>
         ))}
+        <Working chat={chat} running={running} folded={all.at(-1)?.k === 'work'} />
       </div>
     </>
+  );
+}
+
+function BlockView({
+  b,
+  chat,
+  sessionId,
+  agent,
+}: {
+  b: Block;
+  chat: ChatState;
+  sessionId: string;
+  agent: string;
+}): JSX.Element {
+  if (b.k === 'tools') return <ToolGroup chat={chat} ids={b.ids} />;
+  if (b.k === 'work') return <Work b={b} chat={chat} sessionId={sessionId} agent={agent} />;
+  return <Item chat={chat} id={b.id} sessionId={sessionId} agent={agent} />;
+}
+
+/** Milliseconds since `since` (0 without one), ticking each second while `on`. */
+function useElapsed(since: number | undefined, on: boolean): number {
+  const [t, setT] = useState(() => Date.now());
+  useEffect(() => {
+    if (!on) return undefined;
+    const timer = window.setInterval(() => setT(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [on]);
+  return since === undefined ? 0 : Math.max(0, t - since);
+}
+
+/**
+ * A turn's work in one line: what the agent is doing now while it runs
+ * ("Reading app.ts · 12 steps · 1m 4s"), how much it did once it is done
+ * ("Worked for 2m 10s · 14 steps"). A click opens every step. Sub-agents that
+ * are still running stay in view under it.
+ */
+function Work({
+  b,
+  chat,
+  sessionId,
+  agent,
+}: {
+  b: Extract<Block, { k: 'work' }>;
+  chat: ChatState;
+  sessionId: string;
+  agent: string;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const first = chat.items.get(b.ids[0] ?? '')?.peek();
+  const lastSig = chat.items.get(b.ids.at(-1) ?? '');
+  const last = lastSig?.value;
+  const turn = b.turnId ? chat.items.get(b.turnId)?.value : undefined;
+  const elapsed = useElapsed(first?.ts, b.live);
+  const steps = b.ids.filter((id) => chat.kinds.get(id) === 'tool').length;
+  const took =
+    turn?.kind === 'turn' && turn.durationMs !== undefined
+      ? turn.durationMs
+      : Math.max(0, (last?.ts ?? 0) - (first?.ts ?? 0));
+  const count = steps > 0 ? `${steps} ${steps === 1 ? 'step' : 'steps'}` : '';
+  const agents = b.live
+    ? b.ids.filter((id) => {
+        const t = chat.items.get(id)?.value;
+        return t?.kind === 'tool' && t.name === 'Task' && t.status === 'running';
+      })
+    : [];
+  return (
+    <div
+      class={`work ${open ? 'open' : ''} ${b.live ? 'live' : ''}`}
+      data-testid="chat-work"
+      data-live={b.live}
+    >
+      <button
+        type="button"
+        class="work-head"
+        aria-expanded={open}
+        data-testid="work-toggle"
+        onClick={() => setOpen(!open)}
+      >
+        {b.live ? <Spinner size={14} /> : <Icon name="check" size={14} stroke={2.4} />}
+        <span class="work-label">
+          {b.live
+            ? (last && activityOf(last)) || 'Working'
+            : took >= 1000
+              ? `Worked for ${duration(took)}`
+              : 'Worked'}
+        </span>
+        <span class="work-meta">{[count, b.live ? duration(elapsed) : ''].filter(Boolean).join(' · ')}</span>
+        <Icon name={open ? 'up' : 'down'} size={13} stroke={2.5} class="work-chev" />
+      </button>
+      {open ? (
+        <div class="work-body" data-testid="work-body">
+          {grouped(chat, b.ids).map((x) => (
+            <div class="block" key={keyOf(x)}>
+              <BlockView b={x} chat={chat} sessionId={sessionId} agent={agent} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        agents.map((id) => {
+          const sig = chat.items.get(id);
+          return sig ? <TaskCard key={id} chat={chat} item={sig} /> : null;
+        })
+      )}
+    </div>
+  );
+}
+
+/**
+ * Something is happening: shown from the moment a message is sent until the
+ * agent's first words, and in any pause where nothing on screen is moving.
+ */
+function Working({
+  chat,
+  running,
+  folded,
+}: {
+  chat: ChatState;
+  running: boolean;
+  /** The folded work line is the last thing in the transcript: it already says so. */
+  folded: boolean;
+}): JSX.Element | null {
+  const sending = chat.pending.value.some((p) => p.status === 'sending');
+  const ids = chat.ids.value;
+  const last = chat.items.get(ids.at(-1) ?? '')?.value;
+  if (!sending && !running) return null;
+  if (!sending && folded) return null;
+  const moving =
+    ((last?.kind === 'text' || last?.kind === 'thinking') && last.streaming) ||
+    (last?.kind === 'tool' && last.status === 'running') ||
+    ((last?.kind === 'permission' || last?.kind === 'question') && last.status === 'pending');
+  if (!sending && moving) return null;
+  return (
+    <output class="working" data-testid="working">
+      <Spinner size={14} />
+      <span class="working-label">Working…</span>
+    </output>
   );
 }
 

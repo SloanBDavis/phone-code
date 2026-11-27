@@ -1,5 +1,5 @@
 import { expect, test } from '../lib/fixtures.ts';
-import { openChat, openComputer, openSidebar, row, searchAll, shot } from '../lib/ui.ts';
+import { openChat, openComputer, openSidebar, row, searchAll, shot, unfold } from '../lib/ui.ts';
 
 test('demo mode: the main flows render without errors', async ({ newPhone }) => {
   const phone = await newPhone();
@@ -23,6 +23,9 @@ test('demo mode: the main flows render without errors', async ({ newPhone }) => 
 
   // A finished turn with a sub-agent, todos, a table and code.
   await openChat(phone, 'demo-vite');
+  // The finished turn's steps are behind its folded line.
+  await expect(phone.testId('work-toggle').first()).toBeVisible();
+  await unfold(phone);
   await expect(phone.testId('chat-item-task').first()).toBeVisible();
   await expect(phone.testId('chat-item-todo').first()).toBeVisible();
   await expect(phone.testId('transcript').locator('table').first()).toBeVisible();
@@ -109,6 +112,9 @@ test('dark theme renders the main screens', async ({ newPhone }) => {
   await expect(phone.testId('section-chats')).toBeVisible();
   await shot(phone, 'dark-sidebar');
   await openChat(phone, 'demo-vite');
+  // The finished turn's steps are behind its folded line.
+  await expect(phone.testId('work-toggle').first()).toBeVisible();
+  await unfold(phone);
   await expect(phone.testId('chat-item-task').first()).toBeVisible();
   await shot(phone, 'dark-chat');
   await openChat(phone, 'demo-auth');

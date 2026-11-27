@@ -4,9 +4,10 @@ import type { Signal } from '@preact/signals';
 import type { ChatItem } from '@phone-code/protocol';
 import { client } from '../../lib/client';
 import type { PendingSend } from '../../lib/state';
-import { duration } from '../../lib/util';
+import { copyText, duration } from '../../lib/util';
 import { picsOf, type Pic } from '../../lib/images';
 import { Icon } from '../../ui/icons';
+import { toast } from '../../ui/overlay';
 import { Thumbs } from '../../ui/thumbs';
 import { Markdown } from './md';
 
@@ -93,6 +94,17 @@ export function TextBlock({
     <div class="msg-text" data-testid="chat-item-text" data-streaming={t.streaming}>
       <Markdown text={t.text} streaming={t.streaming} />
       {t.images?.length ? <Thumbs pics={picsOf(sessionId, t.images)} variant="inline" /> : null}
+      {!t.streaming && t.text.trim() !== '' && (
+        <button
+          type="button"
+          class="msg-copy"
+          aria-label="Copy this message"
+          data-testid="msg-copy"
+          onClick={() => void copyText(t.text).then((ok) => ok && toast('Copied', 'check'))}
+        >
+          <Icon name="copy" size={14} stroke={2} />
+        </button>
+      )}
     </div>
   );
 }

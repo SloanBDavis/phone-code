@@ -147,10 +147,17 @@ export async function send(phone: Phone, text: string): Promise<void> {
 }
 
 /** Waits until the agent's turn ends (a turn footer appears beyond `count` existing ones). */
-export async function waitTurn(phone: Phone, count: number, outcome = 'completed'): Promise<void> {
+export async function waitTurn(
+  phone: Phone,
+  count: number,
+  outcome = 'completed',
+  { folded = false } = {},
+): Promise<void> {
   const turns = phone.testId('chat-item-turn');
   await expect(turns).toHaveCount(count, { timeout: 20_000 });
   await expect(turns.nth(count - 1)).toHaveAttribute('data-outcome', outcome);
+  // The turn's steps are folded into one line: open them, for what the test looks at next.
+  if (!folded) await unfold(phone);
 }
 
 export function lastText(phone: Phone): Locator {
@@ -192,4 +199,13 @@ export async function searchAll(phone: Phone, text: string): Promise<Locator> {
   await input.fill(text);
   await expect(phone.testId('all-chats')).toBeVisible();
   return phone.testId('history-row');
+}
+
+/**
+ * Opens every folded "Worked for…" line in the transcript: a turn's steps (tool calls,
+ * thinking, answered approvals) are behind it once there are a few.
+ */
+export async function unfold(phone: Phone): Promise<void> {
+  const folded = phone.page.locator('[data-testid="work-toggle"][aria-expanded="false"]');
+  for (let n = await folded.count(); n > 0; n = await folded.count()) await folded.first().click();
 }

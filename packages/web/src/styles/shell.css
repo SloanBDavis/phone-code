@@ -77,7 +77,6 @@
 
 .wide > .main {
   left: var(--sb-w, 320px);
-  container: main / inline-size;
 }
 
 /* The line between the two panes, to drag. Wider than it looks, so it is easy to catch. */
@@ -993,52 +992,86 @@ html.mac-app .http-note {
   display: none;
 }
 
-/* The main area: one pane, or several side by side (tiles) on a wide screen. */
+/* The main area: one pane, or several as tiles on a wide screen. Where each tile sits is
+   worked out in lib/tiles.ts (and set inline): the lines between them can be dragged. */
 .panes {
   position: absolute;
   inset: 0;
-  display: flex;
 }
 
 .pane {
-  position: relative;
-  flex: 1 1 0;
+  position: absolute;
+  box-sizing: border-box;
   min-width: 0;
+  background: var(--bg);
   /* Each pane sizes its own contents: a narrow tile lays out like a narrow window. */
   container-type: inline-size;
 }
 
-/* Two: side by side. Three: side by side, or in a narrower window one tall and two stacked.
-   Four: a 2 by 2 grid. */
-.panes.tiled {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  gap: 1px;
-  background: var(--sep);
+.pane.edge-left {
+  border-left: 1px solid var(--sep);
 }
 
-.panes.tiled > .pane {
-  background: var(--bg);
+.pane.edge-top {
+  border-top: 1px solid var(--sep);
 }
 
-.panes[data-panes='4'] {
-  grid-auto-flow: row;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
+/* A line between tiles, to drag. Wider than it looks, so it is easy to catch. */
+.tile-divider {
+  position: absolute;
+  z-index: 45;
+  padding: 0;
+  border: 0;
+  background: none;
+  touch-action: none;
 }
 
-@container main (max-width: 1259px) {
-  .panes[data-panes='3'] {
-    grid-auto-flow: row;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: repeat(2, minmax(0, 1fr));
-  }
+.tile-divider.v {
+  width: 9px;
+  margin-left: -4px;
+  cursor: col-resize;
+}
 
-  .panes[data-panes='3'] > .pane:first-child {
-    grid-row: span 2;
-  }
+.tile-divider.h {
+  height: 9px;
+  margin-top: -4px;
+  cursor: row-resize;
+}
+
+.tile-divider::after {
+  content: '';
+  position: absolute;
+  background: transparent;
+  transition: background 120ms;
+}
+
+.tile-divider.v::after {
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+}
+
+.tile-divider.h::after {
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 3px;
+}
+
+.tile-divider:hover::after,
+.tile-divider:focus-visible::after,
+.tile-divider.dragging::after {
+  background: var(--label-3);
+}
+
+.tile-divider:focus-visible {
+  outline: none;
+}
+
+/* While a line is dragged the tiles under the pointer do not take it (a terminal would). */
+.panes.resizing > .pane {
+  pointer-events: none;
 }
 
 /* Which tile the sidebar and the keyboard act on: the others step back a little. */

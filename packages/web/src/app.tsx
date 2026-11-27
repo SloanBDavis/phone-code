@@ -1,8 +1,18 @@
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { mode, unpair } from './lib/boot';
 import { MAX_PANES, closePane, focusPane, focused, openBeside, openIn, panes, type Pane } from './lib/nav';
 import { conn, sessionById, sessionsLoaded } from './lib/state';
+import {
+  dividers,
+  moveSplit,
+  resetSplit,
+  saveSplits,
+  splits,
+  tiles,
+  type Divider,
+  type Tile,
+} from './lib/tiles';
 import { ChatScreen } from './screens/chat/chat';
 import { PairScreen } from './screens/pair';
 import { LoadingScreen } from './screens/placeholder';
@@ -30,35 +40,6 @@ function PaneBody({ p, top }: { p: Pane; top: boolean }): JSX.Element {
 const carriesChat = (e: DragEvent): boolean =>
   wide.peek() && e.dataTransfer?.types.includes(SESSION_DRAG) === true;
 
-interface Tile {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-/** Below this width three tiles are one tall and two stacked (the stylesheet's `@container main`). */
-const THREE_IN_A_ROW = 1260;
-
-/** Where `count` tiles sit in a main area `width` wide, as fractions of it: the stylesheet's grid. */
-function tiles(count: number, width: number): Tile[] {
-  if (count <= 1) return [{ x: 0, y: 0, w: 1, h: 1 }];
-  if (count === 2 || (count === 3 && width >= THREE_IN_A_ROW))
-    return Array.from({ length: count }, (_, i) => ({ x: i / count, y: 0, w: 1 / count, h: 1 }));
-  if (count === 3)
-    return [
-      { x: 0, y: 0, w: 0.5, h: 1 },
-      { x: 0.5, y: 0, w: 0.5, h: 0.5 },
-      { x: 0.5, y: 0.5, w: 0.5, h: 0.5 },
-    ];
-  return Array.from({ length: count }, (_, i) => ({
-    x: (i % 2) / 2,
-    y: Math.floor(i / 2) / 2,
-    w: 0.5,
-    h: 0.5,
-  }));
-}
-
 /** Where a dragged chat would land: which tile, of the tiles there will be once it is dropped. */
 interface Landing {
   index: number;
@@ -80,10 +61,65 @@ function landing(e: DragEvent): Landing | null {
   return tile ? { index, tile, replaces } : null;
 }
 
+/** A line between tiles: drag it to give one side more room (kept), double-click to even them. */
+function TileDivider({ d, area }: { d: Divider; area: { current: HTMLDivElement | null } }): JSX.Element {
+  const vertical = d.dir === 'v';
+  const move = (e: PointerEvent): void => {
+    const box = area.current?.getBoundingClientRect();
+    if (!box) return;
+    if (vertical) moveSplit(d.key, (e.clientX - box.left) / box.width, box.width);
+    else moveSplit(d.key, (e.clientY - box.top) / box.height, box.height);
+  };
+  const nudge = (by: number): void => {
+    const box = area.current?.getBoundingClientRect();
+    if (!box) return;
+    const size = vertical ? box.width : box.height;
+    moveSplit(d.key, d.at + by / size, size);
+    saveSplits();
+  };
+  return (
+    <button
+      type="button"
+      class={`tile-divider ${d.dir}`}
+      aria-label={vertical ? 'Resize the chats on either side' : 'Resize the chats above and below'}
+      data-testid="tile-divider"
+      data-split={d.key}
+      style={
+        vertical
+          ? { left: `${d.at * 100}%`, top: `${d.from * 100}%`, height: `${(d.to - d.from) * 100}%` }
+          : { top: `${d.at * 100}%`, left: `${d.from * 100}%`, width: `${(d.to - d.from) * 100}%` }
+      }
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        e.currentTarget.classList.add('dragging');
+        area.current?.classList.add('resizing');
+      }}
+      onPointerMove={(e) => {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) move(e);
+      }}
+      onPointerUp={(e) => {
+        e.currentTarget.classList.remove('dragging');
+        area.current?.classList.remove('resizing');
+        saveSplits();
+      }}
+      onDblClick={() => resetSplit(d.key)}
+      onKeyDown={(e) => {
+        const back = vertical ? 'ArrowLeft' : 'ArrowUp';
+        const on = vertical ? 'ArrowRight' : 'ArrowDown';
+        if (e.key !== back && e.key !== on) return;
+        e.preventDefault();
+        nudge(e.key === back ? -24 : 24);
+      }}
+    />
+  );
+}
+
 /**
- * The main area: the focused pane, or on a wide screen every pane side by
- * side (two or three in a row, four in a 2 by 2 grid). A chat dragged from
- * the sidebar lands in the tile the highlight shows: the others make room.
+ * The main area: the focused pane, or on a wide screen every pane as a tile
+ * (two or three in a row, four in a 2 by 2 grid), with lines between them
+ * that resize them. A chat dragged from the sidebar lands in the tile the
+ * highlight shows: the others make room.
  */
 function Main(): JSX.Element {
   const all = panes.value;
@@ -91,9 +127,22 @@ function Main(): JSX.Element {
   const shown = wide.value ? all : all.filter((_, i) => i === f);
   const tiled = shown.length > 1;
   const [drop, setDrop] = useState<Landing | null>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = areaRef.current;
+    if (!el) return undefined;
+    setWidth(el.clientWidth);
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const s = splits.value;
+  const at = tiles(shown.length, width, s);
 
   return (
     <div
+      ref={areaRef}
       class={`panes ${tiled ? 'tiled' : ''}`}
       data-testid="panes"
       data-panes={shown.length}
@@ -117,15 +166,22 @@ function Main(): JSX.Element {
         else openBeside(r, to.index - 1);
       }}
     >
-      {shown.map((p) => {
+      {shown.map((p, i) => {
         const isFocused = all[f]?.k === p.k;
+        const t = at[i] ?? { x: 0, y: 0, w: 1, h: 1 };
         return (
           <section
             key={p.k}
-            class={`pane ${isFocused ? 'focused' : ''}`}
+            class={`pane ${isFocused ? 'focused' : ''} ${t.x > 0 ? 'edge-left' : ''} ${t.y > 0 ? 'edge-top' : ''}`}
             aria-label={tiled ? `Pane ${all.indexOf(p) + 1} of ${all.length}` : undefined}
             data-testid="pane"
             data-focused={isFocused}
+            style={{
+              left: `${t.x * 100}%`,
+              top: `${t.y * 100}%`,
+              width: `${t.w * 100}%`,
+              height: `${t.h * 100}%`,
+            }}
             onPointerDownCapture={() => focusPane(p.k)}
             onFocusCapture={() => focusPane(p.k)}
           >
@@ -135,6 +191,7 @@ function Main(): JSX.Element {
           </section>
         );
       })}
+      {tiled && dividers(shown.length, width, s).map((d) => <TileDivider key={d.key} d={d} area={areaRef} />)}
       {drop && (
         <div
           class="pane-drop"

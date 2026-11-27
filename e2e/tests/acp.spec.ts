@@ -235,8 +235,8 @@ test('bypass permissions for an agent with no such mode: phone-code allows what 
   await expect(phone.testId('mode-menu').getByTestId('mode-acceptEdits')).toHaveCount(0);
   await phone.testId('mode-menu').getByTestId('mode-bypassPermissions').click();
   // The request that was waiting is allowed, and the next one is never asked.
-  await expect(perm.nth(0)).toHaveAttribute('data-status', 'allowed');
   await waitTurn(phone, 1);
+  await expect(perm.nth(0)).toHaveAttribute('data-status', 'allowed');
   await send(phone, 'run tests again');
   await waitTurn(phone, 2);
   await expect(perm.nth(1)).toHaveAttribute('data-status', 'allowed');

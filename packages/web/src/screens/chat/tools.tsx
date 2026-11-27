@@ -6,7 +6,9 @@ import { ansiToHtml } from '../../lib/ansi';
 import { childrenOf, type ChatState } from '../../lib/state';
 import { picsOf } from '../../lib/images';
 import { Thumbs } from '../../ui/thumbs';
+import { GlassButton } from '../../ui/glass';
 import { Icon, Spinner, type IconName } from '../../ui/icons';
+import { openSheet } from '../../ui/overlay';
 import { Markdown } from './md';
 
 // ------------------------------------------------------------ naming
@@ -327,14 +329,53 @@ function Meta({ t }: { t: ToolItem }): JSX.Element | null {
   return null;
 }
 
+/** What an item says the agent is doing right now, for the folded work line. */
+export function activityOf(item: ChatItem): string {
+  if (item.kind === 'thinking') return item.streaming ? 'Thinking' : '';
+  if (item.kind === 'text') return item.streaming ? 'Writing' : '';
+  if (item.kind !== 'tool' || item.status !== 'running') return '';
+  if (item.name === 'Task') return `Agent: ${item.title}`;
+  if (item.name === 'Todo') return 'Planning';
+  return `${verb(item)} ${item.title}`;
+}
+
 /** A command that keeps running after its call returned (a dev server, a watcher). */
 function isBackground(t: ToolItem): boolean {
   return t.detail?.type === 'command' && t.detail.background === true;
 }
 
+/** One running thing, in a dialog: a sub-agent's steps as they happen, or a command's output. */
+function watch(chat: ChatState, id: string): void {
+  openSheet(
+    (close) => {
+      const s = chat.items.get(id);
+      const t = s?.value;
+      return (
+        <>
+          <div class="sheet-head">
+            <span class="glass-btn ghost" aria-hidden="true" />
+            <h2>{t?.kind === 'tool' && t.name === 'Task' ? 'Agent' : 'Running'}</h2>
+            <GlassButton icon="close" label="Close" iconSize={18} onClick={close} testid="watch-close" />
+          </div>
+          <div class="sheet-scroll watch-body">
+            {s &&
+              (t?.kind === 'tool' && t.name === 'Task' ? (
+                <TaskCard chat={chat} item={s} startOpen />
+              ) : (
+                <ToolGroup chat={chat} ids={[id]} startOpen />
+              ))}
+          </div>
+        </>
+      );
+    },
+    { testid: 'watch-sheet', label: 'Running', large: true },
+  );
+}
+
 /**
- * What is still running in this chat: sub-agents, and commands started in the
- * background (those outlive the turn). Nothing running, nothing shown.
+ * What is still running in this chat: sub-agents (with how far each is and
+ * what it is doing now), and commands started in the background (those
+ * outlive the turn). A click shows one live. Nothing running, nothing shown.
  */
 export function RunningStrip({ chat }: { chat: ChatState }): JSX.Element | null {
   // Reading the list of rows re-runs this when one is added.
@@ -349,14 +390,39 @@ export function RunningStrip({ chat }: { chat: ChatState }): JSX.Element | null 
   return (
     <div class="running-strip" data-testid="running-strip" aria-label="Running now">
       <Spinner size={12} />
-      <span class="running-label">Running</span>
+      <span class="running-label">{running.length === 1 ? 'Running' : `${running.length} running`}</span>
       {running.map((t) => (
-        <span class="running-chip" key={t.id} data-testid="running-chip">
-          <Icon name={t.name === 'Task' ? 'sparkle' : toolIcon(t.name)} size={12} stroke={2.2} />
-          <span class="running-title">{t.title}</span>
-        </span>
+        <RunningChip key={t.id} chat={chat} t={t} />
       ))}
     </div>
+  );
+}
+
+function RunningChip({ chat, t }: { chat: ChatState; t: ToolItem }): JSX.Element {
+  const kids = childrenOf(chat, t.id).value;
+  const steps = kids.filter((id) => chat.kinds.get(id) === 'tool').length;
+  // What a sub-agent is doing right now: its latest step that is still going.
+  const now = kids
+    .map((id) => chat.items.get(id)?.value)
+    .findLast((k) => k?.kind === 'tool' && k.status === 'running');
+  const doing = now ? activityOf(now) : '';
+  return (
+    <button
+      type="button"
+      class="running-chip"
+      data-testid="running-chip"
+      title={doing || t.title}
+      onClick={() => watch(chat, t.id)}
+    >
+      <Icon name={t.name === 'Task' ? 'sparkle' : toolIcon(t.name)} size={12} stroke={2.2} />
+      <span class="running-title">{t.title}</span>
+      {t.name === 'Task' && steps > 0 && (
+        <span class="running-steps" data-testid="running-steps">
+          {doing ? `${doing} · ` : ''}
+          {steps} {steps === 1 ? 'step' : 'steps'}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -364,13 +430,15 @@ export function ToolRow({
   item,
   nested,
   sessionId,
+  startOpen = false,
 }: {
   item: Signal<ChatItem>;
   nested?: boolean;
   sessionId: string;
+  startOpen?: boolean;
 }): JSX.Element | null {
   const t = item.value;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   if (t.kind !== 'tool') return null;
   const hasBody = !!(t.detail || t.output || t.input !== undefined);
   return (
@@ -426,7 +494,16 @@ export function ToolRow({
 }
 
 /** Consecutive tool calls share one card; long runs collapse to a summary. */
-export function ToolGroup({ chat, ids }: { chat: ChatState; ids: string[] }): JSX.Element {
+export function ToolGroup({
+  chat,
+  ids,
+  startOpen = false,
+}: {
+  chat: ChatState;
+  ids: string[];
+  /** The rows start opened (their output in view). */
+  startOpen?: boolean;
+}): JSX.Element {
   const items = ids.map((id) => chat.items.get(id)).filter((x): x is Signal<ChatItem> => !!x);
   const tools = items.map((s) => s.value).filter((x): x is ToolItem => x.kind === 'tool');
   const running = tools.some((t) => t.status === 'running');
@@ -455,7 +532,7 @@ export function ToolGroup({ chat, ids }: { chat: ChatState; ids: string[] }): JS
         </button>
       )}
       {visible.map((s) => (
-        <ToolRow key={s.value.id} item={s} sessionId={chat.sessionId} />
+        <ToolRow key={s.value.id} item={s} sessionId={chat.sessionId} startOpen={startOpen} />
       ))}
     </div>
   );
@@ -513,10 +590,18 @@ function TaskChild({ chat, id }: { chat: ChatState; id: string }): JSX.Element |
 }
 
 /** Sub-agent: a card with what it did and said, in order, and its final report. */
-export function TaskCard({ chat, item }: { chat: ChatState; item: Signal<ChatItem> }): JSX.Element | null {
+export function TaskCard({
+  chat,
+  item,
+  startOpen = false,
+}: {
+  chat: ChatState;
+  item: Signal<ChatItem>;
+  startOpen?: boolean;
+}): JSX.Element | null {
   const t = item.value;
   const kids = childrenOf(chat, t.id).value;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   if (t.kind !== 'tool') return null;
   const prompt = t.input && typeof t.input === 'object' && 'prompt' in t.input ? String(t.input.prompt) : '';
   const steps = kids.filter((id) => chat.kinds.get(id) === 'tool').length;

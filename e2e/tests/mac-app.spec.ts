@@ -65,6 +65,27 @@ test('the window: sidebar and chat side by side, below an empty strip for the wi
   await phone.testId('chat-item-permission').last().getByTestId('permission-allow').click();
   await waitTurn(phone, 2);
   await bothThemes(phone, 'mac-chat');
+
+  // With the pointer over an answer, a button copies it.
+  await phone.page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const answer = phone.testId('chat-item-text').last();
+  const copy = answer.getByTestId('msg-copy');
+  await phone.page.mouse.move(700, 790);
+  await expect(copy).toHaveCSS('opacity', '0');
+  await answer.hover();
+  await expect(copy).toHaveCSS('opacity', '1');
+  await copy.click();
+  await expect(phone.testId('toast')).toContainText('Copied');
+  const copied = await phone.page.evaluate(async () => navigator.clipboard.readText());
+  const firstWord = (await answer.innerText()).trim().split(/\s+/)[0] ?? '';
+  expect(firstWord.length).toBeGreaterThan(0);
+  expect(copied).toContain(firstWord);
+
+  // Cmd/Ctrl+K from the composer goes to the search of all chats.
+  await phone.testId('composer-input').click();
+  await phone.page.keyboard.press('ControlOrMeta+k');
+  await expect(phone.testId('search-input')).toBeFocused();
+  await phone.page.keyboard.press('Escape');
 });
 
 test('the sidebar resizes by its edge, the computer opens as a dialog, the context ring names its tokens', async ({
@@ -214,17 +235,49 @@ test('tiles: chats side by side, opened from the sidebar, kept for next time, cl
     expect(near(b?.y, 28 + Math.floor(i / 2) * 396), `tile ${i} y ${b?.y}`).toBe(true);
   }
   await shot(phone, 'mac-tiles-grid');
+  // A grid has a line each way: the one across moves the rows.
+  await expect(phone.testId('tile-divider')).toHaveCount(2);
+  await phone.page.mouse.move(700, 424);
+  await phone.page.mouse.down();
+  await phone.page.mouse.move(700, 524, { steps: 6 });
+  await phone.page.mouse.up();
+  expect(Math.round((await panes.nth(0).boundingBox())?.height ?? 0)).toBe(496);
+  expect(Math.round((await panes.nth(2).boundingBox())?.height ?? 0)).toBe(296);
+  await phone.page.locator('[data-testid="tile-divider"][data-split="row"]').dblclick();
+  expect(Math.round((await panes.nth(0).boundingBox())?.height ?? 0)).toBe(396);
   await panes.nth(3).getByTestId('pane-close').click();
   await panes.nth(0).getByTestId('pane-close').click();
   await expect(panes).toHaveCount(2);
   await bothThemes(phone, 'mac-tiles');
 
-  // The tiles are there after a reload.
+  // The line between two tiles drags: one side gets more room, down to a least width.
+  const line = phone.testId('tile-divider');
+  await expect(line).toHaveCount(1);
+  const widths = async (): Promise<number[]> =>
+    Promise.all([0, 1].map(async (i) => Math.round((await panes.nth(i).boundingBox())?.width ?? 0)));
+  expect(await widths()).toEqual([480, 480]);
+  await phone.page.mouse.move(800, 400);
+  await phone.page.mouse.down();
+  await phone.page.mouse.move(920, 400, { steps: 6 });
+  await phone.page.mouse.up();
+  expect(await widths()).toEqual([600, 360]);
+  await phone.page.mouse.move(920, 400);
+  await phone.page.mouse.down();
+  await phone.page.mouse.move(1270, 400, { steps: 6 });
+  await phone.page.mouse.up();
+  expect(await widths()).toEqual([660, 300]);
+  await shot(phone, 'mac-tiles-resized');
+
+  // The tiles, and where the line was left, are there after a reload.
   await phone.page.reload();
   await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open');
   await expect(panes).toHaveCount(2);
   await expect(panes.nth(0).getByTestId('chat-item-user')).toContainText('first chat');
   await expect(panes.nth(1).getByTestId('chat-item-user')).toContainText('third chat');
+  expect(await widths()).toEqual([660, 300]);
+  // A double-click evens them out.
+  await line.dblclick();
+  expect(await widths()).toEqual([480, 480]);
 
   // Deleting a chat closes its tile; the last tile has nothing to close.
   await panes.nth(1).getByTestId('chat-title').click();

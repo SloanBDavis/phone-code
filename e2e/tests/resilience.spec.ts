@@ -79,9 +79,9 @@ test('two phones stay in sync and share permission prompts', async ({ phone, new
   await expect(permB).toHaveAttribute('data-status', 'pending');
   // Answer on phone two; phone one's card resolves by itself.
   await permB.getByTestId('permission-allow').click();
-  await expect(permA).toHaveAttribute('data-status', 'allowed');
   await waitTurn(phone, 2);
   await waitTurn(other, 2);
+  await expect(permA).toHaveAttribute('data-status', 'allowed');
   await expect.poll(() => transcript(phone)).toBe(await transcript(other));
 
   // And the other way around, with a question.

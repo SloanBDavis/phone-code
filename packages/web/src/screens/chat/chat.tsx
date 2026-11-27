@@ -355,6 +355,7 @@ export function ChatScreen({ session: s }: { session?: SessionInfo }): JSX.Eleme
             apiRef={apiRef}
             scrollRef={scrollRef}
             jump={jump}
+            running={s.status === 'running'}
           />
         )}
       </div>

@@ -944,7 +944,8 @@ scenario(/todo/i, async (t) => {
   return 'done';
 });
 
-scenario(/agent|task/i, async (t) => {
+// "slow agent": the sub-agent's command takes a few seconds (long enough to watch it run).
+scenario(/agent|task/i, async (t, text) => {
   t.newMessage();
   const taskInput = {
     description: 'Inspect the repo',
@@ -964,7 +965,7 @@ scenario(/agent|task/i, async (t) => {
   const bashInput = { command: 'ls', description: 'List files' };
   const bid = `toolu_fake_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
   sub.assistant({ type: 'tool_use', id: bid, name: 'Bash', input: bashInput });
-  await sleep(300);
+  await sleep(/slow/i.test(text) ? 6000 : 300);
   sub.toolResult(bid, 'README.md\npackage.json\nsrc', {
     structured: { stdout: 'README.md\npackage.json\nsrc', stderr: '', interrupted: false },
   });
@@ -996,6 +997,27 @@ scenario(/plan/i, async (t) => {
   }
   t.endMessage('end_turn');
   return 'plan';
+});
+
+// A turn with many steps, slow enough to watch: after a pause it says what it will do, reads six files
+// (a word in between), then answers.
+scenario(/busy/i, async (t) => {
+  // Like a real model, a moment passes before its first word.
+  await sleep(1600);
+  t.newMessage();
+  await t.text('On it: I will read through the project first.');
+  for (let i = 1; i <= 6; i++) {
+    const id = await t.toolUse('Read', { file_path: path.join(cwd, `src/part${i}.ts`) });
+    t.endMessage('tool_use');
+    await sleep(700);
+    t.newMessage();
+    t.toolResult(id, `export const part${i} = ${i};`);
+    if (i === 3) await t.text('Half way through.');
+  }
+  await sleep(700);
+  await t.text('All six parts are in order.');
+  t.endMessage('end_turn');
+  return 'busy';
 });
 
 scenario(/long/i, async (t) => {

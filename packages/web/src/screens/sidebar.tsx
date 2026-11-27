@@ -12,7 +12,7 @@ import { MAX_PANES, openBeside, openIds, openNew, panes, route } from '../lib/na
 import { conn, host, isDemo, sessions, sessionsLoaded } from '../lib/state';
 import { creds, load, save } from '../lib/storage';
 import { relTime } from '../lib/util';
-import { SESSION_DRAG, closeDrawer, wide } from '../ui/drawer';
+import { SESSION_DRAG, closeDrawer, openDrawer, wide } from '../ui/drawer';
 import { GlassButton } from '../ui/glass';
 import { Glyph, glyphOf } from '../ui/glyph';
 import { Icon, Spinner } from '../ui/icons';
@@ -309,6 +309,19 @@ export function Sidebar(): JSX.Element {
   const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const c = conn.value.status;
+
+  // Cmd/Ctrl+K from anywhere: search the chats.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      if (!wide.peek()) openDrawer();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
 
   const stopSearch = (): void => {
     setQuery('');

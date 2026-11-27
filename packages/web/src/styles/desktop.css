@@ -183,3 +183,40 @@
     display: none;
   }
 }
+
+/* ------------------------------------------------------------ copy a message */
+
+/* On a phone the chat's menu copies the last answer; with a pointer each message has its
+   own button, shown when the pointer is over the message. */
+.msg-copy {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  /* In the message's own flow, under its last line: a block does not paint outside itself. */
+  .msg-copy {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    margin: 2px 0 -6px -6px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--label-3);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+
+  .msg-text:hover .msg-copy,
+  .msg-copy:focus-visible {
+    opacity: 1;
+  }
+
+  .msg-copy:hover {
+    background: var(--fill-3);
+    color: var(--label);
+  }
+}
