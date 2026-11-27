@@ -69,13 +69,19 @@ test('resizes the PTY when the viewport changes', async ({ phone }) => {
   await run(phone, 'echo "size=$(tput cols)x$(tput lines)"');
   await expect(screen(phone)).toContainText(/size=\d+x\d+/);
   const portrait = /size=(\d+)x(\d+)/.exec(await screen(phone).innerText());
-  // Rotate to landscape.
+  // Rotate to landscape. The app sends the new size on the next frame, so a
+  // command typed in the same instant may still see the old one: ask until
+  // the shell reports the landscape size.
   await phone.page.setViewportSize({ width: 852, height: 393 });
-  await run(phone, 'clear; echo "wide=$(tput cols)x$(tput lines)"');
-  await expect(screen(phone)).toContainText(/wide=\d+x\d+/);
-  const landscape = /wide=(\d+)x(\d+)/.exec(await screen(phone).innerText());
-  expect(Number(landscape?.[1])).toBeGreaterThan(Number(portrait?.[1]));
-  expect(Number(landscape?.[2])).toBeLessThan(Number(portrait?.[2]));
+  let attempt = 0;
+  await expect(async () => {
+    attempt += 1;
+    await run(phone, `clear; echo "wide${attempt}=$(tput cols)x$(tput lines)"`);
+    await expect(screen(phone)).toContainText(new RegExp(`wide${attempt}=\\d+x\\d+`), { timeout: 2000 });
+    const landscape = new RegExp(`wide${attempt}=(\\d+)x(\\d+)`).exec(await screen(phone).innerText());
+    expect(Number(landscape?.[1])).toBeGreaterThan(Number(portrait?.[1]));
+    expect(Number(landscape?.[2])).toBeLessThan(Number(portrait?.[2]));
+  }).toPass({ timeout: 10_000 });
   // The app fills the landscape screen (no desktop-style framed card on a phone).
   expect((await phone.page.locator('.app').boundingBox())?.width).toBe(852);
   await shot(phone, 'terminal-landscape');

@@ -11,26 +11,47 @@ import { parse, record } from '../lib/json.ts';
 import { WsClient } from '../lib/ws.ts';
 
 const FAKE = join(REPO, 'e2e/fakes/fake-tailscale.mjs');
-/** The PATH entry holding `bun` (the CLI and the fakes run under it). */
-const BUN_DIR =
-  (process.env['PATH'] ?? '').split(':').find((d) => d !== '' && existsSync(join(d, 'bun'))) ?? '';
+/** `bun`, which runs the CLI and the fakes. */
+const BUN =
+  (process.env['PATH'] ?? '')
+    .split(':')
+    .map((d) => join(d, 'bun'))
+    .find((p) => p !== 'bun' && existsSync(p)) ?? 'bun';
 
-/** A PATH with bun and the system tools, plus (optionally) a fake `tailscale`. */
+/**
+ * A PATH with `bun`, the base system tools, and (optionally) a fake
+ * `tailscale`. Nothing else: a real `tailscale` in /usr/local/bin or beside
+ * `bun` (a developer's Mac) must not stand in for the fake or for its absence.
+ */
 function pathFor(daemon: Daemon, withTailscale: boolean): string {
   const bin = join(daemon.root, withTailscale ? 'ts-bin' : 'no-ts-bin');
   mkdirSync(bin, { recursive: true });
-  if (withTailscale) {
-    try {
-      symlinkSync(FAKE, join(bin, 'tailscale'));
-    } catch {
-      // made by an earlier test
-    }
-  }
-  return [bin, BUN_DIR, '/usr/local/bin', '/usr/bin', '/bin'].join(':');
+  const link = (from: string, name: string): void => {
+    if (!existsSync(join(bin, name))) symlinkSync(from, join(bin, name));
+  };
+  link(BUN, 'bun');
+  if (withTailscale) link(FAKE, 'tailscale');
+  return [bin, '/usr/bin', '/bin'].join(':');
 }
 
+/**
+ * The hints name each platform's own way to install and start Tailscale; these
+ * are the ones for the platform the suite runs on (Linux in CI, macOS for a
+ * developer's run before a push).
+ */
+const MAC = process.platform === 'darwin';
+const HINT = MAC
+  ? { daemonDown: /Open the Tailscale app.*Connect/, install: 'tailscale.com/download/mac' }
+  : { daemonDown: /systemctl enable --now tailscaled/, install: 'tailscale.com/install.sh' };
+
+/**
+ * Runs `phonecode setup`. A Mac running the suite may have the real Tailscale
+ * app installed: an app path that does not exist keeps it out unless a case
+ * names one.
+ */
 async function setup(daemon: Daemon, env: Record<string, string>): Promise<Record<string, unknown>> {
-  const r = await daemon.cliWith({ PHONECODE_JSON: '1', ...env }, 'setup');
+  const noApp = join(daemon.root, 'no-such-app');
+  const r = await daemon.cliWith({ PHONECODE_JSON: '1', PHONECODE_TAILSCALE_APP: noApp, ...env }, 'setup');
   const line = r.out.split('\n').find((l) => l.startsWith('{'));
   expect(line, r.out).toBeDefined();
   const d = record(parse(line ?? '{}'));
@@ -45,7 +66,7 @@ test('setup diagnoses each Tailscale state with one next step', async ({ daemon 
     ['stopped', 'stopped', /tailscale up|Connect/],
     ['needs-login', 'logged-out', /sign in/],
     ['starting', 'starting', /Wait/],
-    ['no-daemon', 'daemon-down', /systemctl enable --now tailscaled/],
+    ['no-daemon', 'daemon-down', HINT.daemonDown],
     ['no-magicdns', 'no-magicdns', /login\.tailscale\.com\/admin\/dns.*MagicDNS/],
     ['no-https', 'no-https', /login\.tailscale\.com\/admin\/dns.*Enable HTTPS/],
   ];
@@ -59,7 +80,7 @@ test('setup diagnoses each Tailscale state with one next step', async ({ daemon 
   // Not installed at all.
   const none = await setup(daemon, { PATH: pathFor(daemon, false) });
   expect(none['state']).toBe('not-installed');
-  expect(String(none['next'])).toContain('tailscale.com/install.sh');
+  expect(String(none['next'])).toContain(HINT.install);
 
   // Only the macOS app's bundled CLI (not on PATH): used from there, with a note on how to enable it.
   const app = await setup(daemon, { PATH: pathFor(daemon, false), PHONECODE_TAILSCALE_APP: FAKE });
@@ -75,7 +96,12 @@ test('setup diagnoses each Tailscale state with one next step', async ({ daemon 
 
   // Plain text for people: the state, the step and the routes without Tailscale.
   const text = await daemon.cliWith(
-    { PATH: withTs, FAKE_TAILSCALE_STATE: 'no-https', PHONECODE_JSON: '0' },
+    {
+      PATH: withTs,
+      FAKE_TAILSCALE_STATE: 'no-https',
+      PHONECODE_JSON: '0',
+      PHONECODE_TAILSCALE_APP: join(daemon.root, 'no-such-app'),
+    },
     'setup',
   );
   expect(text.code).toBe(1);
