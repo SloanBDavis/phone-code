@@ -333,22 +333,30 @@ final class PhoneCodeUITests: XCTestCase {
       again.click()
       again.typeText("hello there")
       inPage("Send").click()
-      let ring = app.webViews.descendants(matching: .any)
-        .matching(NSPredicate(format: "label BEGINSWITH %@", "Context ")).firstMatch
-      XCTAssertTrue(ring.waitForExistence(timeout: 30), "no context ring after a turn")
-      // The ring is at the right end of the composer's bar.
-      // Pointed at where it is drawn: right under the send button, in the composer's bar.
-      // (The frame accessibility reports for it is wider and lower than the ring itself.)
-      print("PCDIAG ring \(ring.frame) send \(inPage("Send").frame)")
+      // The ring is drawn right under the send button, in the composer's bar.
+      XCTAssertTrue(pageSays("21%", within: 30), "no context ring after a turn")
       let onRing = inPage("Send").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         .withOffset(CGVector(dx: -8, dy: 40))
       onRing.hover()
-      sleep(1)
+      let hovered = pageSays("42k / 200k", within: 5)
       shot("06-shell-context-hover")
+      XCTAssertTrue(hovered, "pointing at the context ring did not show the tokens")
       onRing.click()
       app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)).hover()
       sleep(1)
+      let pinned = pageSays("42k / 200k", within: 5)
       shot("07-shell-context-pinned")
+      XCTAssertTrue(pinned, "a click on the context ring did not keep the tokens shown")
+    }
+
+    /// Whether the page shows this text (a text node's exact content), within some seconds.
+    private func pageSays(_ text: String, within seconds: Int) -> Bool {
+      for _ in 0..<(seconds * 2) {
+        let texts = app.webViews.staticTexts.allElementsBoundByIndex
+        if texts.contains(where: { ($0.value as? String) == text || $0.label == text }) { return true }
+        usleep(500_000)
+      }
+      return false
     }
 
     func test02MacShellPairAPhone() throws {

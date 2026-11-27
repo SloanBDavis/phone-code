@@ -127,8 +127,7 @@ function ContextRing({ sessionId }: { sessionId: string }): JSX.Element | null {
       onClick={() => setPinned(!pinned)}
       onMouseEnter={() => setOver(true)}
       onMouseLeave={() => setOver(false)}
-      title={`${shortCount(used)} of ${shortCount(size)} tokens`}
-      aria-label={`Context ${pct}% used: ${shortCount(used)} of ${shortCount(size)} tokens`}
+      title={`Context: ${shortCount(used)} of ${shortCount(size)} tokens used`}
       data-testid="context-ring"
     >
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
