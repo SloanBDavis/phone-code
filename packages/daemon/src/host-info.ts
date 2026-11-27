@@ -1,5 +1,6 @@
 import { rememberedOptions } from './agents/acp-memory.ts';
 import { cursorStatus } from './cursor/hooks.ts';
+import { execFileSync } from 'node:child_process';
 import { homedir, hostname, userInfo } from 'node:os';
 import type {
   AgentId,
@@ -23,6 +24,27 @@ export function userShell(): string {
     // no passwd entry
   }
   return '/bin/sh';
+}
+
+/**
+ * The computer's name as people know it. On macOS that is the Computer Name
+ * from System Settings ("Sloan's MacBook Pro"); `os.hostname()` there is
+ * whatever the network handed out, often a router-made "Mac.lan".
+ */
+function computerName(): string {
+  if (process.platform === 'darwin') {
+    try {
+      const name = execFileSync('/usr/sbin/scutil', ['--get', 'ComputerName'], {
+        encoding: 'utf8',
+        timeout: 2000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+      if (name !== '') return name;
+    } catch {
+      // no Computer Name set: fall back to the hostname
+    }
+  }
+  return hostname().replace(/\.(?:local|lan|home|localdomain)$/i, '');
 }
 
 function userName(): string {
@@ -96,7 +118,7 @@ export class HostInfoProvider {
 
   constructor(adapters: AdapterRegistry) {
     this.base = {
-      name: hostname(),
+      name: computerName(),
       platform: process.platform,
       user: userName(),
       home: homedir(),

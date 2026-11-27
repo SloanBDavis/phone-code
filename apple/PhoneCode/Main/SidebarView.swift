@@ -19,7 +19,7 @@ struct SidebarView: View {
 
   var body: some View {
     list
-      .navigationTitle(Self.displayName(model.creds?.hostName))
+      .navigationTitle(Self.displayName(model.client.host?.name ?? model.creds?.hostName))
       #if os(iOS)
         // Compact: the computer's name between the two buttons, not a
         // large title eating the top of the screen.
@@ -225,7 +225,11 @@ extension SidebarView {
   /// "Sloans-MacBook-Pro.local" reads as "Sloans-MacBook-Pro".
   static func displayName(_ host: String?) -> String {
     guard let host, !host.isEmpty else { return "phone-code" }
-    return host.hasSuffix(".local") ? String(host.dropLast(6)) : host
+    // Older daemons send the network hostname ("Mac.lan", "Mac.local").
+    for suffix in [".local", ".lan", ".home", ".localdomain"] where host.lowercased().hasSuffix(suffix) {
+      return String(host.dropLast(suffix.count))
+    }
+    return host
   }
 }
 

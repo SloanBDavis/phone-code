@@ -122,7 +122,7 @@ struct ConnectionBanner: View {
     if case .reconnecting = model.client.status {
       banner("Reconnecting…", "arrow.triangle.2.circlepath")
     } else {
-      banner("Connecting to \(SidebarView.displayName(model.creds?.hostName))…", "antenna.radiowaves.left.and.right")
+      banner("Connecting to \(SidebarView.displayName(model.client.host?.name ?? model.creds?.hostName))…", "antenna.radiowaves.left.and.right")
     }
   }
 
