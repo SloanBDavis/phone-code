@@ -349,12 +349,18 @@ final class PhoneCodeUITests: XCTestCase {
       XCTAssertTrue(pinned, "a click on the context ring did not keep the tokens shown")
     }
 
-    /// Whether the page shows this text (a text node's exact content), within some seconds.
+    /// Whether the page shows this text (as an element's whole value, title or label), within
+    /// some seconds. Read from one snapshot of the page's accessibility tree per try.
     private func pageSays(_ text: String, within seconds: Int) -> Bool {
-      for _ in 0..<(seconds * 2) {
-        let texts = app.webViews.staticTexts.allElementsBoundByIndex
-        if texts.contains(where: { ($0.value as? String) == text || $0.label == text }) { return true }
-        usleep(500_000)
+      var tree = ""
+      for _ in 0..<max(1, seconds / 2) {
+        tree = app.webViews.firstMatch.debugDescription
+        let lines = tree.split(separator: "\n")
+        if lines.contains(where: { $0.hasSuffix("value: \(text)") || $0.contains("'\(text)'") }) { return true }
+        sleep(1)
+      }
+      for line in tree.split(separator: "\n") where line.contains("%") || line.contains("200k") || line.contains("Context") {
+        print("PCDIAG \(text) not in: \(line)")
       }
       return false
     }
