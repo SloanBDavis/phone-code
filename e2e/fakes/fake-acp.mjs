@@ -21,10 +21,15 @@ const speed = Number(process.env.FAKE_SPEED ?? 1);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms / speed));
 const home = process.env.FAKE_ACP_HOME || path.join(os.tmpdir(), 'fake-acp-home');
 const requireAuth = process.env.FAKE_ACP_REQUIRE_AUTH === '1';
+// Started as `agy acp` (the Antigravity preset): an agent with no mode that approves everything.
 const MODES = [
   { id: 'default', name: 'Default', description: 'Prompts for approval' },
-  { id: 'autoEdit', name: 'Auto Edit', description: 'Auto-approves edit tools' },
-  { id: 'yolo', name: 'YOLO', description: 'Auto-approves all tools' },
+  ...(argv[0] === 'acp'
+    ? []
+    : [
+        { id: 'autoEdit', name: 'Auto Edit', description: 'Auto-approves edit tools' },
+        { id: 'yolo', name: 'YOLO', description: 'Auto-approves all tools' },
+      ]),
   { id: 'plan', name: 'Plan', description: 'Read-only mode' },
 ];
 const MODELS = ['fake-pro', 'fake-flash'];

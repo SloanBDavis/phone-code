@@ -215,6 +215,11 @@ class AcpSession implements AgentSession {
   private wantMode: PermissionMode;
   private wantModel: string | undefined;
   private wantEffort: string | undefined;
+  /**
+   * "Bypass permissions" for an agent with no such mode of its own: phone-code
+   * allows what the agent asks permission for, without showing the question.
+   */
+  private autoAllow = false;
 
   constructor(
     private readonly cfg: AcpAgentConfig,
@@ -936,6 +941,11 @@ class AcpSession implements AgentSession {
       canDenyWithMessage: false,
     };
     this.pending.set(item.id, { rpcId, toolCallId, options, item });
+    if (this.autoAllow) {
+      // Bypass permissions: answered at once, and kept in the transcript as allowed.
+      this.resolvePermission(item.id, 'allow');
+      return;
+    }
     this.status.pending.add(item.id);
     this.events.upsert(item);
     this.status.emit();
@@ -1373,6 +1383,13 @@ class AcpSession implements AgentSession {
     const modes = this.modes;
     if (!sessionId) return;
     const target = this.modeMap.get(mode);
+    // No bypass mode of the agent's own: phone-code answers its permission requests,
+    // those already waiting included.
+    this.autoAllow = mode === 'bypassPermissions' && target === undefined;
+    if (this.autoAllow) {
+      for (const id of this.pending.keys()) this.resolvePermission(id, 'allow');
+      return;
+    }
     if (!modes || target === undefined) {
       if (explicit && mode !== 'default')
         this.notice(
@@ -1430,14 +1447,17 @@ class AcpSession implements AgentSession {
   private emitMeta(): void {
     const reverse = new Map([...this.modeMap].map(([pm, id]) => [id, pm]));
     const current = this.modes?.current;
-    const permissionMode: PermissionMode | undefined = this.modes
-      ? current !== undefined
-        ? reverse.get(current)
-        : undefined
-      : 'default';
-    const permissionModes: PermissionMode[] = this.modes
-      ? PERMISSION_MODE_ORDER.filter((m) => this.modeMap.has(m))
-      : ['default'];
+    const permissionMode: PermissionMode | undefined = this.autoAllow
+      ? 'bypassPermissions'
+      : this.modes
+        ? current !== undefined
+          ? reverse.get(current)
+          : undefined
+        : 'default';
+    // Bypass is always there: the agent's own mode for it, or phone-code allowing what it asks.
+    const permissionModes: PermissionMode[] = PERMISSION_MODE_ORDER.filter(
+      (m) => m === 'bypassPermissions' || (this.modes ? this.modeMap.has(m) : m === 'default'),
+    );
     let modelOptions: ModelOption[] | undefined;
     if (this.models) {
       modelOptions = this.models.choices.slice(0, MAX_MODELS).map((c) => {
@@ -1471,7 +1491,7 @@ class AcpSession implements AgentSession {
                 : modelOptions.map((o) => (o.id === model ? Object.assign({}, o, { efforts }) : o)),
           }
         : {}),
-      ...(this.modes ? { permissionModes } : {}),
+      permissionModes,
     });
     this.events.meta({
       ...(model !== undefined ? { model } : {}),
