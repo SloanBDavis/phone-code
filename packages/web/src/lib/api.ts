@@ -1,5 +1,6 @@
 import type { HandoffResponse, PairRequest, PairResponse } from '@phone-code/protocol';
 import { isRecord, isString, parseJson } from './guards';
+import { load, save } from './storage';
 
 export class ApiError extends Error {
   constructor(
@@ -60,8 +61,28 @@ export function deviceName(): string {
   return 'Browser';
 }
 
+/**
+ * Which browser (or home-screen app) this is: a random id kept in its storage, so that
+ * pairing it again replaces its entry on the computer instead of adding another.
+ */
+function clientId(): string {
+  let id = load<string>('pc.clientId', '', isString);
+  if (!/^[\w-]{8,64}$/.test(id)) {
+    // Not crypto.randomUUID: that needs https, and a first pairing can be over plain http.
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join(
+      '',
+    );
+    save('pc.clientId', id);
+  }
+  return id;
+}
+
 export function pair(code: string): Promise<PairResponse> {
-  return post('/api/pair', { code, deviceName: deviceName() } satisfies PairRequest, isPairResponse);
+  return post(
+    '/api/pair',
+    { code, deviceName: deviceName(), clientId: clientId() } satisfies PairRequest,
+    isPairResponse,
+  );
 }
 
 export function handoff(token: string): Promise<HandoffResponse> {

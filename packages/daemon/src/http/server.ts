@@ -30,6 +30,8 @@ export interface ControlApi {
   status(): { url: string; port: number; pid: number };
   /** The device and the devices paired through it (`also`), or undefined if none matches. */
   revoke(id: string): { revoked: PublicDevice; also: PublicDevice[] } | undefined;
+  /** Devices whose entries were replaced by a new pairing: close what they have open. */
+  dropped(ids: string[]): void;
   /** One Cursor hook event (cursor/hooks.ts); the answer is printed back to Cursor. */
   cursorHook?(
     event: string,
@@ -153,6 +155,11 @@ function sanitizeName(v: unknown): string {
   return name === '' ? 'Phone' : name.slice(0, 64);
 }
 
+/** The id an app or browser names itself by when pairing: a short opaque string, or nothing. */
+function clientIdOf(v: unknown): string | undefined {
+  return typeof v === 'string' && /^[\w-]{8,64}$/.test(v) ? v : undefined;
+}
+
 function bearer(req: Request): string | undefined {
   const h = req.headers.get('authorization');
   return h?.startsWith('Bearer ') === true ? h.slice(7).trim() : undefined;
@@ -187,8 +194,17 @@ export function startServer(opts: ServerOptions): Bun.Server<WsData> {
       return json({ error: 'invalid or expired code' }, 401);
     }
     // A handoff code makes the new device a child of the one that minted it.
-    const { device, token } = opts.devices.add(sanitizeName(body['deviceName']), result.issuer);
-    log.info(`paired new device "${device.name}" (${device.id}) via ${result.kind}`);
+    const { device, token } = opts.devices.add(
+      sanitizeName(body['deviceName']),
+      result.issuer,
+      clientIdOf(body['clientId']),
+    );
+    // The same app or browser, paired again: one entry for it, not one per pairing.
+    const replaced = opts.devices.supersede(device);
+    if (replaced.length > 0) opts.control.dropped(replaced.map((d) => d.id));
+    log.info(
+      `paired ${replaced.length > 0 ? 'again' : 'new device'} "${device.name}" (${device.id}) via ${result.kind}`,
+    );
     const res: PairResponse = { deviceId: device.id, token, host: opts.host.short };
     return json(res);
   }

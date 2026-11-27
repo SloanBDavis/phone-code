@@ -154,6 +154,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
         for (const d of removed) log.info(`revoked device "${d.name}" (${d.id})`);
         return { revoked: publicDevice(target), also: also.map(publicDevice) };
       },
+      dropped(ids) {
+        for (const id of ids) registry.closeDevice(id);
+      },
       cursorHook: (event, input, signal) => cursor.handle(event, input, { signal }),
     },
   });

@@ -100,7 +100,7 @@
       }
       state = .connecting
       do {
-        let creds = try await found.pairThisApp(deviceName: Device.name)
+        let creds = try await found.pairThisApp(deviceName: Device.name, clientId: Device.clientId)
         model.adopt(creds)
         state = .looking
       } catch {

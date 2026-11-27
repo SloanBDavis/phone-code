@@ -40,7 +40,16 @@ startNav();
 
 render(<App />, root);
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// Not inside the Mac app: its page comes from the phone-code on the same Mac, and a
+// cached copy would show the old interface after the app updates.
+const inMacApp = document.documentElement.classList.contains('mac-app');
+if (inMacApp && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker
+    .getRegistrations()
+    .then((all) => Promise.all(all.map((r) => r.unregister())))
+    .catch(() => undefined);
+}
+if (import.meta.env.PROD && 'serviceWorker' in navigator && !inMacApp) {
   addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => undefined);
   });

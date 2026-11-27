@@ -18,6 +18,7 @@
 # Used by `phonecode update` and the app's own updater:
 #   PHONECODE_WAIT_PID  wait for this process to exit before replacing the app
 #   PHONECODE_READY_FILE  created once the app is downloaded and checked
+#   PHONECODE_PROGRESS_FILE  gets the path of the file being downloaded, for a progress bar
 #   PHONECODE_OPEN_APP  1 = open the app once it is installed
 #   PHONECODE_QUIET     1 = no "next steps" at the end
 set -eu
@@ -139,6 +140,8 @@ trap 'exit 130' INT TERM
 
 # download <asset> <file that lists its checksum>
 download() {
+  # Whoever shows progress (the app updating itself) reads the size of this file as it grows.
+  if [ -n "${PHONECODE_PROGRESS_FILE:-}" ]; then printf '%s\n' "$tmp/$1" >"$PHONECODE_PROGRESS_FILE"; fi
   fetch "$base/$1" "$tmp/$1" || die "download failed: $base/$1"
   fetch "$base/$2" "$tmp/$2" || die "download failed: $base/$2"
   expected="$(awk -v f="$1" '$2 == f { print $1 }' "$tmp/$2")"

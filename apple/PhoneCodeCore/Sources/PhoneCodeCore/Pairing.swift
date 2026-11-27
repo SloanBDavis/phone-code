@@ -102,8 +102,15 @@ public struct PairingClient: Sendable {
   }
 
   /// Redeems a pairing or handoff code.
-  public func pair(origin: URL, code: String, deviceName: String) async throws -> HostCredentials {
-    let body = try JSONEncoder().encode(["code": code, "deviceName": deviceName])
+  ///
+  /// `clientId` names this app (a random id it keeps): pairing again with the same one
+  /// replaces its earlier entry on the computer instead of adding another.
+  public func pair(origin: URL, code: String, deviceName: String, clientId: String? = nil) async throws
+    -> HostCredentials
+  {
+    var fields = ["code": code, "deviceName": deviceName]
+    if let clientId { fields["clientId"] = clientId }
+    let body = try JSONEncoder().encode(fields)
     let data = try await post(origin, "api/pair", body: body, token: nil)
     guard let r = try? JSONDecoder().decode(PairResponse.self, from: data) else {
       throw PairingError(message: "Unexpected answer from your computer. Update phone-code?", status: 200)

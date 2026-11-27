@@ -16,6 +16,11 @@ export interface DeviceRecord {
   push: PushSubscriptionRecord[];
   /** Paired with a handoff code this device minted. Revoking it revokes this one too. */
   parent?: string;
+  /**
+   * Which app or browser this is, as it names itself (a random id it keeps). Pairing
+   * again from the same one replaces its earlier entry instead of adding another.
+   */
+  clientId?: string;
 }
 
 export type PublicDevice = Pick<DeviceRecord, 'id' | 'name' | 'createdAt' | 'lastSeenAt' | 'parent'> & {
@@ -46,7 +51,8 @@ function isDeviceRecord(v: unknown): v is DeviceRecord {
     typeof r.tokenHash === 'string' &&
     typeof r.createdAt === 'number' &&
     typeof r.lastSeenAt === 'number' &&
-    (r.parent === undefined || typeof r.parent === 'string')
+    (r.parent === undefined || typeof r.parent === 'string') &&
+    (r.clientId === undefined || typeof r.clientId === 'string')
   );
 }
 
@@ -77,7 +83,7 @@ export class DeviceStore {
   }
 
   /** Create a device and return its (only ever shown once) token. */
-  add(name: string, parent?: string): { device: DeviceRecord; token: string } {
+  add(name: string, parent?: string, clientId?: string): { device: DeviceRecord; token: string } {
     const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
     const hash = hashToken(token);
     const now = Date.now();
@@ -89,11 +95,35 @@ export class DeviceStore {
       tokenHash: hash.toString('base64url'),
       push: [],
       ...(parent === undefined ? {} : { parent }),
+      ...(clientId === undefined ? {} : { clientId }),
     };
     this.devices.set(device.id, device);
     this.hashes.set(device.id, hash);
     this.writer.schedule();
     return { device, token };
+  }
+
+  /**
+   * The same app or browser paired again: its earlier entries go (their tokens stop
+   * working), and what hung off them moves to the new one, namely the devices paired
+   * through them and their notification subscriptions. Returns the entries removed.
+   */
+  supersede(device: DeviceRecord): DeviceRecord[] {
+    if (device.clientId === undefined) return [];
+    const old = this.all().filter((d) => d.id !== device.id && d.clientId === device.clientId);
+    if (old.length === 0) return [];
+    const gone = new Set(old.map((d) => d.id));
+    for (const d of this.devices.values()) {
+      if (d.parent !== undefined && gone.has(d.parent)) d.parent = device.id;
+    }
+    if (device.parent !== undefined && gone.has(device.parent)) delete device.parent;
+    for (const d of old) {
+      for (const sub of d.push) this.addPush(device, sub);
+      this.devices.delete(d.id);
+      this.hashes.delete(d.id);
+    }
+    this.writer.schedule();
+    return old;
   }
 
   /** Constant-time token check against every device. */

@@ -30,6 +30,7 @@
       .overlay(alignment: .top) {
         WindowDragStrip().frame(height: WebShell.dragStripHeight).ignoresSafeArea()
       }
+      .overlay { UpdateProgress() }
       .sheet(isPresented: $pairingPhone) { PairPhoneView() }
       .onReceive(NotificationCenter.default.publisher(for: .pairPhone)) { _ in pairingPhone = true }
     }
@@ -65,7 +66,18 @@
       web.isInspectable = true
       web.setAccessibilityIdentifier("web-shell")
       context.coordinator.attach(web)
-      web.load(URLRequest(url: creds.baseURL))
+      // The page is served by the phone-code this app runs: nothing of it is worth keeping
+      // from last time. A cached copy (the web app's own offline cache, made for phones)
+      // would show the previous version's interface after an update. What the page stores
+      // for itself (its pairing, drafts, layout) is kept.
+      let stale: Set<String> = [
+        WKWebsiteDataTypeServiceWorkerRegistrations, WKWebsiteDataTypeFetchCache, WKWebsiteDataTypeDiskCache,
+        WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeOfflineWebApplicationCache,
+      ]
+      let url = creds.baseURL
+      config.websiteDataStore.removeData(ofTypes: stale, modifiedSince: .distantPast) { [weak web] in
+        web?.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+      }
       return web
     }
 

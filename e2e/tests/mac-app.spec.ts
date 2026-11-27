@@ -57,6 +57,13 @@ test('the window: sidebar and chat side by side, below an empty strip for the wi
   expect(box?.height).toBe(820 - 28);
   await expect(phone.testId('shell')).toHaveClass(/\bwide\b/);
   await bothThemes(phone, 'mac-new-chat');
+  // A pill's text is cut to its line: the line leaves room below the baseline (g, y, p).
+  const pill = phone.testId('composer-harness').locator('.chip-text');
+  const line = await pill.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return Number.parseFloat(cs.lineHeight) / Number.parseFloat(cs.fontSize);
+  });
+  expect(line).toBeGreaterThanOrEqual(1.3);
 
   await send(phone, 'please run tests');
   await phone.testId('chat-item-permission').getByTestId('permission-allow').click();

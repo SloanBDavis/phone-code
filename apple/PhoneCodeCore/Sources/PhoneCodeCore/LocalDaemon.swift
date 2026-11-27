@@ -127,8 +127,10 @@ public struct LocalDaemon: Sendable {
   }
 
   /// Pairs this app with the local daemon: mints a code and redeems it.
-  public func pairThisApp(deviceName: String, pairing: PairingClient = PairingClient()) async throws -> HostCredentials {
+  public func pairThisApp(
+    deviceName: String, clientId: String? = nil, pairing: PairingClient = PairingClient()
+  ) async throws -> HostCredentials {
     let code = try await newPairCode()
-    return try await pairing.pair(origin: origin, code: code.code, deviceName: deviceName)
+    return try await pairing.pair(origin: origin, code: code.code, deviceName: deviceName, clientId: clientId)
   }
 }

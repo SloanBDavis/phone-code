@@ -102,7 +102,8 @@ final class AppModel {
 
   /// Redeems a pairing code with the daemon at `origin`.
   func pair(_ link: PairingLink, origin: URL) async throws {
-    let c = try await PairingClient().pair(origin: origin, code: link.code, deviceName: Device.name)
+    let c = try await PairingClient().pair(
+      origin: origin, code: link.code, deviceName: Device.name, clientId: Device.clientId)
     adopt(c)
   }
 
@@ -281,6 +282,16 @@ final class AppModel {
 }
 
 enum Device {
+  /// Which install of the app this is: a random id made once and kept. Pairing again with
+  /// it replaces this app's earlier entry on the computer instead of adding another.
+  static var clientId: String {
+    let key = "pc.clientId"
+    if let id = UserDefaults.standard.string(forKey: key), id.count >= 8 { return id }
+    let id = UUID().uuidString.lowercased()
+    UserDefaults.standard.set(id, forKey: key)
+    return id
+  }
+
   static var name: String {
     #if os(iOS)
       UIDevice.current.userInterfaceIdiom == .pad ? "iPad app" : "iPhone app"

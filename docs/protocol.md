@@ -654,6 +654,11 @@ export type ErrorCode = 'unauthorized' | 'bad_request' | 'not_found' | 'version'
 export interface PairRequest {
   code: string;
   deviceName: string;
+  /**
+   * A random id this app or browser keeps (8 to 64 letters, digits, `_` or `-`).
+   * Pairing again with the same id replaces its earlier device instead of adding one.
+   */
+  clientId?: string;
 }
 export interface PairResponse {
   deviceId: string;

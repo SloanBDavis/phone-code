@@ -124,3 +124,33 @@ test('a revoked phone is sent back to pairing', async ({ phone, daemon }) => {
   await expect(phone.testId('pair-reason')).toContainText(/unpaired/i);
   await shot(phone, 'pair-revoked');
 });
+
+test('the same phone pairing again replaces its entry; another phone adds one', async ({
+  newPhone,
+  daemon,
+}) => {
+  const before = (await daemon.devices()).length;
+  const phone = await newPhone();
+  await phone.pair();
+  const first = await phone.deviceId();
+  expect(await daemon.devices()).toHaveLength(before + 1);
+
+  // The QR scanned again from the same browser: a new token, still one device.
+  await phone.pair();
+  const second = await phone.deviceId();
+  expect(second).not.toBe(first);
+  const ids = (await daemon.devices()).map((d) => d.id);
+  expect(ids).toHaveLength(before + 1);
+  expect(ids).toContain(second);
+  expect(ids).not.toContain(first);
+  await expect(phone.testId('conn-state')).toHaveAttribute('data-status', 'open');
+
+  // And a third time, to be sure it is not one-off.
+  await phone.pair();
+  expect(await daemon.devices()).toHaveLength(before + 1);
+
+  // A different phone is a different device.
+  const other = await newPhone();
+  await other.pair();
+  expect(await daemon.devices()).toHaveLength(before + 2);
+});

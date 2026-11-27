@@ -23,6 +23,8 @@
     }
 
     private(set) var state: State = .idle
+    /// How much of the new version is downloaded, 0...1, while installing; nil until known.
+    private(set) var progress: Double?
     /// What the alert shows: a newer version, "up to date" after a check the user asked for, or an error.
     var alert: Alert?
 
@@ -94,6 +96,7 @@
         return
       }
       state = .installing(version)
+      progress = nil
       Task {
         do {
           try await runInstaller(version)
@@ -120,6 +123,8 @@
       try fm.createDirectory(at: work, withIntermediateDirectories: true)
       let scriptFile = work.appendingPathComponent("install.sh")
       let ready = work.appendingPathComponent("ready")
+      let progressFile = work.appendingPathComponent("progress")
+      async let total = Self.downloadSize(version)
       let log = work.appendingPathComponent("update.log")
       try script.write(to: scriptFile)
       fm.createFile(atPath: log.path, contents: nil)
@@ -132,6 +137,7 @@
       env["PHONECODE_VERSION"] = "v\(version)"
       env["PHONECODE_WAIT_PID"] = String(ProcessInfo.processInfo.processIdentifier)
       env["PHONECODE_READY_FILE"] = ready.path
+      env["PHONECODE_PROGRESS_FILE"] = progressFile.path
       env["PHONECODE_OPEN_APP"] = "1"
       env["PHONECODE_QUIET"] = "1"
       p.environment = env
@@ -154,8 +160,28 @@
           p.terminate()
           throw InstallError(errorDescription: "the download took too long.")
         }
+        // The installer names the file it is downloading: its size against the release's.
+        if let size = await total, size > 0,
+          let path = try? String(contentsOf: progressFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+          path.hasSuffix(".zip"),
+          let have = (try? fm.attributesOfItem(atPath: path))?[.size] as? Int64
+        {
+          progress = min(1, Double(have) / Double(size))
+        }
         try await Task.sleep(for: .milliseconds(200))
       }
+      progress = 1
+    }
+
+    /// The size of a release's Mac app download, in bytes; nil when it cannot be asked.
+    private static func downloadSize(_ version: String) async -> Int64? {
+      guard let url = URL(string: "https://github.com/SloanBDavis/phone-code/releases/download/v\(version)/PhoneCode-mac.zip")
+      else { return nil }
+      var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+      req.httpMethod = "HEAD"
+      guard let (_, response) = try? await URLSession.shared.data(for: req) else { return nil }
+      let size = response.expectedContentLength
+      return size > 0 ? size : nil
     }
   }
 
@@ -197,6 +223,35 @@
       case .upToDate: "You're up to date"
       case .failed: "Update"
       case nil: ""
+      }
+    }
+  }
+
+  /// While an update downloads: what is happening and how far it is, over the window.
+  struct UpdateProgress: View {
+    @State private var updater = Updater.shared
+
+    var body: some View {
+      if case .installing(let version) = updater.state {
+        ZStack {
+          Color.black.opacity(0.28).ignoresSafeArea()
+          VStack(spacing: 12) {
+            Text("Updating to PhoneCode \(version)").font(.headline)
+            if let p = updater.progress {
+              ProgressView(value: p).frame(width: 240)
+              Text(p >= 1 ? "Installing… the app will reopen." : "Downloading… \(Int(p * 100))%")
+                .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+            } else {
+              ProgressView().progressViewStyle(.linear).frame(width: 240)
+              Text("Downloading…").font(.callout).foregroundStyle(.secondary)
+            }
+            Text("Your chats keep running on the computer.").font(.footnote).foregroundStyle(.tertiary)
+          }
+          .padding(24)
+          .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+          .accessibilityIdentifier("update-progress")
+        }
+        .transition(.opacity)
       }
     }
   }

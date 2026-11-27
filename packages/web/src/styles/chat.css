@@ -1492,7 +1492,8 @@
   border-radius: 999px;
   background: var(--chip);
   color: var(--label);
-  font: 500 13px/1 var(--font);
+  /* Room for descenders: the text is cut to the line's box ("Antigravity" lost its g). */
+  font: 500 13px/1.35 var(--font);
   letter-spacing: -0.005em;
   cursor: pointer;
   white-space: nowrap;
