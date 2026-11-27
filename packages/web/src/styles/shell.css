@@ -1046,19 +1046,6 @@ html.mac-app .http-note {
   opacity: 0.62;
 }
 
-.panes.tiled > .pane.focused::after {
-  content: '';
-  position: absolute;
-  z-index: 35;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--label-2);
-  opacity: 0.7;
-  pointer-events: none;
-}
-
 /* A chat dragged from the sidebar over the main area: dropping it adds a tile. */
 .pane-drop {
   position: absolute;
