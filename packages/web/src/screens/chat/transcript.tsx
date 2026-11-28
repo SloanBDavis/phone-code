@@ -6,6 +6,7 @@ import type { ChatState } from '../../lib/state';
 import { duration } from '../../lib/util';
 import { Icon, Spinner } from '../../ui/icons';
 import { PermissionCard, QuestionCard } from './asks';
+import { DocumentCard } from './documents';
 import { NoticeRow, PendingBubble, TextBlock, ThinkingBlock, TurnFooter, UserBubble } from './items';
 import { TaskCard, TodoCard, ToolGroup, activityOf } from './tools';
 
@@ -24,7 +25,8 @@ function grouped(chat: ChatState, ids: string[]): Block[] {
   let run: string[] | null = null;
   for (const id of ids) {
     const item = chat.items.get(id)?.peek();
-    const groupable = item?.kind === 'tool' && item.name !== 'Todo' && item.name !== 'Task';
+    const groupable =
+      item?.kind === 'tool' && item.name !== 'Todo' && item.name !== 'Task' && item.name !== 'Document';
     if (groupable) {
       if (!run) {
         run = [];
@@ -44,7 +46,8 @@ function grouped(chat: ChatState, ids: string[]): Block[] {
  * to the turn's end: its answer is the text it ends with, and everything
  * before that (thinking, tool calls, what the agent said along the way) is
  * the work, folded into one line that opens. Something waiting for the user
- * (an approval, a question), warnings and the current plan stay in view.
+ * (an approval, a question), warnings, the current plan and the documents the
+ * agent wrote (the latest version of each) stay in view.
  */
 function blocksOf(chat: ChatState, ids: string[], asks: string[], running: boolean): Block[] {
   const out: Block[] = [];
@@ -63,9 +66,20 @@ function blocksOf(chat: ChatState, ids: string[], asks: string[], running: boole
       const item = chat.items.get(id)?.peek();
       return item?.kind === 'tool' && item.name === 'Todo';
     });
+    // Each document the agent wrote, as last written in this turn.
+    const docs = new Map<string, string>();
     for (const id of before) {
       const item = chat.items.get(id)?.peek();
-      const stays = id === plan || asks.includes(id) || (item?.kind === 'notice' && item.level !== 'info');
+      if (item?.kind === 'tool' && item.detail?.type === 'document') docs.set(item.detail.path, id);
+    }
+    const latestDocs = new Set(docs.values());
+    for (const id of before) {
+      const item = chat.items.get(id)?.peek();
+      const stays =
+        id === plan ||
+        latestDocs.has(id) ||
+        asks.includes(id) ||
+        (item?.kind === 'notice' && item.level !== 'info');
       (stays ? inView : work).push(id);
     }
     const live = turnId === undefined && last && running;
@@ -379,6 +393,16 @@ function Working({
   );
 }
 
+/** Whether `id` is the latest version of the document at `path` in the chat (earlier ones are rows). */
+function isLatestDocument(chat: ChatState, id: string, path: string): boolean {
+  const ids = chat.ids.peek();
+  for (let i = ids.length - 1; i >= 0; i--) {
+    const t = chat.items.get(ids[i] ?? '')?.peek();
+    if (t?.kind === 'tool' && t.detail?.type === 'document' && t.detail.path === path) return t.id === id;
+  }
+  return true;
+}
+
 function Item({
   chat,
   id,
@@ -406,6 +430,8 @@ function Item({
         <TaskCard chat={chat} item={s} />
       ) : item.name === 'Todo' ? (
         <TodoCard item={s} />
+      ) : item.detail?.type === 'document' && isLatestDocument(chat, id, item.detail.path) ? (
+        <DocumentCard chat={chat} item={s} sessionId={sessionId} />
       ) : (
         <ToolGroup chat={chat} ids={[id]} />
       );

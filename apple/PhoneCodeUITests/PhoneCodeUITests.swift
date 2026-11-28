@@ -261,6 +261,27 @@ final class PhoneCodeUITests: XCTestCase {
     let saidLow = said("Thinking level: low")
     XCTAssertTrue(saidLow.waitForExistence(timeout: 30), "the change did not reach the agent")
   }
+
+  /// Antigravity's plan (the fake started as `agy acp` writes one): a card that opens the
+  /// plan full screen, and Proceed, which answers it.
+  func test09AntigravityPlan() throws {
+    launch()
+    pair()
+    choose("Antigravity", id: "picker-antigravity", inMenu: "picker-harness")
+    send("write a plan to fix add")
+    let card = wait("chat-item-document", 30)
+    XCTAssertTrue(said("Fix add in math.js").waitForExistence(timeout: 5), "no plan title on the card")
+    shot("20-antigravity-plan")
+    press(wait("document-open"))
+    wait("document-view")
+    XCTAssertTrue(said("Verification Plan").waitForExistence(timeout: 5), "the plan did not open")
+    shot("21-antigravity-plan-open")
+    press(wait("document-close"))
+    press(wait("document-proceed"))
+    XCTAssertTrue(said("You said: Proceed").waitForExistence(timeout: 30), "Proceed did not reach the agent")
+    XCTAssertFalse(el("document-proceed").exists, "Proceed is still offered after the answer")
+    _ = card
+  }
   #endif
 
   #if os(macOS)

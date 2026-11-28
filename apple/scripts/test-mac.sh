@@ -38,7 +38,7 @@ FAKES="$ROOT/e2e/fakes"
   HOME="$OUT/home" SHELL=/bin/bash PHONECODE_HOME="$OUT/state" PHONECODE_JSON=1 \
     PHONECODE_PAIR_CODE="$CODE" PHONECODE_NO_UPDATE_CHECK=1 \
     PHONECODE_CLAUDE_BIN="$FAKES/fake-claude.mjs" PHONECODE_CODEX_BIN="$FAKES/fake-codex.mjs" \
-    PHONECODE_GEMINI_BIN="$FAKES/fake-acp.mjs" CLAUDE_CONFIG_DIR="$OUT/home/.claude" \
+    PHONECODE_GEMINI_BIN="$FAKES/fake-acp.mjs" PHONECODE_ANTIGRAVITY_BIN="$FAKES/fake-acp.mjs" CLAUDE_CONFIG_DIR="$OUT/home/.claude" \
     CODEX_HOME="$OUT/home/.codex" FAKE_ACP_HOME="$OUT/fake-acp" FAKE_SPEED=2 \
     exec bun "$ROOT/packages/daemon/src/cli.ts" --local --port "$PORT" >"$OUT/daemon.log" 2>&1
 ) &

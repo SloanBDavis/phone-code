@@ -28,7 +28,9 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { stateDir } from '../../config.ts';
 import { log } from '../../log.ts';
+import type { HarnessHistory } from '../types.ts';
 import { arr, isRec, str } from '../shared/common.ts';
+import { ANTIGRAVITY_BRAIN, antigravityHistory } from './antigravity.ts';
 
 export interface AcpAgentConfig {
   id: string;
@@ -50,9 +52,19 @@ export interface AcpAgentConfig {
    * purpose: the same words from another agent are just text.
    */
   errorReplyPrefix?: string;
+  /**
+   * Folders it saves what it makes to (Antigravity's artifacts: plans, walkthroughs,
+   * screenshots), absolute: images and documents there that it links to are shown in
+   * the chat.
+   */
+  artifactRoots?: string[];
+  /** Its own conversation store, for "All chats" text search (see HarnessHistory). */
+  history?: () => HarnessHistory;
 }
 
-type Preset = Omit<AcpAgentConfig, 'source' | 'env' | 'versionArgs'> & {
+type Preset = Omit<AcpAgentConfig, 'source' | 'env' | 'versionArgs' | 'artifactRoots'> & {
+  /** Like AcpAgentConfig.artifactRoots; `~/` is the home folder. */
+  artifactRoots?: string[];
   env?: Record<string, string>;
   versionArgs?: string[] | null;
   /** Where the official installer puts the binary (`~/` = home), tried when `command` is not on PATH. */
@@ -86,6 +98,9 @@ export const ACP_PRESETS: readonly Preset[] = [
   // ~/.local/bin, which a daemon started by a service manager may not have on PATH.
   // When its model call fails, agy does not fail the prompt (seen in testing): it sends the
   // failure as an agent message "⚠ agent executor error: …" and ends the turn with end_turn.
+  // Run for real with 1.5.18 (e2e/tests/antigravity-real.spec.ts). Each conversation has a
+  // folder under ~/.gemini/antigravity-cli/brain/<id>: its artifacts (implementation_plan.md,
+  // task.md, walkthrough.md, screenshots) and its transcript, which "All chats" searches.
   {
     id: 'antigravity',
     name: 'Antigravity',
@@ -94,14 +109,16 @@ export const ACP_PRESETS: readonly Preset[] = [
     loginArgs: ['acp', '--login'],
     fallbackPaths: ['~/.local/bin/agy'],
     errorReplyPrefix: '⚠ agent executor error:',
+    artifactRoots: [`~/${ANTIGRAVITY_BRAIN}`],
+    history: antigravityHistory,
   },
 ];
 
+const expandHome = (f: string): string => (f.startsWith('~/') ? join(homedir(), f.slice(2)) : f);
+
 function presetCommand(p: Preset): string {
   if (p.fallbackPaths === undefined || Bun.which(p.command) !== null) return p.command;
-  const found = p.fallbackPaths
-    .map((f) => (f.startsWith('~/') ? join(homedir(), f.slice(2)) : f))
-    .find(existsSync);
+  const found = p.fallbackPaths.map(expandHome).find(existsSync);
   return found ?? p.command;
 }
 
@@ -195,6 +212,8 @@ export function loadAcpAgents(
       ...(p.loginArgs ? { loginArgs: [...p.loginArgs] } : {}),
       ...(p.monogram === undefined ? {} : { monogram: p.monogram }),
       ...(p.errorReplyPrefix === undefined ? {} : { errorReplyPrefix: p.errorReplyPrefix }),
+      ...(p.artifactRoots === undefined ? {} : { artifactRoots: p.artifactRoots.map(expandHome) }),
+      ...(p.history === undefined ? {} : { history: p.history }),
     });
   }
   for (const u of user) {
@@ -218,6 +237,8 @@ export function loadAcpAgents(
       ...(base?.loginArgs ? { loginArgs: base.loginArgs } : {}),
       ...(base?.monogram === undefined ? {} : { monogram: base.monogram }),
       ...(base?.errorReplyPrefix === undefined ? {} : { errorReplyPrefix: base.errorReplyPrefix }),
+      ...(base?.artifactRoots === undefined ? {} : { artifactRoots: base.artifactRoots }),
+      ...(base?.history === undefined ? {} : { history: base.history }),
     });
   }
   for (const c of byId.values()) {

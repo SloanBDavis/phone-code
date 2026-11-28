@@ -227,7 +227,7 @@ jobs:
           ( cd "$ROOT/home" && \
             HOME="$ROOT/home" SHELL=/bin/bash PHONECODE_HOME="$ROOT/state" PHONECODE_JSON=1 \
             PHONECODE_CLAUDE_BIN="$FAKES/fake-claude.mjs" PHONECODE_CODEX_BIN="$FAKES/fake-codex.mjs" \
-            PHONECODE_GEMINI_BIN="$FAKES/fake-acp.mjs" CLAUDE_CONFIG_DIR="$ROOT/home/.claude" \
+            PHONECODE_GEMINI_BIN="$FAKES/fake-acp.mjs" PHONECODE_ANTIGRAVITY_BIN="$FAKES/fake-acp.mjs" CLAUDE_CONFIG_DIR="$ROOT/home/.claude" \
             CODEX_HOME="$ROOT/home/.codex" FAKE_ACP_HOME="$ROOT/fake-acp" FAKE_SPEED=2 \
             nohup bun "$GITHUB_WORKSPACE/packages/daemon/src/cli.ts" --local --port "$DAEMON_PORT" \
               > "$GITHUB_WORKSPACE/daemon-${{ matrix.platform }}.log" 2>&1 & )

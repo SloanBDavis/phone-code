@@ -1,12 +1,12 @@
 /**
- * What ACP agents told us in earlier sessions: their models and permission
- * modes. An ACP agent only says these once a session exists, so a new chat
+ * What ACP agents told us in earlier sessions: their models, permission modes
+ * and slash commands. An ACP agent only says these once a session exists, so a new chat
  * would have nothing to pick from; the last answer is kept (in
  * `<state>/acp-options.json`) and offered until the next session corrects it.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ModelOption, PermissionMode } from '@phone-code/protocol';
+import type { ModelOption, PermissionMode, SlashCommand } from '@phone-code/protocol';
 import { stateDir } from '../../config.ts';
 import { isRecord } from '../../util/guards.ts';
 import { writeFileAtomic } from '../../util/files.ts';
@@ -14,6 +14,7 @@ import { writeFileAtomic } from '../../util/files.ts';
 export interface AcpOptions {
   modelOptions?: ModelOption[];
   permissionModes?: PermissionMode[];
+  commands?: SlashCommand[];
 }
 
 let cache: Map<string, AcpOptions> | undefined;
@@ -34,9 +35,15 @@ function load(): Map<string, AcpOptions> {
         const modes = Array.isArray(value['permissionModes'])
           ? value['permissionModes'].filter((m): m is PermissionMode => typeof m === 'string')
           : undefined;
+        const commands = Array.isArray(value['commands'])
+          ? value['commands'].filter(
+              (c): c is SlashCommand => isRecord(c) && typeof c['name'] === 'string' && c['name'] !== '',
+            )
+          : undefined;
         cache.set(id, {
           ...(models && models.length > 0 ? { modelOptions: models } : {}),
           ...(modes && modes.length > 0 ? { permissionModes: modes } : {}),
+          ...(commands && commands.length > 0 ? { commands } : {}),
         });
       }
     }

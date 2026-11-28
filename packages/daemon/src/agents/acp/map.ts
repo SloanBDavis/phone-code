@@ -139,8 +139,35 @@ export function diffDetail(
   return { detail: { type: 'diff', path, patch, added, removed }, path, isNew };
 }
 
-/** Text a tool produced: content blocks, terminal output, else rawOutput. */
+/**
+ * A command's result wrapped in a header (Antigravity's run_command):
+ *
+ *   Created At: 2026-11-27T23:19:56-06:00
+ *   Completed At: 2026-11-27T23:19:56-06:00
+ *   Command exited with code 0.
+ *
+ *   Command output:
+ *   <what the command printed>
+ *
+ * The printed text alone, with plain line ends, and the exit code the header names.
+ */
+const REPORT =
+  /^Created At: [^\n]*\n(?:Completed At: [^\n]*\n)?(?:Command exited with code (-?\d+)\.\n)?\s*(?:Command output:\n)?/;
+
+export function commandReport(text: string): { output: string; exitCode?: number } {
+  const m = REPORT.exec(text);
+  if (m === null) return { output: text };
+  const output = text.slice(m[0].length).replaceAll('\r\n', '\n');
+  return m[1] === undefined ? { output } : { output, exitCode: Number(m[1]) };
+}
+
+/** Text a tool produced, without a command report's header. */
 function outputOf(t: AcpToolState): string {
+  return commandReport(rawOutputText(t)).output;
+}
+
+/** Text a tool produced: content blocks, terminal output, else rawOutput. */
+function rawOutputText(t: AcpToolState): string {
   const parts: string[] = [];
   for (const c of t.content) {
     if (c.type === 'content') {
@@ -171,7 +198,51 @@ function exitCodeOf(t: AcpToolState): number | undefined {
     if (typeof term.exitCode === 'number') return term.exitCode;
   }
   const raw = rec(t.rawOutput);
-  return num(raw.exitCode) ?? num(raw.exit_code) ?? num(raw.code);
+  return num(raw.exitCode) ?? num(raw.exit_code) ?? num(raw.code) ?? commandReport(rawOutputText(t)).exitCode;
+}
+
+/** Longest document text kept in a tool item. */
+export const DOCUMENT_LIMIT = 200_000;
+
+/** "implementation_plan.md" -> "Implementation plan". */
+function documentName(path: string): string {
+  const base = (path.split('/').pop() ?? path).replace(/\.(?:md|markdown)$/i, '').replaceAll(/[_-]+/g, ' ');
+  const t = base.trim();
+  return t === '' ? 'Document' : t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/** The document's first `# heading`, else a name from the file name. */
+export function documentTitle(path: string, text: string | undefined): string {
+  const h = text === undefined ? undefined : /^#{1,2}\s+(.+?)\s*#*\s*$/m.exec(text)?.[1];
+  return oneLine(h?.replaceAll(/[`*_]/g, '') ?? documentName(path), 100);
+}
+
+/**
+ * An edit that writes a document for the user (Antigravity's artifacts: its file tools
+ * carry `ArtifactMetadata`, with a summary and whether the agent waits for a review).
+ * Markdown files only; the full text when the call carries it.
+ */
+export function documentDetail(t: AcpToolState): Extract<ToolDetail, { type: 'document' }> | undefined {
+  const input = rec(t.rawInput);
+  const meta = input.ArtifactMetadata ?? input.artifactMetadata;
+  if (!isRec(meta)) return undefined;
+  const path = firstStr(input, ['Path', 'TargetFile', 'path', 'file_path']) ?? pathOf(t);
+  if (path === undefined || !/\.(?:md|markdown)$/i.test(path)) return undefined;
+  const full = firstStr(input, ['Content', 'content']);
+  const summary = str(meta.Summary) ?? str(meta.summary);
+  const feedback = meta.RequestFeedback === true || meta.requestFeedback === true;
+  return {
+    type: 'document',
+    path,
+    title: documentTitle(path, full),
+    ...(summary ? { summary: oneLine(summary, 240) } : {}),
+    ...(full === undefined
+      ? {}
+      : full.length > DOCUMENT_LIMIT
+        ? { text: full.slice(0, DOCUMENT_LIMIT), textTruncated: true }
+        : { text: full }),
+    ...(feedback ? { requestFeedback: true } : {}),
+  };
 }
 
 function toolStatus(s: string): ToolStatus {
@@ -208,6 +279,8 @@ export function toolView(t: AcpToolState, cwd: string): { name: string; title: s
     case 'edit':
     case 'delete':
     case 'move': {
+      const doc = t.kind === 'edit' ? documentDetail(t) : undefined;
+      if (doc) return { name: 'Document', title: doc.title, detail: doc };
       const d = diffDetail(t.content, cwd);
       if (d)
         return { name: d.isNew && t.kind === 'edit' ? 'Write' : 'Edit', title: d.path, detail: d.detail };
@@ -287,7 +360,8 @@ export function toolItem(
     name: view.name,
     title: view.title,
     status,
-    ...(t.rawInput !== undefined ? { input: t.rawInput } : {}),
+    // A document's input is its text again: the detail has it.
+    ...(t.rawInput !== undefined && view.detail?.type !== 'document' ? { input: t.rawInput } : {}),
     ...(view.detail ? { detail: view.detail } : {}),
     ...(output ? { output } : {}),
     ...(truncated ? { outputTruncated: true } : {}),
@@ -376,6 +450,8 @@ export function mapModes(modes: AcpChoice[], initialId: string | undefined): Map
     const text = `${id} ${m.name.toLowerCase()} ${(m.description ?? '').toLowerCase()}`;
     if (/yolo|bypass|full[ -_]?access|danger|approves all|approve all|never ask|skip permissions/.test(text))
       return 'bypassPermissions';
+    // Antigravity's "auto": edits and safe commands go ahead, irreversible ones ask.
+    if (id === 'auto' || /safe commands|irreversible/.test(text)) return 'auto';
     if (/accept[ -_]?edits?|auto[ -_]?edit|approves edit|approve edit/.test(text)) return 'acceptEdits';
     if (/^plan|plan mode|read[ -_]?only|architect/.test(text)) return 'plan';
     if (/^(default|normal|manual)$/.test(id) || /ask before|prompts for approval/.test(text))
@@ -396,5 +472,6 @@ export const PERMISSION_MODE_ORDER: readonly PermissionMode[] = [
   'default',
   'acceptEdits',
   'plan',
+  'auto',
   'bypassPermissions',
 ];

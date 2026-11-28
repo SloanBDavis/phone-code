@@ -239,6 +239,8 @@ struct TranscriptView: View {
   /// The visible height: the content is at least this tall, so a short chat
   /// still fills the view (its messages at the bottom).
   @State private var viewport: CGFloat = 0
+  /// A document opened from a link to it in the chat.
+  @State private var linkedDocument: DocumentDetail?
 
   /// Above this many rows the transcript is built lazily.
   private static let lazyAbove = 300
@@ -311,6 +313,21 @@ struct TranscriptView: View {
         ProgressView()
       }
     }
+    // A link to a Markdown file on the computer (a plan the agent wrote) opens that
+    // document, when the chat has it; other links go to the system.
+    .environment(
+      \.openURL,
+      OpenURLAction { url in
+        guard url.isFileURL, ["md", "markdown"].contains(url.pathExtension.lowercased()) else { return .systemAction }
+        if let found = chat.latestDocument(url.path), found.doc.text != nil {
+          linkedDocument = found.doc
+        } else {
+          model.show("That file is on your computer")
+        }
+        return .handled
+      }
+    )
+    .sheet(item: $linkedDocument) { DocumentSheet(doc: $0) }
     .axContainer("transcript")
   }
 }

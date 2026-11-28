@@ -33,6 +33,10 @@ const MODES = [
   { id: 'plan', name: 'Plan', description: 'Read-only mode' },
 ];
 const MODELS = ['fake-pro', 'fake-flash'];
+// Started as `agy acp`: also keeps Antigravity's files (its artifacts and a transcript per
+// conversation) under ~/.gemini/antigravity-cli/brain/<session id>, as agy 1.5.18 does.
+const AGY = argv[0] === 'acp';
+const brainDir = (s) => path.join(os.homedir(), '.gemini/antigravity-cli/brain', s.id);
 
 // ---------------------------------------------------------------- output
 const send = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
@@ -133,6 +137,7 @@ function ctx(s) {
     async say(text, kind = 'agent_message_chunk', delay = 40) {
       const messageId = randomUUID();
       msgN++;
+      if (kind === 'agent_message_chunk') said.push(text);
       for (const w of text.split(/(?<= )/)) {
         check();
         update(s, { sessionUpdate: kind, messageId, content: { type: 'text', text: w } });
@@ -167,6 +172,99 @@ function ctx(s) {
     },
   };
 }
+
+/** One Antigravity artifact written in full (write_file with ArtifactMetadata), on disk too. */
+function writeArtifact(c, name, content, meta) {
+  const target = path.join(brainDir(c.s), name);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, content);
+  const id = `call_${randomUUID().slice(0, 8)}`;
+  const rawInput = { ArtifactMetadata: meta, Content: content, Overwrite: true, Path: target };
+  c.tool(id, { name: 'write_file', title: `File ${name}`, kind: 'edit', status: 'in_progress', rawInput });
+  c.toolUpdate(id, {
+    status: 'completed',
+    rawInput,
+    content: [{ type: 'diff', path: target, newText: content }],
+  });
+  return target;
+}
+
+/** Plan mode, the way agy does it: an implementation plan artifact, linked from the answer. */
+async function writePlan(c) {
+  await c.say('I looked at the code. ');
+  const target = writeArtifact(
+    c,
+    'implementation_plan.md',
+    '# Fix `add` in math.js\n\n## Proposed Changes\n\n- Return `a + b` instead of `a - b`.\n\n## Verification Plan\n\n- Run `node src/main.js`: it prints 5.\n',
+    {
+      RequestFeedback: true,
+      Summary: 'Fix the subtraction bug in add() and check the output.',
+      UserFacing: true,
+    },
+  );
+  await c.say(
+    `I've created a short plan in [implementation_plan.md](file://${target}). Let me know if I should proceed.`,
+  );
+}
+
+/** A task list artifact, then an in-place edit of it: the call carries only the change. */
+async function updateTasks(c) {
+  const before = '# Tasks\n\n- [ ] Fix add\n- [ ] Run main.js\n';
+  const target = writeArtifact(c, 'task.md', before, { Summary: 'What is left to do.', UserFacing: true });
+  const after = before.replace('- [ ] Fix add', '- [x] Fix add');
+  fs.writeFileSync(target, after);
+  const id = `call_${randomUUID().slice(0, 8)}`;
+  const rawInput = {
+    ArtifactMetadata: { Summary: 'What is left to do.', UserFacing: true },
+    TargetFile: target,
+    ReplacementChunks: [{ TargetContent: '- [ ] Fix add', ReplacementContent: '- [x] Fix add' }],
+  };
+  c.tool(id, {
+    name: 'replace_file_content',
+    title: 'File task.md',
+    kind: 'edit',
+    status: 'in_progress',
+    rawInput,
+  });
+  c.toolUpdate(id, {
+    status: 'completed',
+    rawInput,
+    content: [{ type: 'diff', path: target, oldText: '- [ ] Fix add', newText: '- [x] Fix add' }],
+  });
+  await c.say('Fixed add; one task left.');
+}
+
+/** agy's run_command result: the output under a header with the times and the exit code. */
+async function listFiles(c) {
+  const id = `call_${randomUUID().slice(0, 8)}`;
+  const rawInput = { CommandLine: 'ls', WaitMsBeforeAsync: 5000, toolSummary: 'List files' };
+  c.tool(id, { name: 'run_command', title: 'ls', kind: 'execute', status: 'in_progress', rawInput });
+  const text =
+    'Created At: 2026-11-27T23:19:56-06:00\nCompleted At: 2026-11-27T23:19:56-06:00\nCommand exited with code 0.\n\nCommand output:\nREADME.md\r\nsrc\r\n';
+  c.toolUpdate(id, {
+    status: 'completed',
+    rawInput,
+    content: [{ type: 'content', content: { type: 'text', text } }],
+    rawOutput: { output: text, exit_code: 0 },
+  });
+  await c.say('Two entries.');
+}
+
+/** agy's transcript of the conversation (what "All chats" searches). */
+function logTranscript(s, type, content) {
+  if (!AGY) return;
+  const target = path.join(brainDir(s), '.system_generated/logs/transcript.jsonl');
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const line = {
+    type,
+    source: type === 'USER_INPUT' ? 'USER_EXPLICIT' : 'MODEL',
+    created_at: new Date().toISOString(),
+    content,
+  };
+  fs.appendFileSync(target, `${JSON.stringify(line)}\n`);
+}
+
+let said = [];
 
 async function runTests(c) {
   await c.say('I will run the test suite. ');
@@ -519,6 +617,9 @@ const SCENARIOS = [
   [/edit file/i, editFile],
   [/read outside/i, readOutside],
   [/terminal/i, terminal],
+  [/write a plan/i, writePlan],
+  [/update the task list/i, updateTasks],
+  [/list files/i, listFiles],
   [/todo|plan/i, plan],
   [/search/i, search],
   [
@@ -561,6 +662,12 @@ async function prompt(id, params) {
   });
   if (s.title === '') s.title = text.slice(0, 60);
   current = { sessionId: s.id, aborted: false };
+  said = [];
+  logTranscript(
+    s,
+    'USER_INPUT',
+    `<USER_REQUEST>\n${text}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: now.\n</ADDITIONAL_METADATA>`,
+  );
   const c = ctx(s);
   let stopReason = 'end_turn';
   try {
@@ -581,6 +688,7 @@ async function prompt(id, params) {
     }
   }
   current = null;
+  if (said.length > 0) logTranscript(s, 'PLANNER_RESPONSE', said.join(''));
   s.updatedAt = new Date().toISOString();
   save(s);
   result(id, { stopReason, usage: { totalTokens: 30, inputTokens: 20, outputTokens: 10 } });

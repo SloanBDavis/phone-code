@@ -35,6 +35,9 @@
  * - Messages sent while a turn runs are queued and sent as the next prompt.
  */
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { resolve as resolvePath } from 'node:path';
 import type {
   Attachment,
   ChatItem,
@@ -54,14 +57,17 @@ import type {
   UserItem,
 } from '@phone-code/protocol';
 import { DAEMON_VERSION } from '../../config.ts';
+import { log } from '../../log.ts';
 import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from '../types.ts';
 import { AcpClientSide, RpcError, isClientSideMethod } from './client.ts';
 import type { AcpAgentConfig } from './config.ts';
-import { rememberOptions } from './memory.ts';
+import { rememberOptions, rememberedOptions } from './memory.ts';
 import { elicitContent, elicitFields, elicitQuestions, type ElicitField } from './elicitation.ts';
 import {
   PERMISSION_MODE_ORDER,
+  DOCUMENT_LIMIT,
   blockText,
+  documentTitle,
   mapModes,
   mergeToolCall,
   planTodos,
@@ -173,6 +179,8 @@ class AcpSession implements AgentSession {
   private readonly tools = new Map<string, AcpToolState>();
   private readonly toolImageRefs = new Map<string, { count: number; refs: ImageRef[] }>();
   private readonly toolTs = new Map<string, number>();
+  /** A document's text read from disk (the call that changed it did not carry it), by toolCallId. */
+  private readonly docText = new Map<string, string | null>();
   private readonly denied = new Set<string>();
   private readonly terminalTool = new Map<string, string>();
   private readonly pending = new Map<string, Pending>();
@@ -226,6 +234,12 @@ class AcpSession implements AgentSession {
     private readonly cfg: AcpAgentConfig,
     private readonly opts: AgentStartOptions,
     events: AgentEvents,
+    /**
+     * Only to learn what the agent offers (see learnOptions): the session is reopened with
+     * session/resume, which replays nothing, and phone-code's mode and model are not applied,
+     * so the agent's conversation is left as it was.
+     */
+    private readonly learnOnly = false,
   ) {
     this.events = safeEvents(events);
     this.status = new StatusTracker(this.events);
@@ -287,6 +301,13 @@ class AcpSession implements AgentSession {
     const base = { cwd: this.opts.cwd, mcpServers: [] };
     const sessionCaps = rec(this.agentCaps.sessionCapabilities);
     const reopen = async (id: string): Promise<Rec | undefined> => {
+      if (this.learnOnly) {
+        if (!hasCap(sessionCaps.resume)) throw new Error('cannot reopen a session without replaying it');
+        return {
+          ...rec(await this.call('session/resume', { ...base, sessionId: id }, 30_000)),
+          sessionId: id,
+        };
+      }
       if (this.agentCaps.loadSession === true) {
         this.replay = replay;
         this.replayUser = undefined;
@@ -306,6 +327,7 @@ class AcpSession implements AgentSession {
       return undefined;
     };
     const attempt = async (): Promise<Rec> => {
+      if (this.learnOnly) return (await reopen(resumeId ?? '')) ?? {};
       if (resumeId !== undefined) {
         try {
           const res = await reopen(resumeId);
@@ -353,7 +375,7 @@ class AcpSession implements AgentSession {
     this.sessionId = sid;
     this.events.nativeSessionId(sid);
     this.applySessionState(res);
-    await this.applyWanted();
+    if (!this.learnOnly) await this.applyWanted();
     this.emitMeta();
   }
 
@@ -656,6 +678,8 @@ class AcpSession implements AgentSession {
           });
         }
         this.events.meta({ commands });
+        // Kept for the next new chat, which has no session to ask yet.
+        rememberOptions(this.cfg.id, { commands });
         return;
       }
       default:
@@ -829,9 +853,46 @@ class AcpSession implements AgentSession {
     });
     const images = this.toolImages(toolCallId, state.content);
     if (images) item.images = images;
+    if (item.detail?.type === 'document' && item.detail.text === undefined) {
+      const d = item.detail;
+      const read = this.docText.get(toolCallId);
+      if (typeof read === 'string') {
+        const long = read.length > DOCUMENT_LIMIT;
+        item.title = documentTitle(d.path, read);
+        item.detail = {
+          ...d,
+          title: item.title,
+          text: long ? read.slice(0, DOCUMENT_LIMIT) : read,
+          ...(long ? { textTruncated: true } : {}),
+        };
+      } else if (read === undefined && item.status === 'done') this.readDocument(toolCallId, d.path);
+    }
     // The question card is this tool call's UI: nest the generic row under it, where it is not shown.
     const ask = this.askTools.get(toolCallId);
     this.upsertItem(ask === undefined ? item : { ...item, parentId: ask });
+  }
+
+  /**
+   * The text of a document the agent edited in place (the call carries only the change):
+   * read once from its artifact folder, then shown with the tool item.
+   */
+  private readDocument(toolCallId: string, file: string): void {
+    const roots = this.cfg.artifactRoots ?? [];
+    const full = resolvePath(file);
+    if (!roots.some((r) => full.startsWith(`${resolvePath(r)}/`))) {
+      this.docText.set(toolCallId, null);
+      return;
+    }
+    this.docText.set(toolCallId, null);
+    void readFile(full, 'utf8').then(
+      (text) => {
+        if (this.disposed) return undefined;
+        this.docText.set(toolCallId, text);
+        this.renderTool(toolCallId);
+        return undefined;
+      },
+      () => undefined,
+    );
   }
 
   private onTerminal(terminalId: string, output: string, exitCode: number | null | undefined): void {
@@ -1569,14 +1630,47 @@ async function probeSessions(cfg: AcpAgentConfig, limit: number): Promise<Resuma
   }
 }
 
+const QUIET: AgentEvents = {
+  upsert: () => undefined,
+  delta: () => undefined,
+  status: () => undefined,
+  nativeSessionId: () => undefined,
+  meta: () => undefined,
+  image: () => undefined,
+  imageFile: () => Promise.resolve(undefined),
+};
+
+/**
+ * What an ACP agent offers (models, thinking levels, modes, slash commands) before the
+ * first chat with it from phone-code: it names them only inside a session, and a new
+ * empty session would be kept in its history. So its newest past session is reopened
+ * (session/resume: nothing replayed, nothing changed) in a short-lived process, which
+ * remembers them (memory.ts) as any session does, and closed again.
+ */
+async function learnOptions(cfg: AcpAgentConfig): Promise<void> {
+  const latest = (await probeSessions(cfg, 20)).find((s) => existsSync(s.cwd));
+  if (latest === undefined) return;
+  const session = new AcpSession(cfg, { cwd: latest.cwd, resumeId: latest.resumeId }, QUIET, true);
+  try {
+    await session.init();
+    // The slash commands come in a notification just after the session opens.
+    await Bun.sleep(2000);
+  } finally {
+    await session.dispose();
+  }
+}
+
 export function createAcpAdapter(cfg: AcpAgentConfig): AgentAdapter {
   let listing: Promise<ResumableSession[]> | undefined;
+  let learning: Promise<void> | undefined;
   return {
     kind: cfg.id,
     name: cfg.name,
     ...(cfg.monogram === undefined ? {} : { monogram: cfg.monogram }),
     impl: 'acp',
     source: cfg.source,
+    ...(cfg.history === undefined ? {} : { history: cfg.history() }),
+    ...(cfg.artifactRoots === undefined ? {} : { artifactRoots: () => cfg.artifactRoots ?? [] }),
     async detect() {
       const found = Bun.which(cfg.command);
       if (found === null)
@@ -1584,6 +1678,10 @@ export function createAcpAdapter(cfg: AcpAgentConfig): AgentAdapter {
           available: false,
           setupHint: `Not installed: \`${cfg.command}\` was not found on this computer's PATH.`,
         };
+      if (rememberedOptions(cfg.id)?.modelOptions === undefined)
+        learning ??= learnOptions(cfg).catch((e: unknown) =>
+          log.debug(`learning ${cfg.id}'s options failed`, e),
+        );
       if (cfg.versionArgs === null) return { available: true };
       const out = await runQuick(found, cfg.versionArgs, 4000);
       const version = out === undefined ? undefined : /\d+\.\d+(?:\.\d+)?[\w.+-]*/.exec(out)?.[0];

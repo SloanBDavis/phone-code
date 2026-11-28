@@ -29,7 +29,12 @@ struct ItemRow: View {
     case .user(let u): UserBubble(item: u, sessionId: session.id)
     case .text(let t): AssistantText(item: t, sessionId: session.id)
     case .thinking(let t): ThinkingRow(item: t)
-    case .tool(let t): ToolCard(tool: t, chat: chat, session: session)
+    case .tool(let t):
+      if case .document(let d) = t.detail, chat.latestDocument(d.path)?.id == t.id {
+        DocumentCard(tool: t, doc: d, chat: chat, session: session)
+      } else {
+        ToolCard(tool: t, chat: chat, session: session)
+      }
     case .permission(let p): PermissionCard(item: p, session: session)
     case .question(let q): QuestionCard(item: q, session: session)
     case .notice(let n): NoticeRow(item: n)
@@ -275,7 +280,7 @@ struct ToolCard: View {
     switch tool.name {
     case "Bash": return running ? "Running" : "Ran"
     case "Read": return running ? "Reading" : "Read"
-    case "Write": return running ? "Writing" : "Wrote"
+    case "Write", "Document": return running ? "Writing" : "Wrote"
     case "Edit": return running ? "Editing" : "Edited"
     case "Glob", "Grep": return running ? "Searching" : "Searched"
     case "WebFetch": return running ? "Fetching" : "Fetched"
@@ -289,7 +294,7 @@ struct ToolCard: View {
   static func symbol(_ name: String) -> String {
     switch name {
     case "Bash": "terminal"
-    case "Read": "doc.text"
+    case "Read", "Document": "doc.text"
     case "Write": "square.and.pencil"
     case "Edit": "pencil.line"
     case "Glob", "Grep": "magnifyingglass"
@@ -299,6 +304,108 @@ struct ToolCard: View {
     case "Task": "person.2"
     default: "wrench.and.screwdriver"
     }
+  }
+}
+
+/// What a plan that waits for review is answered with.
+let proceedText = "Proceed"
+
+/// A plan, a task list or a walkthrough the agent wrote (Antigravity's artifacts): its
+/// title and summary, opened full screen by a tap. A plan that waits for a review offers Proceed.
+struct DocumentCard: View {
+  @Environment(AppModel.self) private var model
+  let tool: ToolItem
+  let doc: DocumentDetail
+  let chat: ChatState
+  let session: SessionInfo
+  @State private var reading = false
+
+  /// The agent's latest word asks for a review: nothing was sent after it, and it is not at work.
+  private var waitsForReview: Bool {
+    doc.requestFeedback == true && doc.text != nil && session.status == .idle && !chat.answered(after: tool.id)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        reading = true
+      } label: {
+        HStack(spacing: 12) {
+          Image(systemName: "doc.text")
+            .font(.body)
+            .foregroundStyle(.secondary)
+            .frame(width: 34, height: 34)
+            .background(Theme.chip, in: .rect(cornerRadius: 10))
+          VStack(alignment: .leading, spacing: 3) {
+            Text(doc.title).font(.callout.weight(.semibold)).lineLimit(1)
+            if let summary = doc.summary {
+              Text(summary).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+            }
+          }
+          Spacer(minLength: 0)
+          if doc.text == nil {
+            ProgressView().controlSize(.mini)
+          } else {
+            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.quaternary)
+          }
+        }
+        .padding(12)
+        .contentShape(.rect)
+      }
+      .buttonStyle(.plain)
+      .disabled(doc.text == nil)
+      .accessibilityIdentifier("document-open")
+      if waitsForReview {
+        Divider()
+        HStack {
+          Text("Waiting for your review").font(.footnote.weight(.medium)).foregroundStyle(Theme.attention)
+          Spacer()
+          Button(proceedText) {
+            Haptics.play(.select)
+            Task { await model.client.sendChat(session.id, text: proceedText) }
+          }
+          .buttonStyle(.graphitePrimary)
+          .accessibilityIdentifier("document-proceed")
+        }
+        .padding(12)
+      }
+    }
+    .background(Theme.card, in: .rect(cornerRadius: 18))
+    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.hairline))
+    .padding(.vertical, 4)
+    .sheet(isPresented: $reading) { DocumentSheet(doc: doc) }
+    .axContainer("chat-item-document")
+  }
+}
+
+/// A document, full screen, as Markdown.
+struct DocumentSheet: View {
+  let doc: DocumentDetail
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 12) {
+          MarkdownView(text: doc.text ?? "")
+          if doc.textTruncated == true {
+            Text("The rest of this document is on your computer.").font(.footnote).foregroundStyle(.secondary)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+      }
+      .navigationTitle(doc.title)
+      #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
+      .toolbar {
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Done") { dismiss() }.accessibilityIdentifier("document-close")
+        }
+      }
+    }
+    .axContainer("document-view")
   }
 }
 
@@ -345,6 +452,10 @@ struct ToolDetailView: View {
       case .url(let url):
         if let u = URL(string: url) { Link(url, destination: u).font(.callout) } else { Text(url) }
         if let out = tool.output, !out.isEmpty { OutputText(out, truncated: tool.outputTruncated == true) }
+      case .document(let d):
+        // An earlier version of a document: the latest is the card further down.
+        if let summary = d.summary { Text(summary).font(.callout).foregroundStyle(.secondary) }
+        Text(d.path).font(.caption.monospaced()).foregroundStyle(.secondary)
       default:
         if let input = tool.input { OutputText(input.jsonText, truncated: false) }
         if let out = tool.output, !out.isEmpty { OutputText(out, truncated: tool.outputTruncated == true) }

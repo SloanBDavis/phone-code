@@ -110,6 +110,8 @@ The demo host also has Antigravity not installed, slash commands, and All-chats 
 | `chat-item-user`, `chat-item-text` [`data-streaming`], `chat-item-thinking`                  | messages                                            |
 | `chat-item-tool` [`data-tool`, `data-status`], `tool-group`, `diff-view`                     | tool calls                                          |
 | `chat-item-todo`, `todo-list`, `chat-item-task` [`data-status`]                              | plan and sub-agent cards                            |
+| `chat-item-document` [`data-status`], `document-open`, `document-proceed`                    | a document the agent wrote, and Proceed on a plan   |
+| `document-sheet`, `document-view`, `document-close`                                          | the document, full screen                           |
 | `chat-item-permission` [`data-status`]                                                       | permission card                                     |
 | `permission-allow`, `permission-allow-always`, `permission-deny`                             | its buttons                                         |
 | `permission-deny-feedback`, `permission-deny-message`, `permission-deny-send`                | deny with a message (not for ACP agents)            |

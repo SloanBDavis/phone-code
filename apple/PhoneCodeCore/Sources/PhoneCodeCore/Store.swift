@@ -44,6 +44,21 @@ public final class ChatState {
   init(sessionId: String) { self.sessionId = sessionId }
 
   public func box(_ id: String) -> ItemBox? { boxes[id] }
+
+  /// The latest version of the document the agent wrote at `path`, and its item id.
+  public func latestDocument(_ path: String) -> (id: String, doc: DocumentDetail)? {
+    for id in ids.reversed() {
+      if case .tool(let t) = boxes[id]?.item, case .document(let d) = t.detail, d.path == path { return (id, d) }
+    }
+    return nil
+  }
+
+  /// Whether the user sent anything after item `id` (or is sending it now).
+  public func answered(after id: String) -> Bool {
+    if !pending.isEmpty { return true }
+    guard let at = ids.firstIndex(of: id) else { return true }
+    return ids[(at + 1)...].contains { if case .user = boxes[$0]?.item { true } else { false } }
+  }
   public func item(_ id: String) -> ChatItem? { boxes[id]?.item }
   public var count: Int { boxes.count }
 

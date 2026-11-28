@@ -9,6 +9,7 @@ import { Thumbs } from '../../ui/thumbs';
 import { GlassButton } from '../../ui/glass';
 import { Icon, Spinner, type IconName } from '../../ui/icons';
 import { openSheet } from '../../ui/overlay';
+import { openDocument } from './documents';
 import { Markdown } from './md';
 
 // ------------------------------------------------------------ naming
@@ -18,6 +19,7 @@ function toolIcon(name: string): IconName {
     case 'Bash':
       return 'terminal';
     case 'Read':
+    case 'Document':
       return 'doc';
     case 'Write':
       return 'addSquare';
@@ -46,6 +48,7 @@ function verb(t: ToolItem): string {
     case 'Read':
       return running ? 'Reading' : 'Read';
     case 'Write':
+    case 'Document':
       return running ? 'Writing' : 'Wrote';
     case 'Edit':
       return running ? 'Editing' : 'Edited';
@@ -243,6 +246,17 @@ export function DetailView({ detail }: { detail: ToolDetail }): JSX.Element {
             </>
           )}
         </div>
+      );
+    case 'document':
+      return detail.text === undefined ? (
+        <div class="tool-kv">
+          <span>File</span>
+          <code>{detail.path}</code>
+        </div>
+      ) : (
+        <button type="button" class="btn btn-secondary btn-sm" onClick={() => openDocument(detail)}>
+          Open {detail.title}
+        </button>
       );
     case 'url':
       return (

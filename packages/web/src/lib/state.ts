@@ -1,5 +1,5 @@
 import { signal, type Signal } from '@preact/signals';
-import type { ChatItem, HostInfo, SessionInfo } from '@phone-code/protocol';
+import type { ChatItem, HostInfo, SessionInfo, ToolDetail } from '@phone-code/protocol';
 import type { TransportStatus } from './transport';
 
 /**
@@ -66,6 +66,23 @@ export function chatOf(sessionId: string): ChatState {
     chats.set(sessionId, c);
   }
   return c;
+}
+
+/**
+ * The latest version of the document the agent wrote at `path` (a tool item with a
+ * `document` detail), in any chat this phone has open: what a link to it opens.
+ */
+export function findDocument(path: string): Extract<ToolDetail, { type: 'document' }> | undefined {
+  let found: { ts: number; detail: Extract<ToolDetail, { type: 'document' }> } | undefined;
+  for (const c of chats.values()) {
+    for (const s of c.items.values()) {
+      const t = s.peek();
+      if (t.kind !== 'tool' || t.detail?.type !== 'document' || t.detail.path !== path) continue;
+      if (t.detail.text !== undefined && (found === undefined || t.ts >= found.ts))
+        found = { ts: t.ts, detail: t.detail };
+    }
+  }
+  return found?.detail;
 }
 
 export function dropChat(sessionId: string): void {

@@ -273,6 +273,31 @@ public struct TodoEntry: Codable, Hashable, Sendable {
   public var status: String
 }
 
+/// A document the agent wrote for the user to read: a plan, a task list, a walkthrough
+/// (Antigravity's artifacts). Shown as a card that opens it.
+public struct DocumentDetail: Codable, Hashable, Sendable, Identifiable {
+  /// Absolute path on the computer; links to it in the chat open this document.
+  public var path: String
+  public var title: String
+  public var summary: String?
+  /// Markdown as last written (capped); nil while it is being written.
+  public var text: String?
+  public var textTruncated: Bool?
+  /// The agent waits for the user to review it before going on (a plan).
+  public var requestFeedback: Bool?
+
+  public var id: String { path }
+
+  public init(path: String, title: String, summary: String? = nil, text: String? = nil, textTruncated: Bool? = nil, requestFeedback: Bool? = nil) {
+    self.path = path
+    self.title = title
+    self.summary = summary
+    self.text = text
+    self.textTruncated = textTruncated
+    self.requestFeedback = requestFeedback
+  }
+}
+
 public enum ToolDetail: Codable, Hashable, Sendable {
   case command(command: String, cwd: String?, exitCode: Int?)
   case diff(path: String, patch: String, added: Int, removed: Int)
@@ -280,9 +305,13 @@ public enum ToolDetail: Codable, Hashable, Sendable {
   case todos([TodoEntry])
   case search(query: String, path: String?)
   case url(String)
+  case document(DocumentDetail)
   case unknown(type: String)
 
-  private enum K: String, CodingKey { case type, command, cwd, exitCode, path, patch, added, removed, content, todos, query, url }
+  private enum K: String, CodingKey {
+    case type, command, cwd, exitCode, path, patch, added, removed, content, todos, query, url
+    case title, summary, text, textTruncated, requestFeedback
+  }
 
   public init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: K.self)
@@ -305,6 +334,14 @@ public enum ToolDetail: Codable, Hashable, Sendable {
       case "search":
         self = .search(query: try c.decode(String.self, forKey: .query), path: try c.decodeIfPresent(String.self, forKey: .path))
       case "url": self = .url(try c.decode(String.self, forKey: .url))
+      case "document":
+        self = .document(
+          DocumentDetail(
+            path: try c.decode(String.self, forKey: .path), title: try c.decode(String.self, forKey: .title),
+            summary: try c.decodeIfPresent(String.self, forKey: .summary),
+            text: try c.decodeIfPresent(String.self, forKey: .text),
+            textTruncated: try? c.decodeIfPresent(Bool.self, forKey: .textTruncated),
+            requestFeedback: try? c.decodeIfPresent(Bool.self, forKey: .requestFeedback)))
       default: self = .unknown(type: type)
       }
     } catch {
@@ -340,6 +377,14 @@ public enum ToolDetail: Codable, Hashable, Sendable {
     case .url(let url):
       try c.encode("url", forKey: .type)
       try c.encode(url, forKey: .url)
+    case .document(let d):
+      try c.encode("document", forKey: .type)
+      try c.encode(d.path, forKey: .path)
+      try c.encode(d.title, forKey: .title)
+      try c.encodeIfPresent(d.summary, forKey: .summary)
+      try c.encodeIfPresent(d.text, forKey: .text)
+      try c.encodeIfPresent(d.textTruncated, forKey: .textTruncated)
+      try c.encodeIfPresent(d.requestFeedback, forKey: .requestFeedback)
     case .unknown(let type):
       try c.encode(type, forKey: .type)
     }

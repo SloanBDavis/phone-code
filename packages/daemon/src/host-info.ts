@@ -140,14 +140,15 @@ export class HostInfoProvider {
     this.connection = c;
   }
 
-  /** Slash commands an agent offers before a session exists. */
+  /** Slash commands an agent offers before a session exists (an ACP agent's: from its last session). */
   async commandsFor(agent: AgentId): Promise<SlashCommand[] | undefined> {
-    return (await this.catalog).find((a) => a.id === agent)?.commands;
+    const a = (await this.catalog).find((x) => x.id === agent);
+    return a?.commands ?? (a?.impl === 'acp' ? rememberedOptions(a.id)?.commands : undefined);
   }
 
   async full(): Promise<HostInfo> {
-    // An ACP agent names its models and modes only inside a session: until it does
-    // again, a new chat offers what its last session said.
+    // An ACP agent names its models, modes and commands only inside a session: until
+    // it does again, a new chat offers what its last session said.
     const catalog = (await this.catalog).map((a) => {
       const kept = a.impl === 'acp' ? rememberedOptions(a.id) : undefined;
       if (kept === undefined) return a;
@@ -158,6 +159,7 @@ export class HostInfoProvider {
       }
       if (info.permissionModes === undefined && kept.permissionModes !== undefined)
         info.permissionModes = kept.permissionModes;
+      if (info.commands === undefined && kept.commands !== undefined) info.commands = kept.commands;
       return info;
     });
     // `agents` keeps its old shape (native kinds only) for older clients.

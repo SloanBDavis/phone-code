@@ -8,7 +8,8 @@
  *   - Harnesses with a `history` source (Claude Code, Codex): incremental
  *     on-disk indexes (index-file.ts) with title, folder and message text, so
  *     text search covers whole conversations.
- *   - ACP agents that can list sessions (session/list): each needs its own
+ *   - ACP agents with such a source (Antigravity) are searched the same way.
+ *   - Other ACP agents that can list sessions (session/list): each needs its own
  *     process, so each gets ACP_WAIT_MS; a slow one is left out of this answer
  *     (its result is cached for the next query) and never holds up the rest.
  *   - phone-code's own transcripts (also indexed), for sessions of any agent.
@@ -171,8 +172,10 @@ export class HistoryService {
   ): Promise<ResumableSession[]> {
     const want = (id: AgentId): boolean => agent === undefined || agent === id;
     const indexed = [...this.indexes].filter(([id]) => want(id));
+    // An ACP agent with its own conversation store is searched through that, like the
+    // native harnesses; the others are asked for their sessions (session/list).
     const acpIds = listAdapters(this.adapters)
-      .filter((a) => a.impl === 'acp' && want(a.kind))
+      .filter((a) => a.impl === 'acp' && a.history === undefined && want(a.kind))
       .map((a) => a.kind);
     const lists = await Promise.all([
       ...indexed.map(([id, index]) => this.indexed(index, id)),

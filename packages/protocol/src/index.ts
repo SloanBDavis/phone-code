@@ -346,7 +346,25 @@ export type ToolDetail =
   | { type: 'file'; path: string; /** for Write: new content (truncated) */ content?: string }
   | { type: 'todos'; todos: Array<{ text: string; status: 'pending' | 'in_progress' | 'completed' }> }
   | { type: 'search'; query: string; path?: string }
-  | { type: 'url'; url: string };
+  | { type: 'url'; url: string }
+  | {
+      /**
+       * A document the agent writes for the user to read: a plan, a task list, a
+       * walkthrough (Antigravity's artifacts). Shown as a card that opens it.
+       */
+      type: 'document';
+      /** Absolute path on the computer (links to it in the chat open this document). */
+      path: string;
+      /** Its first heading, else a name made from the file name ("Implementation plan"). */
+      title: string;
+      /** One line about it, from the agent. */
+      summary?: string;
+      /** Markdown, as last written (capped); absent while it is being written. */
+      text?: string;
+      textTruncated?: boolean;
+      /** The agent waits for the user to review it before going on (a plan). */
+      requestFeedback?: boolean;
+    };
 
 export type PermissionDecision = 'allow' | 'allowAlways' | 'deny';
 

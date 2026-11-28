@@ -33,6 +33,13 @@ function onMdClick(e: MouseEvent): void {
   const t = e.target;
   const btn = t instanceof Element ? t.closest<HTMLButtonElement>('[data-copy]') : null;
   if (btn) void copyCode(btn);
+  const doc = t instanceof Element ? t.closest<HTMLElement>('[data-doc]') : null;
+  if (doc?.dataset['doc'] !== undefined) {
+    e.preventDefault();
+    const path = doc.dataset['doc'];
+    // Loaded here, not imported: the document viewer itself renders Markdown.
+    void import('./documents').then((m) => m.openDocumentAt(path));
+  }
 }
 
 /** Ensures the markdown chunk is loaded; re-renders the caller when it arrives. */

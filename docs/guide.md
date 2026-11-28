@@ -85,16 +85,27 @@ Notifications (Settings, Notifications) tell you when an agent finishes a turn o
 
 ## Agent support
 
-| Agent                                                          | Status       | Notes                                                                                                                                                                                                                        |
-| -------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code (`claude`)                                         | Works        | Verified against the real CLI. phone-code speaks the CLI's stream-json control protocol directly (the same one the Agent SDK uses), so permissions, modes, models, interrupts and resume map one to one.                     |
-| Codex (`codex`)                                                | Experimental | Implemented against the `codex app-server` JSON-RPC schema. Exercised against the real binary only up to login; full model turns have not been run yet, so expect rough edges and please report them.                        |
-| Antigravity (`agy`)                                            | Experimental | Runs through Antigravity's own ACP server (`agy acp`). Exercised against the real CLI 1.5.13 with a scripted model endpoint; no real Google model turn or login has been run.                                                |
-| Gemini CLI, OpenCode, Qwen Code (ACP)                          | Experimental | Generic [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol) adapter. Handshake, login path, modes and models checked against the real CLIs; full model turns only against a scripted fake. |
-| Goose, Kimi, Copilot, Cursor, Auggie, Cline, Qoder, Vibe (ACP) | Untested     | Presets taken from the ACP registry; never run.                                                                                                                                                                              |
-| Any other ACP agent                                            | Experimental | Add it to `agents.json` in the state directory: `{"agents":[{"id":"my-agent","name":"My Agent","command":"my-agent","args":["acp"]}]}`. Read at daemon start.                                                                |
+| Agent                                                          | Status       | Notes                                                                                                                                                                                                                          |
+| -------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude Code (`claude`)                                         | Works        | Verified against the real CLI. phone-code speaks the CLI's stream-json control protocol directly (the same one the Agent SDK uses), so permissions, modes, models, interrupts and resume map one to one.                       |
+| Codex (`codex`)                                                | Experimental | Implemented against the `codex app-server` JSON-RPC schema. Exercised against the real binary only up to login; full model turns have not been run yet, so expect rough edges and please report them.                          |
+| Antigravity (`agy`)                                            | Works        | Runs through Antigravity's own ACP server (`agy acp`). Verified against the real CLI 1.5.18 with real model turns: edits, commands, approvals, Plan mode, its plans and walkthroughs, search. See [Antigravity](#antigravity). |
+| Gemini CLI, OpenCode, Qwen Code (ACP)                          | Experimental | Generic [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol) adapter. Handshake, login path, modes and models checked against the real CLIs; full model turns only against a scripted fake.   |
+| Goose, Kimi, Copilot, Cursor, Auggie, Cline, Qoder, Vibe (ACP) | Untested     | Presets taken from the ACP registry; never run.                                                                                                                                                                                |
+| Any other ACP agent                                            | Experimental | Add it to `agents.json` in the state directory: `{"agents":[{"id":"my-agent","name":"My Agent","command":"my-agent","args":["acp"]}]}`. Read at daemon start.                                                                  |
 
 The terminal works with anything, so you can always run an agent's own TUI there.
+
+### Antigravity
+
+Install the [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli) (`agy`) and sign in once on the computer (run `agy`); phone-code finds it on your PATH or in `~/.local/bin`.
+
+- **Pick on the bar:** its models (Gemini, Claude, GPT-OSS), its thinking level (Low to Extra), and its modes: Ask before acting, Accept edits, Plan only, Auto (safe actions go ahead, risky ones ask) and Bypass permissions. Its slash commands (`/goal`, `/browser`, `/compact`, `/schedule`, …) are in the `/` menu. A new chat offers all of these even before your first Antigravity chat from phone-code: phone-code reopens your latest Antigravity conversation in the background to read them, without changing it.
+- **Plans and walkthroughs:** what Antigravity writes for you to read (an implementation plan, a task list, a walkthrough) is a card in the chat. Tap it, or a link to it in the answer, to read it full screen. A plan that waits for your review has a **Proceed** button; to change it instead, just reply.
+- **Search:** "All chats" searches the text of every Antigravity conversation, including the ones you had at the computer, and continues any of them.
+- **Images** you attach are sent to it; screenshots and images it links to from its artifact folder are shown in the chat.
+
+Its approvals offer Allow and Deny only (Antigravity has no "always allow").
 
 ### Cursor desktop app
 

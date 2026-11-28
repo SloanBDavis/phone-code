@@ -57,7 +57,7 @@ export const MODES: Array<{
     label: 'Auto',
     short: 'Auto',
     icon: 'shieldAuto',
-    hint: 'Claude approves safe actions, asks for risky ones',
+    hint: 'Safe actions go ahead, risky ones ask',
   },
   {
     mode: 'bypassPermissions',

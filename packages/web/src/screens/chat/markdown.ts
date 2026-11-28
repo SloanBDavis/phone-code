@@ -5,10 +5,22 @@ import { escapeHtml } from '../../lib/ansi';
 /**
  * Markdown -> HTML for assistant text (GFM). Loaded lazily with the first
  * chat. Raw HTML in the source is shown as text, never interpreted; links are
- * limited to http(s)/mailto and open outside the app.
+ * limited to http(s)/mailto, which open outside the app, and Markdown files on
+ * the computer, which open the document the agent wrote there.
  */
 
 const marked = new Marked({ gfm: true, breaks: false });
+
+/** `file:///…/implementation_plan.md` (a `#L1` part dropped) -> its path; else undefined. */
+function documentPath(href: string): string | undefined {
+  if (!/^file:\/\//i.test(href)) return undefined;
+  try {
+    const path = decodeURIComponent(new URL(href).pathname);
+    return /\.(?:md|markdown)$/i.test(path) ? path : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 marked.use({
   renderer: {
@@ -22,6 +34,10 @@ marked.use({
     },
     link({ href, title, tokens }: Tokens.Link): string {
       const inner = this.parser.parseInline(tokens);
+      // A Markdown file on the computer (a plan the agent wrote): opens the document, when
+      // the chat has it (md.tsx). Other local files stay text.
+      const doc = documentPath(href);
+      if (doc !== undefined) return `<a href="#" class="doc-link" data-doc="${escapeHtml(doc)}">${inner}</a>`;
       if (!/^(https?:|mailto:)/i.test(href)) return inner;
       const t = title ? ` title="${escapeHtml(title)}"` : '';
       return `<a href="${escapeHtml(href)}"${t} target="_blank" rel="noopener noreferrer">${inner}</a>`;
