@@ -1,6 +1,6 @@
 {
   "name": "phone-code",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "Host daemon for phone-code: your terminal, Claude Code and Codex as a native-feeling chat on your phone.",
   "license": "MIT",
