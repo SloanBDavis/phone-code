@@ -267,7 +267,8 @@ function SessionRow({ s, active, open }: { s: SessionInfo; active: boolean; open
 
 function ChatList(): JSX.Element {
   const groups = useComputed(() => {
-    const shown = sessions.value.filter((s) => !s.archived);
+    // A chat followed from Cursor shows once it is opened here, or while it waits for a reply.
+    const shown = sessions.value.filter((s) => !s.archived && (!s.unopened || s.status === 'waiting'));
     return {
       waiting: shown.filter((s) => s.status === 'waiting'),
       // Every other chat, whatever harness it is (Cursor's app included).
@@ -410,7 +411,7 @@ export function Sidebar(): JSX.Element {
       </div>
       {isDemo.value && !searching && (
         <div class="demo-banner" data-testid="demo-banner">
-          <Icon name="sparkle" size={16} />
+          <Icon name="laptop" size={16} />
           <span>A simulated computer.</span>
           <button type="button" class="link-btn" onClick={exitDemo}>
             Exit demo

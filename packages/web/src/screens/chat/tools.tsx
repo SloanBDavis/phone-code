@@ -33,8 +33,6 @@ function toolIcon(name: string): IconName {
       return 'globe';
     case 'Todo':
       return 'list';
-    case 'Task':
-      return 'sparkle';
     default:
       return 'code';
   }
@@ -424,7 +422,7 @@ function RunningChip({ chat, t }: { chat: ChatState; t: ToolItem }): JSX.Element
       aria-label={`${task ? 'Agent' : 'Running'}: ${t.title}${doing ? `, ${doing}` : ''}. Open to watch.`}
       onClick={() => watch(chat, t.id)}
     >
-      <Icon name={task ? 'sparkle' : toolIcon(t.name)} size={12} stroke={2.2} />
+      {!task && <Icon name={toolIcon(t.name)} size={12} stroke={2.2} />}
       <span class={`running-title ${task ? '' : 'mono'}`}>{t.title}</span>
       {task && (doing || steps > 0) && (
         <span class="running-steps" data-testid="running-steps">
@@ -649,9 +647,6 @@ export function TaskCard({
           aria-label={`Open the agent: ${t.title}`}
           data-testid="task-open"
         >
-          <span class="tool-icon ti-task">
-            <Icon name="sparkle" size={15} stroke={2.1} />
-          </span>
           <span class="task-main">
             <span class="task-name">
               <span class="tool-verb">Agent</span>

@@ -295,6 +295,13 @@ export interface SessionInfo {
    * session back. The `sessions` push includes archived sessions, flagged.
    */
   archived?: boolean;
+  /**
+   * A chat followed from another app (Cursor's) that no phone has opened yet. Like
+   * a chat started at the computer with any other agent, it is not in the sidebar
+   * (except while it waits for a reply) and "All chats" lists it; opening it on a
+   * phone makes it an ordinary chat (false). Its finished turns send no notification.
+   */
+  unopened?: boolean;
 }
 
 /** Cursor's desktop app on the computer (see `HostInfo.cursor`). */

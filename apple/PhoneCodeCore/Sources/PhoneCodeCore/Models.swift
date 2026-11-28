@@ -172,6 +172,8 @@ public struct SessionInfo: Codable, Hashable, Sendable, Identifiable {
   public var efforts: [EffortOption]?
   public var unread: Bool?
   public var archived: Bool?
+  /// Followed from another app (Cursor's) and not opened on a phone yet.
+  public var unopened: Bool?
 
   public var isArchived: Bool { archived == true }
   public var isUnread: Bool { unread == true }

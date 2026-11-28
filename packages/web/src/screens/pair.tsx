@@ -184,7 +184,7 @@ function ManualPair(): JSX.Element {
       </div>
       <div class="pair-demo">
         <button type="button" class="btn btn-plain" onClick={() => void startDemo()} data-testid="pair-demo">
-          <Icon name="sparkle" size={18} />
+          <Icon name="laptop" size={18} />
           Try the demo
         </button>
         <p>Explore with a simulated computer. Nothing is installed.</p>

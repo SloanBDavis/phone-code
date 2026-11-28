@@ -62,6 +62,8 @@ export class PushService {
   notify(session: SessionInfo, reason: 'waiting' | 'turn'): void {
     // A turn that ended into a wait for the reader: "needs you" already says it.
     if (reason === 'turn' && session.status === 'waiting') return;
+    // A chat followed from Cursor that nobody opened here: only its waits for a reply.
+    if (reason === 'turn' && session.unopened === true) return;
     const key = `${session.id}:${reason}`;
     const now = Date.now();
     if (now - (this.lastSent.get(key) ?? 0) < MIN_INTERVAL_MS) return;

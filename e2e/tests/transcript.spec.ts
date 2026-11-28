@@ -120,3 +120,30 @@ test('a sub-agent at work is named above the composer, with what it is doing, an
   await expect(phone.testId('running-strip')).toHaveCount(0);
   await waitTurn(phone, 1);
 });
+
+test('scrolling up while an answer streams: the view stays where the reader put it, and follows again at the end', async ({
+  phone,
+}) => {
+  // A short window, so the answer soon runs past it.
+  await phone.page.setViewportSize({ width: 390, height: 520 });
+  await newChat(phone, 'claude');
+  await send(phone, 'give me a long answer');
+  const scroller = phone.page.locator('.chat-scroll');
+  const text = phone.testId('chat-item-text').last();
+  const dist = (): Promise<number> =>
+    scroller.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  await expect(text).toContainText('word30', { timeout: 15_000 });
+  await expect.poll(dist).toBeLessThan(4);
+  // A small move up: not pulled back down as the text keeps coming.
+  await scroller.hover();
+  await phone.page.mouse.wheel(0, -30);
+  await expect.poll(dist).toBeGreaterThan(20);
+  const at = await scroller.evaluate((el) => el.scrollTop);
+  await expect(text).toContainText('word50', { timeout: 15_000 });
+  expect(Math.abs((await scroller.evaluate((el) => el.scrollTop)) - at)).toBeLessThan(2);
+  // Back at the end: it follows the answer again.
+  await phone.page.mouse.wheel(0, 5000);
+  await expect(text).toContainText('word80', { timeout: 15_000 });
+  await expect.poll(dist).toBeLessThan(4);
+  await waitTurn(phone, 1);
+});

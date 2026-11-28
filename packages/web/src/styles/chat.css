@@ -20,9 +20,10 @@
   gap: 14px;
 }
 
+/* Drawn at their real size (no content-visibility): WebKit does not keep the scroll
+   position when a block above the view changes from an estimate to its real height,
+   so scrolling up through a long chat jumped. The transcript mounts a page at a time. */
 .block {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 72px;
   min-width: 0;
 }
 

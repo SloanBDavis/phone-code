@@ -105,7 +105,8 @@ function blocksOf(chat: ChatState, ids: string[], asks: string[], running: boole
 const keyOf = (b: Block): string => (b.k === 'one' ? b.id : `${b.k}:${b.ids[0] ?? ''}`);
 
 const PAGE = 60;
-const STICK_PX = 72;
+/** Back within this of the end, the view follows new content again. */
+const STICK_PX = 4;
 const JUMP_PX = 240;
 
 export interface ScrollApi {
@@ -181,12 +182,37 @@ export function Transcript({
     ro.observe(inner);
     ro.observe(el); // keyboard / composer height changes
     let frame = 0;
+    // The view follows new content until the reader scrolls up (wheel, finger, keys,
+    // scrollbar), and again once they are back at the end. Where the view is alone does
+    // not decide it: streamed text lands between frames, and a reader who just started
+    // moving up a few pixels would be pulled back down.
+    const leave = (): void => {
+      stickRef.current = false;
+    };
+    const onWheel = (e: WheelEvent): void => {
+      if (e.deltaY < 0) leave();
+    };
+    let touchY: number | undefined;
+    const onTouchMove = (e: TouchEvent): void => {
+      const y = e.touches[0]?.clientY;
+      if (y === undefined) return;
+      if (touchY !== undefined && y > touchY) leave();
+      touchY = y;
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (['ArrowUp', 'PageUp', 'Home'].includes(e.key) || (e.key === ' ' && e.shiftKey)) leave();
+    };
+    // Mouse down on the scrollbar itself (the scroller, not its content).
+    const onPointerDown = (e: PointerEvent): void => {
+      if (e.target === el) leave();
+    };
     const onScroll = (): void => {
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
         const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-        stickRef.current = dist < STICK_PX;
+        if (dist < STICK_PX) stickRef.current = true;
+        else if (dist > JUMP_PX) stickRef.current = false;
         // Away from the bottom by more than a glance: the way back is one click.
         setShowJump(dist > JUMP_PX);
         if (el.scrollTop < 600) setLimit((l) => (l < countRef.current ? growFrom(el, l) : l));
@@ -198,21 +224,31 @@ export function Transcript({
     };
     const down = (): void => {
       touchingRef.current = true;
+      touchY = undefined;
     };
     const up = (): void => {
       touchingRef.current = false;
     };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    el.addEventListener('touchstart', down, { passive: true });
-    el.addEventListener('touchend', up, { passive: true });
-    el.addEventListener('touchcancel', up, { passive: true });
+    const opts = { passive: true };
+    el.addEventListener('scroll', onScroll, opts);
+    el.addEventListener('wheel', onWheel, opts);
+    el.addEventListener('touchstart', down, opts);
+    el.addEventListener('touchmove', onTouchMove, opts);
+    el.addEventListener('touchend', up, opts);
+    el.addEventListener('touchcancel', up, opts);
+    el.addEventListener('keydown', onKey);
+    el.addEventListener('pointerdown', onPointerDown, opts);
     return () => {
       ro.disconnect();
       cancelAnimationFrame(frame);
       el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('wheel', onWheel);
       el.removeEventListener('touchstart', down);
+      el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', up);
       el.removeEventListener('touchcancel', up);
+      el.removeEventListener('keydown', onKey);
+      el.removeEventListener('pointerdown', onPointerDown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setShowJump only writes a stable signal
   }, [scrollRef]);

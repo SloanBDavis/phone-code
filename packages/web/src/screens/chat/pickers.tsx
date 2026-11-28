@@ -301,7 +301,6 @@ export function EffortChip({ session }: { session?: SessionInfo }): JSX.Element 
         )
       }
     >
-      <Icon name="sparkle" size={13} stroke={2.2} />
       <span class="chip-text">{label}</span>
     </button>
   );

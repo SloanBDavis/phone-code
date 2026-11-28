@@ -291,12 +291,24 @@ struct TranscriptView: View {
       viewport = h
     }
     .defaultScrollAnchor(.bottom)
-    .defaultScrollAnchor(.bottom, for: .sizeChanges)
+    // New content keeps the end in view only while the reader is there: scrolled up,
+    // what they read stays put as the answer grows below it.
+    .defaultScrollAnchor(atBottom ? .bottom : .top, for: .sizeChanges)
     .scrollDismissesKeyboard(.interactively)
     .onScrollGeometryChange(for: Bool.self) { g in
-      g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 120
+      g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 8
     } action: { _, near in
       atBottom = near
+    }
+    // A finger moving the transcript: it is the reader's while it moves, and follows
+    // again if it comes to rest at the end.
+    .onScrollPhaseChange { _, phase, context in
+      if phase == .interacting {
+        atBottom = false
+      } else if phase == .idle {
+        let g = context.geometry
+        atBottom = g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 8
+      }
     }
     // Follow new items (an answer, a permission, a question) while at the
     // end, and always after the user sends.

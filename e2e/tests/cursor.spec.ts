@@ -16,6 +16,7 @@ import {
   closeSidebar,
   openComputer,
   openSidebar,
+  searchAll,
   send,
   shot,
   startNewChat,
@@ -97,10 +98,20 @@ function hook(daemon: Daemon, event: string, input: Record<string, unknown>): Pr
 const cursorRow = (phone: Phone) =>
   phone.page.locator('[data-testid="session-row"][data-agent="cursor-app"]');
 
-/** Opens the Cursor chat from the sidebar and waits for its transcript (the phone follows it). */
+/**
+ * Opens the Cursor chat and waits for its transcript (the phone follows it): from the
+ * sidebar once it was opened here, else from "All chats", like a chat started at the computer.
+ */
 async function openCursorChat(phone: Phone): Promise<void> {
   await openSidebar(phone);
-  await cursorRow(phone).click();
+  if ((await cursorRow(phone).count()) > 0) await cursorRow(phone).first().click();
+  else {
+    const rows = await searchAll(phone, PROMPT);
+    await rows
+      .filter({ has: phone.page.locator('[data-glyph="cursor-app"]') })
+      .first()
+      .click();
+  }
   await expect(phone.testId('screen-chat')).toHaveAttribute('data-session-id', /.+/);
   await expect(phone.testId('chat-item-user').first()).toContainText(PROMPT);
 }
@@ -151,14 +162,25 @@ test('a Cursor chat shows up live: the prompt as its title, thinking, a command,
 }) => {
   expect(await hook(daemon, 'beforeSubmitPrompt', { generation_id: 'g1', prompt: PROMPT })).toEqual({});
   await openSidebar(phone);
-  // In the chat list like a chat of any other harness: no section of its own.
+  // Like a chat started at the computer with any other agent: not in the sidebar…
   await expect(phone.testId('section-cursor')).toHaveCount(0);
+  await expect(cursorRow(phone)).toHaveCount(0);
+  // …but in "All chats", under its prompt.
+  const hit = (await searchAll(phone, PROMPT)).filter({
+    has: phone.page.locator('[data-glyph="cursor-app"]'),
+  });
+  await expect(hit).toHaveCount(1);
+  await expect(hit.locator('.sb-title')).toHaveText(PROMPT);
+  await phone.testId('search-cancel').click();
+  await closeSidebar(phone);
+  await openCursorChat(phone);
+  // Opened here: in the chat list from now on, like any chat.
+  await openSidebar(phone);
   const row = phone.testId('section-chats').locator('[data-testid="session-row"][data-agent="cursor-app"]');
   await expect(row).toHaveCount(1);
   await expect(row.locator('.sb-title')).toHaveText(PROMPT);
   await expect(row.locator('[data-glyph="cursor-app"]')).toHaveText('Cu');
   await closeSidebar(phone);
-  await openCursorChat(phone);
 
   // Following along while Cursor works.
   await hook(daemon, 'afterAgentThought', { generation_id: 'g1', text: 'Looking at auth.ts' });
@@ -176,6 +198,8 @@ test('a Cursor chat shows up live: the prompt as its title, thinking, a command,
   });
   await hook(daemon, 'afterAgentResponse', { generation_id: 'g1', text: ANSWER });
 
+  // Everything has reached the phone (the steps fold up as they arrive) before they are opened.
+  await expect(phone.testId('chat-item-text').last()).toContainText(ANSWER);
   await unfold(phone);
   await expect(phone.testId('chat-item-thinking')).toHaveCount(1);
   const bash = phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
@@ -233,6 +257,54 @@ test('when Cursor finishes a turn, the reply typed here goes back to it as its n
   await expect(phone.testId('composer-input')).toBeDisabled();
   await expect(phone.testId('composer-send')).toBeDisabled();
   await bothThemes(phone, 'cursor-closed');
+});
+
+test('a Cursor chat nobody opened here stays out of the sidebar until it waits for a reply', async ({
+  phone,
+  daemon,
+}) => {
+  const other = `${CONV}-other`;
+  await hook(daemon, 'beforeSubmitPrompt', {
+    conversation_id: other,
+    generation_id: 'o1',
+    prompt: 'tidy the readme',
+  });
+  await hook(daemon, 'stop', {
+    conversation_id: other,
+    generation_id: 'o1',
+    status: 'completed',
+    loop_count: 0,
+  });
+  await openSidebar(phone);
+  const row = phone.page.locator('[data-testid="session-row"][data-agent="cursor-app"]').filter({
+    hasText: 'tidy the readme',
+  });
+  await expect(row).toHaveCount(0);
+  // Away from the computer, its next turn waits for a reply: that needs you, so it shows.
+  writeFileSync(IDLE, AWAY);
+  await hook(daemon, 'beforeSubmitPrompt', {
+    conversation_id: other,
+    generation_id: 'o2',
+    prompt: 'and the license',
+  });
+  const stopped = hook(daemon, 'stop', {
+    conversation_id: other,
+    generation_id: 'o2',
+    status: 'completed',
+    loop_count: 0,
+  });
+  await expect(phone.testId('section-waiting').locator('[data-agent="cursor-app"]')).toHaveCount(1);
+  await phone.testId('section-waiting').locator('[data-agent="cursor-app"]').click();
+  await send(phone, 'looks good');
+  expect(await stopped).toEqual({ followup_message: 'looks good' });
+  writeFileSync(IDLE, '0');
+  // Opened and answered: it stays in the list after the wait.
+  await openSidebar(phone);
+  await expect(
+    phone.page
+      .locator('[data-testid="session-row"][data-agent="cursor-app"]')
+      .filter({ hasText: 'tidy the readme' }),
+  ).toHaveCount(1);
 });
 
 test('a turn that ends while nobody is at the computer waits for a reply, with the chat closed on the phone', async ({

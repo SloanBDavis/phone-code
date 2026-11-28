@@ -159,6 +159,8 @@ export class ChatSession implements LiveSession {
       ...(params.effort === undefined ? {} : { effort: params.effort }),
       permissionMode: params.permissionMode ?? 'default',
     };
+    // Followed from another app: out of the sidebar until a phone opens it.
+    if (deps.adapters[agent]?.external === true) info.unopened = true;
     const s = new ChatSession(deps, info, 0, title !== undefined && title !== '', params.resumeId);
     // A resumed session's history comes from the adapter, so don't auto-title from our first message.
     if (params.resumeId !== undefined) s.autoTitle = false;
@@ -173,6 +175,13 @@ export class ChatSession implements LiveSession {
     const info: SessionInfo = { ...rec.info, status };
     if (info.agent !== undefined && info.agentName === undefined)
       info.agentName = agentDisplayName(deps.adapters, info.agent);
+    // Followed chats from before phone-code knew which were opened: none counts as opened.
+    if (
+      info.agent !== undefined &&
+      deps.adapters[info.agent]?.external === true &&
+      info.unopened === undefined
+    )
+      info.unopened = true;
     const s = new ChatSession(deps, info, rec.seq + RESTORE_SEQ_MARGIN, rec.titleLocked, rec.nativeSessionId);
     s.autoTitle = false;
     return s;
@@ -450,8 +459,10 @@ export class ChatSession implements LiveSession {
       for (const frame of missed) if (!this.fanout.sendTo(sub, frame)) return;
     }
     this.fanout.add(sub);
-    if (this.info.unread === true) {
+    if (this.info.unread === true || this.info.unopened === true) {
       this.info.unread = false;
+      // Opened on a phone: an ordinary chat from now on (false, so it stays opened).
+      if (this.info.unopened === true) this.info.unopened = false;
       this.deps.host.changed('structure');
     }
   }

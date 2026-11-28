@@ -335,11 +335,6 @@ struct SubagentCard: View {
         watching = true
       } label: {
         HStack(spacing: 10) {
-          Image(systemName: "person.2")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(width: 28, height: 28)
-            .background(Theme.chip, in: .rect(cornerRadius: 8))
           VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
               Text("Agent").font(.callout.weight(.medium))
@@ -475,7 +470,6 @@ struct RunningStrip: View {
               watching = WatchTarget(id: t.id)
             } label: {
               HStack(spacing: 5) {
-                Image(systemName: "person.2").font(.caption2)
                 Text(t.title).font(.footnote.weight(.medium)).lineLimit(1)
                 let p = subagentProgress(chat, t.id)
                 let more = [p.doing, p.steps > 0 ? stepsText(p.steps) : ""].filter { !$0.isEmpty }.joined(separator: " · ")

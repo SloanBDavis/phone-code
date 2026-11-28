@@ -114,7 +114,7 @@ Its approvals offer Allow and Deny only (Antigravity has no "always allow").
 Chats you run in the Cursor app on your computer can show up on your phone, so you can follow along and reply when a turn ends.
 
 - **Connect:** turn on "Follow Cursor chats" in Settings (the app suggests it when Cursor is installed), or run `phonecode cursor connect`. This adds phone-code's hooks to `~/.cursor/hooks.json`, next to any hooks you already have, and installs a small script in phone-code's state folder.
-- **Follow along:** each Cursor chat appears in the sidebar with the prompt, thinking, commands, edits and the answer.
+- **Follow along:** like a chat you started at the computer with any other agent, a Cursor chat is in "All chats" (search, or browse), not in the sidebar; open it to see the prompt, thinking, commands, edits and the answer live. Once opened it stays in the sidebar like any chat. A Cursor chat that waits for your reply shows under "Needs you" by itself, and only that sends a notification: turns that just finish in Cursor do not.
 - **Reply:** Cursor only takes a message from phone-code at the moment a turn ends, so there are two ways to reply:
   - While Cursor is working, send a message and it goes out when the turn ends.
   - When a turn ends, Cursor waits for your reply (the chat says "Waiting for your reply" and you get a notification) if the chat is open on your phone, or if nobody is at the computer: no keyboard or mouse input for two minutes (macOS only). It waits up to 8 hours. In Cursor the turn looks unfinished meanwhile; it is let go as soon as someone uses the computer again and the chat is not open on a phone.

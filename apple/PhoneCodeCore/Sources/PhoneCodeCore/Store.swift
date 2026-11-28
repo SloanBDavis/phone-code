@@ -256,10 +256,11 @@ public final class PhoneCodeClient {
 
   public func session(_ id: String) -> SessionInfo? { sessions.first { $0.id == id } }
 
-  /// Sidebar order: sessions that need the user first, then every other chat
-  /// (whatever harness it is, Cursor's app included); archived hidden.
+  /// Sidebar order: sessions that need the user first, then every other chat;
+  /// archived hidden, and a chat followed from Cursor until it is opened here
+  /// (unless it waits for a reply), like a chat started at the computer.
   public var sidebar: (needsYou: [SessionInfo], chats: [SessionInfo]) {
-    let shown = sessions.filter { !$0.isArchived }
+    let shown = sessions.filter { !$0.isArchived && ($0.unopened != true || $0.status == .waiting) }
     return (shown.filter { $0.status == .waiting }, shown.filter { $0.status != .waiting })
   }
 

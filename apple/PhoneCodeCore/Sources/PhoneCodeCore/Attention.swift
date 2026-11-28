@@ -41,6 +41,9 @@ public struct AttentionTracker: Sendable {
       let before = last[s.id]
       if s.status == .waiting, before != .waiting {
         out.append(.needsYou(s))
+      } else if s.unopened == true {
+        // A chat followed from Cursor that nobody opened here: only its waits for a reply.
+        continue
       } else if before == .running, s.status == .idle {
         out.append(.finished(s))
       } else if before == .running, s.status == .error {
