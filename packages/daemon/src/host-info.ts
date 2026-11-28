@@ -95,6 +95,8 @@ async function detectAll(adapters: AdapterRegistry): Promise<AgentInfo[]> {
       impl,
       available: d.available,
     };
+    if (a.shortName !== undefined) info.shortName = a.shortName;
+    if (a.monogram !== undefined) info.monogram = a.monogram;
     if (d.version !== undefined) info.version = d.version;
     if (d.models !== undefined) info.models = d.models;
     if (d.modelOptions !== undefined) info.modelOptions = d.modelOptions;
@@ -106,7 +108,8 @@ async function detectAll(adapters: AdapterRegistry): Promise<AgentInfo[]> {
   });
 }
 
-function isNativeKind(id: string): id is AgentKind {
+/** Ids older clients know in `HostInfo.agents` (see AgentKind). */
+function isLegacyKind(id: string): id is AgentKind {
   return id === 'claude' || id === 'codex';
 }
 
@@ -159,7 +162,7 @@ export class HostInfoProvider {
     });
     // `agents` keeps its old shape (native kinds only) for older clients.
     const agents: AgentAvailability[] = catalog.flatMap((a) =>
-      a.impl === 'native' && isNativeKind(a.id)
+      a.impl === 'native' && isLegacyKind(a.id)
         ? [
             {
               kind: a.id,

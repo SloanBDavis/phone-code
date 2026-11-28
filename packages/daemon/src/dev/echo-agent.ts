@@ -166,9 +166,10 @@ class EchoSession implements AgentSession {
   }
 }
 
-function echoAdapter(kind: AgentKind): AgentAdapter {
+function echoAdapter(kind: AgentKind, name: string): AgentAdapter {
   return {
     kind,
+    name,
     detect: () => Promise.resolve({ available: true, version: 'echo', models: ['echo-small', 'echo-large'] }),
     start(opts, events) {
       events.nativeSessionId(opts.resumeId ?? `echo-${randomId()}`);
@@ -190,5 +191,5 @@ function echoAdapter(kind: AgentKind): AgentAdapter {
 }
 
 export function createEchoAdapters(): AdapterRegistry {
-  return { claude: echoAdapter('claude'), codex: echoAdapter('codex') };
+  return { claude: echoAdapter('claude', 'Claude Code'), codex: echoAdapter('codex', 'Codex') };
 }

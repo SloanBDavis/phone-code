@@ -1,13 +1,17 @@
 /**
  * Contract between the daemon core (session manager, websocket server) and the
- * agent adapters (Claude Code, Codex). The core owns transcripts, seq numbers,
- * persistence and fan-out to clients; an adapter owns one agent process and
- * translates its native event stream into ChatItems.
+ * agent harnesses (Claude Code, Codex, ACP agents, Cursor's app). The core owns
+ * transcripts, seq numbers, persistence and fan-out to clients; an adapter owns
+ * one agent process and translates its native event stream into ChatItems.
+ *
+ * Everything the core needs to know about a harness is on its AgentAdapter:
+ * the core never checks for a particular agent id. See agents/README.md for
+ * adding one.
  */
+import type { Conversation, FileStat } from '../history/index-file.ts';
 import type {
   AgentId,
   AgentImpl,
-  AgentKind,
   Attachment,
   ChatItem,
   EffortOption,
@@ -97,11 +101,27 @@ export interface AgentSession {
   dispose(): Promise<void>;
 }
 
+/**
+ * A harness's own conversation files on this host, indexed for "All chats"
+ * (history/service.ts) so text search covers whole conversations. Harnesses
+ * without one are listed through `listResumable` instead.
+ */
+export interface HarnessHistory {
+  /** Every conversation file, with size and mtime (only changed files are read again). */
+  list(): Promise<FileStat[]>;
+  /** Title, folder, resume id and text of one file; undefined skips it (sub-agents, empty files). */
+  extract(file: FileStat): Promise<Conversation | undefined>;
+}
+
 export interface AgentAdapter {
-  /** The agent id: an AgentKind for native adapters, the configured id for ACP agents. */
+  /** The agent id ("claude", "gemini"): lowercase [a-z0-9._-], unique on the host. */
   kind: AgentId;
-  /** Display name ("Claude Code", "Gemini CLI"). Native adapters may omit it. */
-  name?: string;
+  /** Display name ("Claude Code", "Gemini CLI"). */
+  name: string;
+  /** Name where space is short ("Claude"). Absent: `name`. */
+  shortName?: string;
+  /** Two letters for its glyph ("CC"). Absent: the phone uses the id's first two. */
+  monogram?: string;
   /** 'native' when omitted. */
   impl?: AgentImpl;
   /**
@@ -134,29 +154,29 @@ export interface AgentAdapter {
   start(opts: AgentStartOptions, events: AgentEvents): Promise<AgentSession>;
   /** Past sessions on this host that can be resumed, newest first. */
   listResumable(limit?: number): Promise<ResumableSession[]>;
+  /** Its conversation files, for "All chats" search (see HarnessHistory). */
+  history?: HarnessHistory;
+  /**
+   * Folders it writes generated images to, besides the session folder; images
+   * it links to there are shown in the chat (images/markdown.ts).
+   */
+  artifactRoots?(env?: NodeJS.ProcessEnv): string[];
 }
 
 /**
- * Adapters are looked up through this registry, by agent id. The native ones
- * (`claude`, `codex`) are always present; ACP-backed agents are extra keys in
- * insertion order. `PHONECODE_CLAUDE_BIN` and `PHONECODE_CODEX_BIN` override the
- * binaries (the e2e suite points them at scripted fake agents); see acp/config.ts
- * for the ACP agents.
+ * Adapters are looked up through this registry, by agent id, in the order the
+ * phone lists them (agents/index.ts builds it). `PHONECODE_CLAUDE_BIN` and
+ * `PHONECODE_CODEX_BIN` override the native binaries (the e2e suite points
+ * them at scripted fake agents); see acp/config.ts for the ACP agents.
  */
-export type AdapterRegistry = Record<AgentKind, AgentAdapter> & Partial<Record<string, AgentAdapter>>;
-
-const NATIVE_NAMES: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex' };
+export type AdapterRegistry = Partial<Record<AgentId, AgentAdapter>>;
 
 /** Display name of an agent id, from its adapter when known. */
 export function agentDisplayName(adapters: AdapterRegistry, id: AgentId): string {
-  const a = adapters[id];
-  if (a?.name !== undefined) return a.name;
-  if (id === 'claude') return NATIVE_NAMES.claude;
-  if (id === 'codex') return NATIVE_NAMES.codex;
-  return id;
+  return adapters[id]?.name ?? id;
 }
 
-/** All adapters, native first, in registry order. */
+/** All adapters, in registry order. */
 export function listAdapters(adapters: AdapterRegistry): AgentAdapter[] {
   return Object.values(adapters).filter((a): a is AgentAdapter => a !== undefined);
 }

@@ -16,7 +16,7 @@
  *     preset (e.g. to change its command or add env, or `disabled: true` to
  *     hide it). Read once at daemon start.
  *
- * Native adapters always win: the ids `claude` and `codex` are reserved, and
+ * Native adapters always win: their ids (`claude`, `codex`) are reserved, and
  * the registry's Claude/Codex ACP wrappers are not presets.
  *
  * `PHONECODE_<ID>_BIN` (id upper-cased, non-alphanumerics as `_`, e.g.
@@ -39,6 +39,8 @@ export interface AcpAgentConfig {
   /** Arguments that print the version (default `--version`); `null` skips the version probe. */
   versionArgs: string[] | null;
   source: 'builtin' | 'config';
+  /** Two letters for its glyph when the id's first two read badly ("Oc" for OpenCode). */
+  monogram?: string;
   /** Arguments of the agent's terminal sign-in, for the "log in first" notice when it advertises none. */
   loginArgs?: string[];
   /**
@@ -60,7 +62,7 @@ type Preset = Omit<AcpAgentConfig, 'source' | 'env' | 'versionArgs'> & {
 /** Registry-confirmed launch lines (registry ids in comments where they differ). */
 export const ACP_PRESETS: readonly Preset[] = [
   { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'] },
-  { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'] },
+  { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], monogram: 'Oc' },
   { id: 'qwen', name: 'Qwen Code', command: 'qwen', args: ['--acp'] }, // qwen-code
   { id: 'goose', name: 'goose', command: 'goose', args: ['acp'] },
   { id: 'kimi', name: 'Kimi CLI', command: 'kimi', args: ['acp'] }, // kimi, kimi-code
@@ -103,8 +105,8 @@ function presetCommand(p: Preset): string {
   return found ?? p.command;
 }
 
-/** Native adapters (always win) and the new-session sheet's terminal tile. */
-const RESERVED = new Set(['claude', 'codex', 'terminal']);
+/** The new-session sheet's terminal tile; the native harnesses' ids are added by the caller. */
+const RESERVED = ['terminal'];
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 export function binEnvName(id: string): string {
@@ -118,7 +120,10 @@ function stringMap(v: unknown): Record<string, string> {
   return out;
 }
 
-function readUserEntries(file: string): Array<Partial<AcpAgentConfig> & { id: string; disabled?: boolean }> {
+function readUserEntries(
+  file: string,
+  reserved: ReadonlySet<string>,
+): Array<Partial<AcpAgentConfig> & { id: string; disabled?: boolean }> {
   let raw: string;
   try {
     raw = readFileSync(file, 'utf8');
@@ -141,7 +146,7 @@ function readUserEntries(file: string): Array<Partial<AcpAgentConfig> & { id: st
       log.warn(`ignoring agents.json entry with invalid id ${JSON.stringify(e['id'])} (use [a-z0-9._-])`);
       continue;
     }
-    if (RESERVED.has(id)) {
+    if (reserved.has(id)) {
       log.warn(`ignoring agents.json entry "${id}": that id is reserved (native adapter or terminal)`);
       continue;
     }
@@ -167,9 +172,16 @@ export function agentsFile(): string {
   return join(stateDir(), 'agents.json');
 }
 
-/** Presets merged with `agents.json`, presets first (in preset order), then user-only entries. */
-export function loadAcpAgents(env: NodeJS.ProcessEnv = process.env): AcpAgentConfig[] {
-  const user = readUserEntries(agentsFile());
+/**
+ * Presets merged with `agents.json`, presets first (in preset order), then
+ * user-only entries. `reserved`: ids taken by native harnesses (a user entry
+ * with one is ignored with a warning).
+ */
+export function loadAcpAgents(
+  reserved: Iterable<string> = [],
+  env: NodeJS.ProcessEnv = process.env,
+): AcpAgentConfig[] {
+  const user = readUserEntries(agentsFile(), new Set([...RESERVED, ...reserved]));
   const byId = new Map<string, AcpAgentConfig>();
   for (const p of ACP_PRESETS) {
     byId.set(p.id, {
@@ -181,6 +193,7 @@ export function loadAcpAgents(env: NodeJS.ProcessEnv = process.env): AcpAgentCon
       versionArgs: p.versionArgs === undefined ? ['--version'] : p.versionArgs,
       source: 'builtin',
       ...(p.loginArgs ? { loginArgs: [...p.loginArgs] } : {}),
+      ...(p.monogram === undefined ? {} : { monogram: p.monogram }),
       ...(p.errorReplyPrefix === undefined ? {} : { errorReplyPrefix: p.errorReplyPrefix }),
     });
   }
@@ -203,6 +216,7 @@ export function loadAcpAgents(env: NodeJS.ProcessEnv = process.env): AcpAgentCon
       versionArgs: u.versionArgs === undefined ? (base?.versionArgs ?? ['--version']) : u.versionArgs,
       source: 'config',
       ...(base?.loginArgs ? { loginArgs: base.loginArgs } : {}),
+      ...(base?.monogram === undefined ? {} : { monogram: base.monogram }),
       ...(base?.errorReplyPrefix === undefined ? {} : { errorReplyPrefix: base.errorReplyPrefix }),
     });
   }

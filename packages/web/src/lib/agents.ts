@@ -1,14 +1,17 @@
-import type {
-  AgentId,
-  AgentInfo,
-  EffortOption,
-  HostInfo,
-  ModelOption,
-  PermissionMode,
-  SessionInfo,
+import {
+  DEFAULT_AGENT,
+  type AgentId,
+  type AgentInfo,
+  type EffortOption,
+  type HostInfo,
+  type ModelOption,
+  type PermissionMode,
+  type SessionInfo,
 } from '@phone-code/protocol';
 
+/** Names for daemons that send no `agentCatalog` (or no `shortName` in it). */
 const NATIVE_NAMES: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
+const SHORT_NAMES: Record<string, string> = { claude: 'Claude', codex: 'Codex' };
 
 /**
  * Cursor's desktop app, followed through its hooks: its chats start in Cursor
@@ -18,7 +21,6 @@ const NATIVE_NAMES: Record<string, string> = { claude: 'Claude Code', codex: 'Co
 export const CURSOR_APP = 'cursor-app';
 
 export const isCursorChat = (s: Pick<SessionInfo, 'agent'> | undefined): boolean => s?.agent === CURSOR_APP;
-const SHORT_NAMES: Record<string, string> = { claude: 'Claude', codex: 'Codex' };
 
 /**
  * Every agent the host offers. Daemons before the multi-agent protocol only
@@ -43,13 +45,14 @@ export function findAgent(h: HostInfo | null | undefined, id: AgentId | undefine
 
 /** Display name of a session's agent: "Claude Code", "Codex", "Gemini CLI"… */
 export function agentLabel(s: Pick<SessionInfo, 'agent' | 'agentName'>, h?: HostInfo | null): string {
-  const id = s.agent ?? 'claude';
+  const id = s.agent ?? DEFAULT_AGENT;
   return s.agentName ?? findAgent(h, id)?.name ?? NATIVE_NAMES[id] ?? id;
 }
 
 /** Short form for "Message …" and "… wants to": "Claude", "Codex", else the display name. */
 export function agentShortLabel(s: Pick<SessionInfo, 'agent' | 'agentName'>, h?: HostInfo | null): string {
-  return SHORT_NAMES[s.agent ?? 'claude'] ?? agentLabel(s, h);
+  const id = s.agent ?? DEFAULT_AGENT;
+  return findAgent(h, id)?.shortName ?? SHORT_NAMES[id] ?? agentLabel(s, h);
 }
 
 /**
@@ -67,7 +70,7 @@ export function modelOptions(
 /** A session's models: its own list (reported once the agent started), else the agent's. */
 export function sessionModels(s: SessionInfo, h: HostInfo | null | undefined): ModelOption[] {
   const own = modelOptions(s);
-  return own.length ? own : modelOptions(findAgent(h, s.agent ?? 'claude'));
+  return own.length ? own : modelOptions(findAgent(h, s.agent ?? DEFAULT_AGENT));
 }
 
 /**

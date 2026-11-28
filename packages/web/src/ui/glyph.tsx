@@ -1,5 +1,7 @@
 import type { JSX } from 'preact';
-import type { SessionInfo } from '@phone-code/protocol';
+import { DEFAULT_AGENT, type SessionInfo } from '@phone-code/protocol';
+import { findAgent } from '../lib/agents';
+import { host } from '../lib/state';
 
 /**
  * What a glyph shows: an agent id (`claude`, `codex`, `gemini`, …), the
@@ -8,11 +10,12 @@ import type { SessionInfo } from '@phone-code/protocol';
 export type GlyphKind = string;
 
 /** Glyph for an agent id (a session without one is Claude Code). */
-export const agentGlyph = (agent: string | undefined): GlyphKind => agent ?? 'claude';
+export const agentGlyph = (agent: string | undefined): GlyphKind => agent ?? DEFAULT_AGENT;
 
 export const glyphOf = (s: Pick<SessionInfo, 'kind' | 'agent'>): GlyphKind =>
   s.kind === 'terminal' ? 'terminal' : agentGlyph(s.agent);
 
+/** For daemons that send no `monogram`, and Cursor's app (not in the catalog). */
 const MONOGRAMS: Record<string, string> = {
   claude: 'CC',
   codex: 'Cx',
@@ -23,9 +26,9 @@ const MONOGRAMS: Record<string, string> = {
   'cursor-app': 'Cu',
 };
 
-/** Two letters for an agent: "CC", "Cx", "Ge", or the id's first two, capitalized. */
+/** Two letters for an agent: its own ("CC", "Cx"), or the id's first two, capitalized. */
 function monogram(id: string): string {
-  const known = MONOGRAMS[id];
+  const known = findAgent(host.value, id)?.monogram ?? MONOGRAMS[id];
   if (known) return known;
   const two = id.replace(/[^a-z0-9]/gi, '').slice(0, 2) || '?';
   return two.charAt(0).toUpperCase() + two.slice(1).toLowerCase();

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_AGENT,
   PROTOCOL_VERSION,
   type ImageRef,
   type ResumableSession,
@@ -129,7 +130,7 @@ export class DemoTransport implements Transport {
       .filter((x) => x.info.kind === 'agent' && !known.has(x.info.id))
       // oxlint-disable-next-line oxc/no-map-spread -- small simulated lists, clarity first
       .map((x) => ({
-        agent: x.info.agent ?? 'claude',
+        agent: x.info.agent ?? DEFAULT_AGENT,
         agentName: x.info.agentName,
         resumeId: `s:${x.info.id}`,
         cwd: x.info.cwd,
@@ -627,7 +628,8 @@ export class DemoTransport implements Transport {
       case 'session.commands': {
         const sim = this.sims.get(msg.sessionId);
         if (!sim) return this.fail(msg.id, 'Session not found');
-        const own = demoHost.agentCatalog?.find((a) => a.id === (sim.info.agent ?? 'claude'))?.commands ?? [];
+        const own =
+          demoHost.agentCatalog?.find((a) => a.id === (sim.info.agent ?? DEFAULT_AGENT))?.commands ?? [];
         this.ok(msg.id, sim.info.agent === 'claude' || !sim.info.agent ? [...SESSION_COMMANDS, ...own] : own);
         return;
       }

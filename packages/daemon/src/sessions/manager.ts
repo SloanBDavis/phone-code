@@ -1,14 +1,15 @@
 import { mkdir } from 'node:fs/promises';
 import { basename } from 'node:path';
-import type {
-  AgentId,
-  CreateSessionParams,
-  HistoryQuery,
-  ResumableSession,
-  SessionInfo,
-  SlashCommand,
+import {
+  DEFAULT_AGENT,
+  type AgentId,
+  type CreateSessionParams,
+  type HistoryQuery,
+  type ResumableSession,
+  type SessionInfo,
+  type SlashCommand,
 } from '@phone-code/protocol';
-import { agentDisplayName, type AdapterRegistry } from '../agents/types.ts';
+import { agentDisplayName, listAdapters, type AdapterRegistry } from '../agents/types.ts';
 import type { StatePaths } from '../config.ts';
 import { assertDirectory, expandPath } from '../fs-list.ts';
 import { HistoryService, type KnownSession } from '../history/service.ts';
@@ -163,7 +164,7 @@ export class SessionManager implements SessionHost {
     if (params.kind === 'agent' && params.resumeId !== undefined) {
       // Continuing a chat that is already a phone-code session (in the sidebar or
       // archived) opens that session instead of making a duplicate.
-      const existing = this.findResumed(params.agent ?? 'claude', params.resumeId);
+      const existing = this.findResumed(params.agent ?? DEFAULT_AGENT, params.resumeId);
       if (existing !== undefined) {
         await existing.setArchived(false);
         return existing.info;
@@ -174,7 +175,7 @@ export class SessionManager implements SessionHost {
     const id = randomId(9);
     let session: AnySession;
     if (params.kind === 'agent') {
-      const agent: AgentId = params.agent ?? 'claude';
+      const agent: AgentId = params.agent ?? DEFAULT_AGENT;
       if (this.adapters[agent] === undefined) throw new Error(`Unknown agent "${agent}"`);
       session = ChatSession.create(id, agent, cwd, params, this.chatDeps());
     } else {
@@ -215,7 +216,7 @@ export class SessionManager implements SessionHost {
     const s = this.sessions.get(id);
     if (s === undefined) return undefined;
     if (!(s instanceof ChatSession)) return [];
-    return s.agentCommands ?? (await this.catalogCommands(s.info.agent ?? 'claude')) ?? [];
+    return s.agentCommands ?? (await this.catalogCommands(s.info.agent ?? DEFAULT_AGENT)) ?? [];
   }
 
   async delete(id: string): Promise<boolean> {
@@ -245,7 +246,12 @@ export class SessionManager implements SessionHost {
   async history(agent: AgentId | undefined, query?: HistoryQuery): Promise<ResumableSession[]> {
     if (query !== undefined) return this.historyIndex.query(agent, query, this.known());
     // Without an agent: the native ones only (listing an ACP agent's sessions starts its process).
-    const kinds: AgentId[] = agent === undefined ? ['claude', 'codex'] : [agent];
+    const kinds: AgentId[] =
+      agent === undefined
+        ? listAdapters(this.adapters)
+            .filter((a) => (a.impl ?? 'native') === 'native' && a.external !== true)
+            .map((a) => a.kind)
+        : [agent];
     const lists = await Promise.all(
       kinds.map((k) =>
         (this.adapters[k]?.listResumable(50) ?? Promise.resolve([])).catch((err: unknown) => {

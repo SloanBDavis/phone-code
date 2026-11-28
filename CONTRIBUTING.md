@@ -16,15 +16,15 @@ bun install
 
 ## Layout
 
-| Path                | What                                                                                              |
-| ------------------- | ------------------------------------------------------------------------------------------------- |
-| `packages/daemon`   | The `phonecode` CLI and daemon (Bun). `src/cli.ts` is the entry point.                            |
-| `packages/web`      | The phone app (Preact, Vite). `TESTIDS.md` lists the `data-testid` hooks the e2e suite relies on. |
-| `packages/protocol` | WebSocket protocol types shared by both.                                                          |
-| `e2e`               | Playwright suite against the real daemon, with fake `claude` / `codex` binaries in `e2e/fakes`.   |
-| `formal`            | TLA+ specs, checked by `formal/check.sh`.                                                         |
-| `scripts`           | Release build, npm launcher, screenshots, protocol doc generator, binary smoke test.              |
-| `docs`              | Protocol reference and README screenshots.                                                        |
+| Path                | What                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| `packages/daemon`   | The `phonecode` CLI and daemon (Bun). `src/cli.ts` is the entry point. Agents: `src/agents/README.md`. |
+| `packages/web`      | The phone app (Preact, Vite). `TESTIDS.md` lists the `data-testid` hooks the e2e suite relies on.      |
+| `packages/protocol` | WebSocket protocol types shared by both.                                                               |
+| `e2e`               | Playwright suite against the real daemon, with fake `claude` / `codex` binaries in `e2e/fakes`.        |
+| `formal`            | TLA+ specs, checked by `formal/check.sh`.                                                              |
+| `scripts`           | Release build, npm launcher, screenshots, protocol doc generator, binary smoke test.                   |
+| `docs`              | Protocol reference and README screenshots.                                                             |
 
 ## Day to day
 

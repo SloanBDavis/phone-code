@@ -38,6 +38,7 @@ import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from 
 import { ClaudeMapper } from './map.ts';
 import { describeTool } from './tools.ts';
 import { findSessionFile, listClaudeResumable, loadClaudeTranscript } from './history.ts';
+import { extractClaude, listClaudeFiles } from './search.ts';
 import {
   StatusTracker,
   arr,
@@ -1051,6 +1052,10 @@ function buildContent(text: string, attachments: Attachment[] | undefined): stri
 export function createClaudeAdapter(): AgentAdapter {
   return {
     kind: 'claude',
+    name: 'Claude Code',
+    shortName: 'Claude',
+    monogram: 'CC',
+    history: { list: () => listClaudeFiles(), extract: extractClaude },
     async detect() {
       const bin = claudeBin();
       // In parallel, well inside the host's detection timeout: version, accepted modes, models.

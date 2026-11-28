@@ -1574,6 +1574,7 @@ export function createAcpAdapter(cfg: AcpAgentConfig): AgentAdapter {
   return {
     kind: cfg.id,
     name: cfg.name,
+    ...(cfg.monogram === undefined ? {} : { monogram: cfg.monogram }),
     impl: 'acp',
     source: cfg.source,
     async detect() {

@@ -1,11 +1,12 @@
 import { batch, computed, signal } from '@preact/signals';
-import type {
-  AgentId,
-  AgentInfo,
-  Attachment,
-  EffortOption,
-  PermissionMode,
-  SessionInfo,
+import {
+  DEFAULT_AGENT,
+  type AgentId,
+  type AgentInfo,
+  type Attachment,
+  type EffortOption,
+  type PermissionMode,
+  type SessionInfo,
 } from '@phone-code/protocol';
 import { toast } from '../ui/overlay';
 import { CLASSIC_MODES, agentCatalog, currentModel, modelOptions } from './agents';
@@ -46,7 +47,7 @@ export const draftHarness = computed<Harness>(() => {
   if (p && p !== 'terminal') return p;
   const last = lastHarness.value;
   if (last && last !== 'terminal' && ready(last)) return last;
-  return list.find((a) => a.available)?.id ?? list[0]?.id ?? 'claude';
+  return list.find((a) => a.available)?.id ?? list[0]?.id ?? DEFAULT_AGENT;
 });
 
 export interface DraftChoices {

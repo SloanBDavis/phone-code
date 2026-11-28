@@ -1,19 +1,20 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type {
-  AgentId,
-  Attachment,
-  ChatItem,
-  CreateSessionParams,
-  ImageRef,
-  NoticeItem,
-  PermissionDecision,
-  PermissionMode,
-  ServerMessage,
-  SessionInfo,
-  SessionStatus,
-  SlashCommand,
-  UserItem,
+import {
+  DEFAULT_AGENT,
+  type AgentId,
+  type Attachment,
+  type ChatItem,
+  type CreateSessionParams,
+  type ImageRef,
+  type NoticeItem,
+  type PermissionDecision,
+  type PermissionMode,
+  type ServerMessage,
+  type SessionInfo,
+  type SessionStatus,
+  type SlashCommand,
+  type UserItem,
 } from '@phone-code/protocol';
 import {
   agentDisplayName,
@@ -22,7 +23,7 @@ import {
   type AgentEvents,
   type AgentSession,
 } from '../agents/types.ts';
-import { artifactRoots, imagePathsIn } from '../images/markdown.ts';
+import { imagePathsIn } from '../images/markdown.ts';
 import { sniffImage } from '../images/sniff.ts';
 import type { ImageStore } from '../images/store.ts';
 import { log } from '../log.ts';
@@ -205,7 +206,7 @@ export class ChatSession implements LiveSession {
 
   private async startAgent(): Promise<AgentSession | undefined> {
     await this.ensureLoaded();
-    const kind = this.info.agent ?? 'claude';
+    const kind = this.info.agent ?? DEFAULT_AGENT;
     const adapter = this.deps.adapters[kind];
     if (adapter === undefined) {
       this.notice(
@@ -301,7 +302,10 @@ export class ChatSession implements LiveSession {
 
   /** Where local image files may be read from for this session (see images/markdown.ts). */
   private imageRoots(): string[] {
-    return [this.info.cwd, ...artifactRoots(this.info.agent ?? 'claude')];
+    return [
+      this.info.cwd,
+      ...(this.deps.adapters[this.info.agent ?? DEFAULT_AGENT]?.artifactRoots?.() ?? []),
+    ];
   }
 
   /** Attach the local images a finished text item links to (once per id and text). */

@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { Attachment, SessionInfo, SlashCommand } from '@phone-code/protocol';
+import { DEFAULT_AGENT, type Attachment, type SessionInfo, type SlashCommand } from '@phone-code/protocol';
 import { agentShortLabel, isCursorChat } from '../../lib/agents';
 import { client } from '../../lib/client';
 import { groupCommands, sessionCommands, SOURCE_LABEL } from '../../lib/commands';
@@ -207,7 +207,7 @@ export function Composer({
   const fromSession = session ? sessionCommands(session.id).value : null;
   const commands =
     (fromSession?.length ? fromSession : null) ??
-    (isDraft ? d.info?.commands : agentInfo(session.agent ?? 'claude')?.commands) ??
+    (isDraft ? d.info?.commands : agentInfo(session.agent ?? DEFAULT_AGENT)?.commands) ??
     [];
   const token = slashToken(text);
   const paletteOpen = commands.length > 0 && (token !== null || browse);

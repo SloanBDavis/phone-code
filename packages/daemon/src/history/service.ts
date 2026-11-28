@@ -5,8 +5,9 @@
  * that already is a phone-code session appears once, with `sessionId` set.
  *
  * Sources, all queried in parallel:
- *   - Claude Code and Codex: incremental on-disk indexes (index-file.ts) with
- *     title, folder and message text, so text search covers whole conversations.
+ *   - Harnesses with a `history` source (Claude Code, Codex): incremental
+ *     on-disk indexes (index-file.ts) with title, folder and message text, so
+ *     text search covers whole conversations.
  *   - ACP agents that can list sessions (session/list): each needs its own
  *     process, so each gets ACP_WAIT_MS; a slow one is left out of this answer
  *     (its result is cached for the next query) and never holds up the rest.
@@ -22,14 +23,7 @@ import { agentDisplayName, listAdapters, type AdapterRegistry } from '../agents/
 import type { StatePaths } from '../config.ts';
 import { log } from '../log.ts';
 import { ConversationIndex } from './index-file.ts';
-import {
-  extractClaude,
-  extractCodex,
-  extractTranscript,
-  listClaudeFiles,
-  listCodexFiles,
-  listTranscriptFiles,
-} from './sources.ts';
+import { extractTranscript, listTranscriptFiles } from './sources.ts';
 
 const ACP_WAIT_MS = 2500;
 const ACP_CACHE_MS = 60_000;
@@ -72,8 +66,8 @@ function snippetAt(text: string, at: number, len: number): string {
 }
 
 export class HistoryService {
-  private readonly claude: ConversationIndex;
-  private readonly codex: ConversationIndex;
+  /** One index per harness with a `history` source, by agent id. */
+  private readonly indexes = new Map<AgentId, ConversationIndex>();
   private readonly transcripts: ConversationIndex;
   private readonly acp = new Map<
     string,
@@ -84,8 +78,19 @@ export class HistoryService {
     paths: StatePaths,
     private readonly adapters: AdapterRegistry,
   ) {
-    this.claude = new ConversationIndex(paths.index, 'claude', () => listClaudeFiles(), extractClaude);
-    this.codex = new ConversationIndex(paths.index, 'codex', () => listCodexFiles(), extractCodex);
+    for (const a of listAdapters(adapters)) {
+      const h = a.history;
+      if (h === undefined) continue;
+      this.indexes.set(
+        a.kind,
+        new ConversationIndex(
+          paths.index,
+          a.kind,
+          () => h.list(),
+          (f) => h.extract(f),
+        ),
+      );
+    }
     this.transcripts = new ConversationIndex(
       paths.index,
       'phonecode',
@@ -96,21 +101,21 @@ export class HistoryService {
 
   /** Build the indexes in the background so the first search is fast. */
   warm(): void {
-    void Promise.all([this.claude.refresh(), this.codex.refresh(), this.transcripts.refresh()]).catch(
-      (err: unknown) => log.warn('history index warm-up failed', err),
-    );
+    void Promise.all([
+      ...[...this.indexes.values()].map((i) => i.refresh()),
+      this.transcripts.refresh(),
+    ]).catch((err: unknown) => log.warn('history index warm-up failed', err));
   }
 
   /** Index refresh timings (for logs and the benchmark). */
   stats(): Record<string, unknown> {
-    return {
-      claude: this.claude.lastRefresh,
-      codex: this.codex.lastRefresh,
-      phonecode: this.transcripts.lastRefresh,
-    };
+    const out: Record<string, unknown> = {};
+    for (const [id, index] of this.indexes) out[id] = index.lastRefresh;
+    out['phonecode'] = this.transcripts.lastRefresh;
+    return out;
   }
 
-  private async native(index: ConversationIndex, agent: AgentId): Promise<Candidate[]> {
+  private async indexed(index: ConversationIndex, agent: AgentId): Promise<Candidate[]> {
     await index.refresh();
     return index.conversations().map((c) => ({
       entry: {
@@ -165,12 +170,12 @@ export class HistoryService {
     sessions: KnownSession[],
   ): Promise<ResumableSession[]> {
     const want = (id: AgentId): boolean => agent === undefined || agent === id;
+    const indexed = [...this.indexes].filter(([id]) => want(id));
     const acpIds = listAdapters(this.adapters)
       .filter((a) => a.impl === 'acp' && want(a.kind))
       .map((a) => a.kind);
     const lists = await Promise.all([
-      want('claude') ? this.native(this.claude, 'claude') : Promise.resolve([]),
-      want('codex') ? this.native(this.codex, 'codex') : Promise.resolve([]),
+      ...indexed.map(([id, index]) => this.indexed(index, id)),
       ...acpIds.map((id) => this.acpList(id)),
       this.transcripts.refresh().then(() => undefined),
     ]);

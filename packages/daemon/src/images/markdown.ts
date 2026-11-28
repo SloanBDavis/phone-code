@@ -5,9 +5,9 @@
  *
  * Confinement: a path is only ever read through ImageStore.putFile, which
  * resolves it with realpath (symlinks included) and accepts it only inside
- * the session's folder or the agent's own artifact directories
- * (`artifactRoots`), and only when the bytes are a PNG, JPEG, GIF or WebP
- * within the size cap. Nothing else on the computer can be pulled out this way.
+ * the session's folder or the agent's own artifact directories (its
+ * adapter's `artifactRoots`), and only when the bytes are a PNG, JPEG, GIF or
+ * WebP within the size cap. Nothing else on the computer can be pulled out this way.
  */
 import os from 'node:os';
 import path from 'node:path';
@@ -54,16 +54,4 @@ export function imagePathsIn(text: string, cwd: string): string[] {
   ))
     add(m[1]);
   return found;
-}
-
-/** Folders an agent writes its own generated images to, besides the session folder. */
-export function artifactRoots(agent: string, env: NodeJS.ProcessEnv = process.env): string[] {
-  if (agent === 'codex') {
-    const home =
-      env['CODEX_HOME'] !== undefined && env['CODEX_HOME'] !== ''
-        ? env['CODEX_HOME']
-        : path.join(os.homedir(), '.codex');
-    return [path.join(home, 'generated_images')];
-  }
-  return [];
 }

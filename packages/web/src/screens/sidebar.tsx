@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, JSX } from 'preact';
 import { useComputed } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { SessionInfo } from '@phone-code/protocol';
+import { DEFAULT_AGENT, type SessionInfo } from '@phone-code/protocol';
 import { archiveSession, deleteSession, openSession, renameSession } from '../lib/actions';
 import { agentLabel, isCursorChat } from '../lib/agents';
 import { exitDemo } from '../lib/boot';
@@ -202,7 +202,7 @@ function SessionRow({ s, active, open }: { s: SessionInfo; active: boolean; open
         aria-current={active ? 'page' : undefined}
         data-testid="session-row"
         data-session-id={s.id}
-        data-agent={s.kind === 'agent' ? (s.agent ?? 'claude') : undefined}
+        data-agent={s.kind === 'agent' ? (s.agent ?? DEFAULT_AGENT) : undefined}
         data-status={s.status}
         {...press.handlers}
         onClick={(e) => {

@@ -25,6 +25,7 @@
  *   bypassPermissions  approvalPolicy "never"      + sandbox danger-full-access
  */
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import type {
   ModelOption,
   ChatItem,
@@ -48,7 +49,8 @@ import type {
   AgentStartOptions,
 } from '../types.ts';
 import { fileChangeDetail, mapThreadItem, unwrapShell } from './map.ts';
-import { listCodexResumable } from './history.ts';
+import { codexHome, listCodexResumable } from './history.ts';
+import { extractCodex, listCodexFiles } from './search.ts';
 import {
   StatusTracker,
   arr,
@@ -1235,6 +1237,11 @@ async function probeModels(): Promise<ModelOption[] | undefined> {
 export function createCodexAdapter(): AgentAdapter {
   return {
     kind: 'codex',
+    name: 'Codex',
+    monogram: 'Cx',
+    history: { list: () => listCodexFiles(), extract: extractCodex },
+    // Its image generation tool saves under $CODEX_HOME.
+    artifactRoots: (env = process.env) => [join(codexHome(env), 'generated_images')],
     async detect() {
       const [out, login] = await Promise.all([
         runQuick(codexBin(), ['--version']),

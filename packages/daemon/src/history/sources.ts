@@ -1,15 +1,14 @@
 /**
- * The conversation files each index reads, and how to read them:
- * Claude Code session files, Codex rollouts and phone-code's own transcripts.
+ * Reading conversation files for the "All chats" indexes: helpers a harness's
+ * own `history` source uses (agents/<harness>/search.ts), and phone-code's
+ * own transcripts.
  */
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { claudeConfigDir, userPromptText } from '../agents/claude/history.ts';
-import { codexHome } from '../agents/codex/history.ts';
-import { arr, isRec, mapPool, oneLine, rec, str } from '../agents/shared/common.ts';
+import { mapPool, str } from '../agents/shared/common.ts';
 import { capText, eachJsonLine, type Conversation, type FileStat } from './index-file.ts';
 
-async function statAll(files: string[]): Promise<FileStat[]> {
+export async function statAll(files: string[]): Promise<FileStat[]> {
   const out = await mapPool(files, 32, async (file) => {
     try {
       const st = await stat(file);
@@ -23,7 +22,7 @@ async function statAll(files: string[]): Promise<FileStat[]> {
   return out.filter((f): f is FileStat => f !== undefined);
 }
 
-async function subdirs(dir: string, re?: RegExp): Promise<string[]> {
+export async function subdirs(dir: string, re?: RegExp): Promise<string[]> {
   try {
     return (await readdir(dir, { withFileTypes: true }))
       .filter((d) => d.isDirectory() && (re === undefined || re.test(d.name)))
@@ -33,7 +32,7 @@ async function subdirs(dir: string, re?: RegExp): Promise<string[]> {
   }
 }
 
-async function filesIn(dir: string, test: (name: string) => boolean): Promise<string[]> {
+export async function filesIn(dir: string, test: (name: string) => boolean): Promise<string[]> {
   try {
     return (await readdir(dir, { withFileTypes: true }))
       .filter((d) => d.isFile() && test(d.name))
@@ -41,130 +40,6 @@ async function filesIn(dir: string, test: (name: string) => boolean): Promise<st
   } catch {
     return [];
   }
-}
-
-// ------------------------------------------------------------- Claude Code
-
-/** `~/.claude/projects/<slug>/<session>.jsonl` (top level only: sub-agent files live in sub-folders). */
-export async function listClaudeFiles(env: NodeJS.ProcessEnv = process.env): Promise<FileStat[]> {
-  const dirs = await subdirs(path.join(claudeConfigDir(env), 'projects'));
-  const files = (await mapPool(dirs, 16, (d) => filesIn(d, (n) => n.endsWith('.jsonl')))).flat();
-  return statAll(files);
-}
-
-/** Text of an assistant entry (text blocks only). */
-function assistantText(e: Record<string, unknown>): string {
-  const content = rec(e.message).content;
-  if (typeof content === 'string') return content;
-  return arr(content)
-    .map(rec)
-    .filter((b) => b.type === 'text')
-    .map((b) => str(b.text) ?? '')
-    .join('\n');
-}
-
-export async function extractClaude(f: FileStat): Promise<Conversation | undefined> {
-  let cwd: string | undefined;
-  let firstPrompt: string | undefined;
-  let custom: string | undefined;
-  let ai: string | undefined;
-  let summary: string | undefined;
-  // Mutated inside the line callback (an object, so the checks below are not narrowed away).
-  const flags = { sidechain: false };
-  let count = 0;
-  let last = 0;
-  const pieces: string[] = [];
-  await eachJsonLine(f.path, (e) => {
-    const type = e.type;
-    if (cwd === undefined) cwd = str(e.cwd);
-    if (type === 'custom-title') custom = str(e.customTitle) ?? custom;
-    else if (type === 'ai-title') ai = str(e.aiTitle) ?? ai;
-    else if (type === 'summary') summary ??= str(e.summary);
-    if (type !== 'user' && type !== 'assistant') return;
-    if (e.isSidechain === true) {
-      if (count === 0) flags.sidechain = true;
-      return;
-    }
-    const ts = Date.parse(str(e.timestamp) ?? '');
-    if (Number.isFinite(ts) && ts > last) last = ts;
-    if (type === 'user') {
-      const prompt = userPromptText(e);
-      if (prompt === undefined) return;
-      firstPrompt ??= prompt;
-      count++;
-      pieces.push(prompt);
-    } else {
-      count++;
-      const t = assistantText(e);
-      if (t !== '') pieces.push(t);
-    }
-  });
-  const title = custom ?? ai ?? summary ?? firstPrompt;
-  if (flags.sidechain || cwd === undefined || title === undefined) return undefined;
-  return {
-    resumeId: path.basename(f.path, '.jsonl'),
-    cwd,
-    title: oneLine(title, 100),
-    messageCount: count,
-    ...(last > 0 ? { updatedAt: Math.max(last, 0) } : {}),
-    text: capText(pieces),
-  };
-}
-
-// ------------------------------------------------------------------ Codex
-
-/** `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` */
-export async function listCodexFiles(env: NodeJS.ProcessEnv = process.env): Promise<FileStat[]> {
-  const root = path.join(codexHome(env), 'sessions');
-  const years = await subdirs(root, /^\d{4}$/);
-  const months = (await Promise.all(years.map((y) => subdirs(y, /^\d{2}$/)))).flat();
-  const days = (await Promise.all(months.map((m) => subdirs(m, /^\d{2}$/)))).flat();
-  const files = (
-    await mapPool(days, 16, (d) => filesIn(d, (n) => n.startsWith('rollout-') && n.endsWith('.jsonl')))
-  ).flat();
-  return statAll(files);
-}
-
-function codexText(content: unknown, kind: 'input_text' | 'output_text'): string {
-  return arr(content)
-    .map(rec)
-    .filter((c) => c.type === kind)
-    .map((c) => str(c.text) ?? '')
-    .join('\n')
-    .trim();
-}
-
-export async function extractCodex(f: FileStat): Promise<Conversation | undefined> {
-  let id: string | undefined;
-  let cwd: string | undefined;
-  const flags = { sub: false };
-  let title: string | undefined;
-  let count = 0;
-  const pieces: string[] = [];
-  await eachJsonLine(f.path, (e) => {
-    const p = rec(e.payload);
-    if (e.type === 'session_meta') {
-      id ??= str(p.id) ?? str(p.session_id);
-      cwd ??= str(p.cwd);
-      const source = p.source;
-      if (isRec(source) && ('subagent' in source || 'subAgent' in source)) flags.sub = true;
-      return;
-    }
-    if (e.type !== 'response_item' || p.type !== 'message') return;
-    if (p.role === 'user') {
-      const t = codexText(p.content, 'input_text');
-      if (t === '' || t.startsWith('<')) return; // injected <environment_context> etc.
-      title ??= t;
-      count++;
-      pieces.push(t);
-    } else if (p.role === 'assistant') {
-      const t = codexText(p.content, 'output_text');
-      count++;
-      if (t !== '') pieces.push(t);
-    }
-  });
-  if (flags.sub || id === undefined || cwd === undefined || title === undefined) return undefined;
-  return { resumeId: id, cwd, title: oneLine(title, 100), messageCount: count, text: capText(pieces) };
 }
 
 // ------------------------------------------------------ phone-code itself

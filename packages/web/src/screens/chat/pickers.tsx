@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import type { PermissionMode, SessionInfo } from '@phone-code/protocol';
+import { DEFAULT_AGENT, type PermissionMode, type SessionInfo } from '@phone-code/protocol';
 import {
   CLASSIC_MODES,
   currentModel,
@@ -125,7 +125,7 @@ export function HarnessChip({
   const current: Harness = session
     ? session.kind === 'terminal'
       ? 'terminal'
-      : (session.agent ?? 'claude')
+      : (session.agent ?? DEFAULT_AGENT)
     : draft.value.harness;
   const cwd = session?.cwd ?? draft.value.cwd;
   // An agent the host does not offer for new chats (Cursor's app): the session names it.
@@ -194,7 +194,7 @@ export function ModelChip({ session }: { session?: SessionInfo }): JSX.Element |
   if (!models.length) return null;
   const model = session ? session.model : d.model;
   const current = currentModel(model, models);
-  const harness = session ? (session.agent ?? 'claude') : d.harness;
+  const harness = session ? (session.agent ?? DEFAULT_AGENT) : d.harness;
   const set = (id: string): void => {
     const opt = models.find((m) => m.id === id);
     setHarnessPrefs(harness, { model: opt?.isDefault ? undefined : id });
@@ -250,7 +250,7 @@ export function EffortChip({ session }: { session?: SessionInfo }): JSX.Element 
   const d = draft.value;
   const efforts = session ? sessionEfforts(session, host.value) : d.efforts;
   if (!efforts.length || session?.kind === 'terminal') return null;
-  const harness = session ? (session.agent ?? 'claude') : d.harness;
+  const harness = session ? (session.agent ?? DEFAULT_AGENT) : d.harness;
   // In a session, what the agent reports; before one, the choice to send.
   const chosen = session ? session.effort : d.effort;
   const fallback = session
@@ -312,7 +312,7 @@ export function ModeChip({ session }: { session?: SessionInfo }): JSX.Element | 
   const offered = session ? (session.permissionModes ?? CLASSIC_MODES) : d.modes;
   if (!offered.length || session?.kind === 'terminal') return null;
   const value = session ? (session.permissionMode ?? 'default') : d.mode;
-  const harness = session ? (session.agent ?? 'claude') : d.harness;
+  const harness = session ? (session.agent ?? DEFAULT_AGENT) : d.harness;
   const m = modeInfo(value);
   return (
     <button

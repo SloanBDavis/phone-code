@@ -24,15 +24,20 @@ export const PROTOCOL_VERSION = 1;
 // ---------------------------------------------------------------- sessions
 
 export type SessionKind = 'terminal' | 'agent';
-/** Agents with a native (harness-specific) adapter in the daemon. */
+/**
+ * The agents in `HostInfo.agents`, the list daemons sent before
+ * `agentCatalog`. Newer native harnesses appear only in the catalog.
+ */
 export type AgentKind = 'claude' | 'codex';
 /**
- * Any agent the host can run: a native `AgentKind`, or the stable id of an
- * agent driven through the Agent Client Protocol (ACP), e.g. "gemini",
- * "opencode" or an id from the host's `agents.json`. Ids are lowercase
- * `[a-z0-9._-]`, at most 64 characters.
+ * Any agent the host can run: the id of a native harness ("claude", "codex"),
+ * or the stable id of an agent driven through the Agent Client Protocol (ACP),
+ * e.g. "gemini", "opencode" or an id from the host's `agents.json`. Ids are
+ * lowercase `[a-z0-9._-]`, at most 64 characters.
  */
 export type AgentId = AgentKind | (string & {});
+/** The agent of a session or request that names none (older clients and daemons). */
+export const DEFAULT_AGENT: AgentId = 'claude';
 /** How the daemon talks to an agent: its own adapter, or the generic ACP adapter. */
 export type AgentImpl = 'native' | 'acp';
 
@@ -41,6 +46,10 @@ export interface AgentInfo {
   id: AgentId;
   /** Display name, e.g. "Claude Code", "Gemini CLI". */
   name: string;
+  /** Name where space is short, e.g. "Claude". Absent: `name`. */
+  shortName?: string;
+  /** Two letters for its glyph, e.g. "CC". Absent: the id's first two, capitalized. */
+  monogram?: string;
   impl: AgentImpl;
   /** Installed and runnable on this host. */
   available: boolean;
