@@ -8,7 +8,7 @@ import { open, readdir, stat, type FileHandle } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { ResumableSession } from '@phone-code/protocol';
-import { arr, isRec, mapPool, oneLine, rec, str, type Rec } from './shared/common.ts';
+import { arr, isRec, mapPool, oneLine, rec, str, type Rec } from '../shared/common.ts';
 
 export function codexHome(env: NodeJS.ProcessEnv = process.env): string {
   return env.CODEX_HOME || path.join(os.homedir(), '.codex');

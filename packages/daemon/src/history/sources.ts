@@ -4,8 +4,8 @@
  */
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { claudeConfigDir, userPromptText } from '../agents/claude-history.ts';
-import { codexHome } from '../agents/codex-history.ts';
+import { claudeConfigDir, userPromptText } from '../agents/claude/history.ts';
+import { codexHome } from '../agents/codex/history.ts';
 import { arr, isRec, mapPool, oneLine, rec, str } from '../agents/shared/common.ts';
 import { capText, eachJsonLine, type Conversation, type FileStat } from './index-file.ts';
 

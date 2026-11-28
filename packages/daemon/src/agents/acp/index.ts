@@ -1,7 +1,7 @@
 /**
  * Generic Agent Client Protocol (ACP) adapter: the fallback for every harness
  * without a native adapter (Gemini CLI, OpenCode, Qwen Code, goose, … and any
- * agent listed in agents.json, see acp-config.ts).
+ * agent listed in agents.json, see acp/config.ts).
  *
  * Protocol: ACP v1 (`protocolVersion: 1`), JSON-RPC 2.0 over the agent's
  * stdio, one JSON object per line. Shapes follow the stable schema shipped in
@@ -15,7 +15,7 @@
  * session/update) | session/resume -> session/prompt per message (the response
  * ends the turn), session/cancel to stop. The agent asks for approval with
  * session/request_permission and may call back into fs/* and terminal/*
- * (acp-client.ts).
+ * (acp/client.ts).
  *
  * Choices:
  * - Permission options: allow -> first allow_once (else allow_always),
@@ -23,7 +23,7 @@
  *   deny -> reject_once (else reject_always, else the `cancelled` outcome).
  * - Modes: an agent's own modes (legacy `modes`/session/set_mode, or a config
  *   option with category "mode") are mapped onto PermissionMode only where the
- *   meaning is clear (acp-map.ts mapModes); only the mapped ones are offered on
+ *   meaning is clear (acp/map.ts mapModes); only the mapped ones are offered on
  *   the phone (SessionInfo.permissionModes).
  * - Models: config option with category "model" (session/set_config_option),
  *   or the never-stabilized `models` field + session/set_model that Gemini CLI
@@ -53,12 +53,12 @@ import type {
   TurnItem,
   UserItem,
 } from '@phone-code/protocol';
-import { DAEMON_VERSION } from '../config.ts';
-import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
-import { AcpClientSide, RpcError, isClientSideMethod } from './acp-client.ts';
-import type { AcpAgentConfig } from './acp-config.ts';
-import { rememberOptions } from './acp-memory.ts';
-import { elicitContent, elicitFields, elicitQuestions, type ElicitField } from './acp-elicitation.ts';
+import { DAEMON_VERSION } from '../../config.ts';
+import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from '../types.ts';
+import { AcpClientSide, RpcError, isClientSideMethod } from './client.ts';
+import type { AcpAgentConfig } from './config.ts';
+import { rememberOptions } from './memory.ts';
+import { elicitContent, elicitFields, elicitQuestions, type ElicitField } from './elicitation.ts';
 import {
   PERMISSION_MODE_ORDER,
   blockText,
@@ -71,7 +71,7 @@ import {
   toolView,
   type AcpChoice,
   type AcpToolState,
-} from './acp-map.ts';
+} from './map.ts';
 import {
   StatusTracker,
   arr,
@@ -85,8 +85,8 @@ import {
   str,
   type Rec,
   attachmentText,
-} from './shared/common.ts';
-import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
+} from '../shared/common.ts';
+import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from '../shared/proc.ts';
 
 export const ACP_PROTOCOL_VERSION = 1;
 const AUTH_REQUIRED = -32000;
@@ -135,7 +135,7 @@ function clientCapabilities(): Rec {
     fs: { readTextFile: true, writeTextFile: true },
     terminal: true,
     session: { notices: {}, configOptions: {} },
-    // Unstable ACP form elicitation (acp-elicitation.ts); Antigravity asks its questions this way.
+    // Unstable ACP form elicitation (acp/elicitation.ts); Antigravity asks its questions this way.
     elicitation: { form: {} },
   };
 }

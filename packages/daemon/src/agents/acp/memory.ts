@@ -7,9 +7,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ModelOption, PermissionMode } from '@phone-code/protocol';
-import { stateDir } from '../config.ts';
-import { isRecord } from '../util/guards.ts';
-import { writeFileAtomic } from '../util/files.ts';
+import { stateDir } from '../../config.ts';
+import { isRecord } from '../../util/guards.ts';
+import { writeFileAtomic } from '../../util/files.ts';
 
 export interface AcpOptions {
   modelOptions?: ModelOption[];

@@ -11,8 +11,8 @@ import { open, readdir, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { ChatItem, ImageRef, ResumableSession } from '@phone-code/protocol';
-import { ClaudeMapper, localCommandOutput, tsOf } from './claude-map.ts';
-import { arr, isRec, mapPool, oneLine, rec, str, type Rec } from './shared/common.ts';
+import { ClaudeMapper, localCommandOutput, tsOf } from './map.ts';
+import { arr, isRec, mapPool, oneLine, rec, str, type Rec } from '../shared/common.ts';
 
 export function claudeConfigDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');

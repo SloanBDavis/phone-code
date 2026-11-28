@@ -22,7 +22,7 @@
  * Answers come back as the chosen labels joined by ", " (or free text).
  */
 import type { QuestionItem } from '@phone-code/protocol';
-import { arr, isRec, num, oneLine, rec, str, type Rec } from './shared/common.ts';
+import { arr, isRec, num, oneLine, rec, str, type Rec } from '../shared/common.ts';
 
 interface Choice {
   value: unknown;

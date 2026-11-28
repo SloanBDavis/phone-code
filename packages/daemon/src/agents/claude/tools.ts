@@ -6,8 +6,8 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { ToolDetail } from '@phone-code/protocol';
-import { arr, displayPath, isRec, oneLine, rec, str, type Rec } from './shared/common.ts';
-import { lineIndexOf, unifiedDiff } from './shared/diff.ts';
+import { arr, displayPath, isRec, oneLine, rec, str, type Rec } from '../shared/common.ts';
+import { lineIndexOf, unifiedDiff } from '../shared/diff.ts';
 
 const NAME_MAP: Record<string, string> = {
   Bash: 'Bash',

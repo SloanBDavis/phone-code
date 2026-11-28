@@ -140,7 +140,7 @@ export interface AgentAdapter {
  * Adapters are looked up through this registry, by agent id. The native ones
  * (`claude`, `codex`) are always present; ACP-backed agents are extra keys in
  * insertion order. `PHONECODE_CLAUDE_BIN` and `PHONECODE_CODEX_BIN` override the
- * binaries (the e2e suite points them at scripted fake agents); see acp-config.ts
+ * binaries (the e2e suite points them at scripted fake agents); see acp/config.ts
  * for the ACP agents.
  */
 export type AdapterRegistry = Record<AgentKind, AgentAdapter> & Partial<Record<string, AgentAdapter>>;

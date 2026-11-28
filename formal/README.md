@@ -62,7 +62,7 @@ Two counterexamples are **documented limitations** (by design, not fixed), each 
   to the adapter, even for a card that was already answered, cancelled by an
   interrupt, or settled by a restart. Trace: Ask → phone sees it → Interrupt →
   the phone taps Deny on its stale card → the decision reaches the adapter. The
-  adapters filter by their pending map: `claude.ts`, `codex.ts` and `acp.ts` all
+  adapters filter by their pending map: `claude/index.ts`, `codex/index.ts` and `acp/index.ts` all
   return early when the id is not pending. So the agent CLI never sees such an
   answer (`NoAnswerAfterCancel` and `AtMostOnce` hold with the Claude adapter's
   logic). A new adapter must keep doing this.
@@ -166,20 +166,20 @@ Properties:
 The model has a request from the agent CLI, two phones with possibly stale
 views answering concurrently, interrupts, end of turn, CLI crash and relaunch,
 daemon restart, and messages sent while waiting. The Claude adapter's logic is
-the reference adapter (read only; `codex.ts` and `acp.ts` have the same
+the reference adapter (read only; `codex/index.ts` and `acp/index.ts` have the same
 pending-map shape). A question behaves like a permission here.
 
-| Action                 | Code                                                                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `Send`, `Deliver`      | `ws-client.ts` `route('chat.send')` → `ChatSession.send` → `deliver` (`setStatus`, `agent.send`); `claude.ts` `send` / `launch`      |
-| `Ask(r)`               | `claude.ts` `onControlRequest` (pending map, upsert pending, `StatusTracker.emit`)                                                   |
-| `CliCancel(r)`         | `claude.ts` `control_cancel_request` → `settle(cancelled)`                                                                           |
-| `See`, `Tap`           | the phone rendering (possibly stale) and the user answering                                                                          |
-| `Decide(m)`            | `route('chat.permission')` → `ChatSession.resolvePermission` → `claude.ts` `resolvePermission` (pending lookup, `settle`, `respond`) |
-| `Interrupt`            | `ChatSession.interrupt` → `claude.ts` `interrupt` (`cancelAllPending`)                                                               |
-| `Result`, `AgentCrash` | `claude.ts` `onResult`, `onExit`                                                                                                     |
-| `Restart`              | `ChatSession.restore` (running/waiting → idle), `transcript-file.ts` `settle` (pending → cancelled)                                  |
-| `Emit`                 | `agents/shared/common.ts` `StatusTracker.emit` → `ChatSession.setStatus`                                                             |
+| Action                 | Code                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Send`, `Deliver`      | `ws-client.ts` `route('chat.send')` → `ChatSession.send` → `deliver` (`setStatus`, `agent.send`); `claude/index.ts` `send` / `launch`      |
+| `Ask(r)`               | `claude/index.ts` `onControlRequest` (pending map, upsert pending, `StatusTracker.emit`)                                                   |
+| `CliCancel(r)`         | `claude/index.ts` `control_cancel_request` → `settle(cancelled)`                                                                           |
+| `See`, `Tap`           | the phone rendering (possibly stale) and the user answering                                                                                |
+| `Decide(m)`            | `route('chat.permission')` → `ChatSession.resolvePermission` → `claude/index.ts` `resolvePermission` (pending lookup, `settle`, `respond`) |
+| `Interrupt`            | `ChatSession.interrupt` → `claude/index.ts` `interrupt` (`cancelAllPending`)                                                               |
+| `Result`, `AgentCrash` | `claude/index.ts` `onResult`, `onExit`                                                                                                     |
+| `Restart`              | `ChatSession.restore` (running/waiting → idle), `transcript-file.ts` `settle` (pending → cancelled)                                        |
+| `Emit`                 | `agents/shared/common.ts` `StatusTracker.emit` → `ChatSession.setStatus`                                                                   |
 
 Properties:
 
@@ -262,10 +262,10 @@ and link fixes) makes its test fail.
 - **Adapters other than Claude** in PermissionReq. Their pending maps were
   read, not modeled. Two adapter-side observations were not fixed, because the
   adapters are someone else's code:
-  - `claude.ts` `send`: when the process cannot be written to, it posts a
+  - `claude/index.ts` `send`: when the process cannot be written to, it posts a
     notice and returns without emitting a status. `deliver` has already set
     `running`, so the session stays `running`.
-  - `claude.ts` `interrupt` returns early when `turnsQueued === 0`, so a
+  - `claude/index.ts` `interrupt` returns early when `turnsQueued === 0`, so a
     prompt the CLI raised outside a counted turn cannot be cancelled by an
     interrupt (`onControlRequest` does not call `markBusy`). Not modeled, not
     reproduced.

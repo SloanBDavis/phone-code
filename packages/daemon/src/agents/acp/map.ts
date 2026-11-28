@@ -17,8 +17,8 @@ import {
   str,
   truncateOutput,
   type Rec,
-} from './shared/common.ts';
-import { unifiedDiff } from './shared/diff.ts';
+} from '../shared/common.ts';
+import { unifiedDiff } from '../shared/diff.ts';
 
 /** Accumulated state of one ACP tool call (`tool_call` + every `tool_call_update`). */
 export interface AcpToolState {

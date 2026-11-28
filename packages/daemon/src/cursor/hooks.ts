@@ -2,7 +2,7 @@
  * Connecting Cursor's desktop app: a hook script in phone-code's state folder,
  * listed in Cursor's user hooks (~/.cursor/hooks.json) next to whatever is
  * already there. The script posts each hook event to the running daemon
- * (agents/cursor-app.ts) and prints the daemon's answer; when phone-code is not
+ * (agents/cursor-app/index.ts) and prints the daemon's answer; when phone-code is not
  * running it prints `{}` at once, so Cursor carries on as if it were not there.
  */
 import { existsSync } from 'node:fs';
@@ -30,7 +30,7 @@ export const CURSOR_EVENTS = [
 const SCRIPT_NAME = 'cursor-hook.sh';
 /**
  * A `stop` hook may wait this long for a reply from the phone: a little more
- * than the daemon's own limit (DEFAULT_HOLD_MS in agents/cursor-app.ts).
+ * than the daemon's own limit (DEFAULT_HOLD_MS in agents/cursor-app/index.ts).
  */
 const STOP_TIMEOUT_S = 8 * 60 * 60 + 5 * 60;
 

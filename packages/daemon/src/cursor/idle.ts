@@ -1,6 +1,6 @@
 /**
  * How long this computer has gone without keyboard or mouse input: what tells
- * "at the desk" from "away" when a Cursor turn ends (agents/cursor-app.ts).
+ * "at the desk" from "away" when a Cursor turn ends (agents/cursor-app/index.ts).
  * `undefined` where there is no way to tell (anything but macOS).
  */
 import { readFile } from 'node:fs/promises';

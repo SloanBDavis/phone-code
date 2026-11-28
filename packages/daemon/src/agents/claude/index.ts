@@ -34,10 +34,10 @@ import type {
   SlashCommand,
   TurnItem,
 } from '@phone-code/protocol';
-import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
-import { ClaudeMapper } from './claude-map.ts';
-import { describeTool } from './claude-tools.ts';
-import { findSessionFile, listClaudeResumable, loadClaudeTranscript } from './claude-history.ts';
+import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from '../types.ts';
+import { ClaudeMapper } from './map.ts';
+import { describeTool } from './tools.ts';
+import { findSessionFile, listClaudeResumable, loadClaudeTranscript } from './history.ts';
 import {
   StatusTracker,
   arr,
@@ -52,8 +52,8 @@ import {
   toQuestion,
   type Rec,
   attachmentText,
-} from './shared/common.ts';
-import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
+} from '../shared/common.ts';
+import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from '../shared/proc.ts';
 
 /** Shown until the CLI has told us its real list (initialize response). */
 const DEFAULT_MODELS: ModelOption[] = [

@@ -9,8 +9,8 @@
  */
 import type { ChatItem, ImageRef, TextItem, ThinkingItem, ToolItem, ToolStatus } from '@phone-code/protocol';
 import { open } from 'node:fs/promises';
-import type { AgentEvents } from './types.ts';
-import { arr, isRec, num, rec, str, truncateOutput, type Rec } from './shared/common.ts';
+import type { AgentEvents } from '../types.ts';
+import { arr, isRec, num, rec, str, truncateOutput, type Rec } from '../shared/common.ts';
 import {
   HIDDEN_TOOLS,
   bashExitCode,
@@ -18,7 +18,7 @@ import {
   fileDiff,
   refineFileDetail,
   toolResultText,
-} from './claude-tools.ts';
+} from './tools.ts';
 
 type Sink = Pick<AgentEvents, 'upsert' | 'delta'> & Partial<Pick<AgentEvents, 'image'>>;
 

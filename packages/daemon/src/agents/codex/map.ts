@@ -1,10 +1,10 @@
 /**
  * Codex app-server ThreadItems -> ChatItems. Shapes follow the bindings that
- * `codex app-server generate-ts` (codex-cli 0.171.0) emits; see codex.ts.
+ * `codex app-server generate-ts` (codex-cli 0.171.0) emits; see codex/index.ts.
  */
 import type { ChatItem, ToolDetail, ToolItem, ToolStatus } from '@phone-code/protocol';
-import { arr, displayPath, num, oneLine, rec, str, truncateOutput, type Rec } from './shared/common.ts';
-import { countPatch } from './shared/diff.ts';
+import { arr, displayPath, num, oneLine, rec, str, truncateOutput, type Rec } from '../shared/common.ts';
+import { countPatch } from '../shared/diff.ts';
 
 /** `bash -lc 'npm test'` -> `npm test` */
 export function unwrapShell(command: string): string {

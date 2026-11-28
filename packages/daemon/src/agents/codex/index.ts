@@ -40,9 +40,15 @@ import type {
   TurnItem,
   ToolStatus,
 } from '@phone-code/protocol';
-import type { AgentAdapter, AgentAttachment, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
-import { fileChangeDetail, mapThreadItem, unwrapShell } from './codex-map.ts';
-import { listCodexResumable } from './codex-history.ts';
+import type {
+  AgentAdapter,
+  AgentAttachment,
+  AgentEvents,
+  AgentSession,
+  AgentStartOptions,
+} from '../types.ts';
+import { fileChangeDetail, mapThreadItem, unwrapShell } from './map.ts';
+import { listCodexResumable } from './history.ts';
 import {
   StatusTracker,
   arr,
@@ -58,8 +64,8 @@ import {
   truncateOutput,
   type Rec,
   attachmentText,
-} from './shared/common.ts';
-import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from './shared/proc.ts';
+} from '../shared/common.ts';
+import { childEnv, runQuick, spawnAgent, type SpawnedAgent } from '../shared/proc.ts';
 
 const CLIENT_VERSION = '0.1.0';
 const DEFAULT_MODELS: ModelOption[] = [{ id: 'gpt-5-codex' }, { id: 'gpt-5' }];

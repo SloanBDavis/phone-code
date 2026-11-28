@@ -1,4 +1,4 @@
-import { rememberedOptions } from './agents/acp-memory.ts';
+import { rememberedOptions } from './agents/acp/memory.ts';
 import { cursorStatus } from './cursor/hooks.ts';
 import { execFileSync } from 'node:child_process';
 import { homedir, hostname, userInfo } from 'node:os';

@@ -26,9 +26,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { stateDir } from '../config.ts';
-import { log } from '../log.ts';
-import { arr, isRec, str } from './shared/common.ts';
+import { stateDir } from '../../config.ts';
+import { log } from '../../log.ts';
+import { arr, isRec, str } from '../shared/common.ts';
 
 export interface AcpAgentConfig {
   id: string;

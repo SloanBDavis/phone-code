@@ -18,7 +18,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { arr, isRec, num, str, type Rec } from './shared/common.ts';
+import { arr, isRec, num, str, type Rec } from '../shared/common.ts';
 
 export class RpcError extends Error {
   constructor(

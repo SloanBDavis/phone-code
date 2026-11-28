@@ -23,14 +23,14 @@
  */
 import { homedir } from 'node:os';
 import type { ChatItem, ToolItem } from '@phone-code/protocol';
-import { log } from '../log.ts';
-import type { SessionManager } from '../sessions/manager.ts';
-import { ChatSession } from '../sessions/chat.ts';
-import { cursorInstalled } from '../cursor/hooks.ts';
-import { computerIdleMs } from '../cursor/idle.ts';
-import { isRec, oneLine, str, type Rec } from './shared/common.ts';
-import { countPatch, unifiedDiff } from './shared/diff.ts';
-import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from './types.ts';
+import { log } from '../../log.ts';
+import type { SessionManager } from '../../sessions/manager.ts';
+import { ChatSession } from '../../sessions/chat.ts';
+import { cursorInstalled } from '../../cursor/hooks.ts';
+import { computerIdleMs } from '../../cursor/idle.ts';
+import { isRec, oneLine, str, type Rec } from '../shared/common.ts';
+import { countPatch, unifiedDiff } from '../shared/diff.ts';
+import type { AgentAdapter, AgentEvents, AgentSession, AgentStartOptions } from '../types.ts';
 
 export const CURSOR_APP = 'cursor-app';
 

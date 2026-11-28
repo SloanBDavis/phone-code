@@ -14,7 +14,7 @@ import { PushService } from './push.ts';
 import { SessionManager } from './sessions/manager.ts';
 import { ScreenWorker } from './sessions/screen.ts';
 import { writeFileAtomic } from './util/files.ts';
-import { CURSOR_APP, CursorBridge } from './agents/cursor-app.ts';
+import { CURSOR_APP, CursorBridge } from './agents/cursor-app/index.ts';
 import { refreshCursor } from './cursor/hooks.ts';
 import { ConnectionRegistry, SESSIONS_TOPIC, type ClientContext, type WsData } from './ws-client.ts';
 
