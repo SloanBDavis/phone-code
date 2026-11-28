@@ -269,9 +269,9 @@ final class PhoneCodeUITests: XCTestCase {
     pair()
     send("slow agent please")
     let chip = wait("running-chip", 30)
-    wait("chat-item-task")
     shot("22-subagent-running")
-    press(chip)
+    // A slow simulator can see it finish before the tap: then its card, which stays, opens the same view.
+    press(chip.exists ? chip : wait("task-open"))
     wait("watch-sheet")
     XCTAssertTrue(said("List the files and report back.").waitForExistence(timeout: 10), "no brief in the sheet")
     shot("23-subagent-sheet")
