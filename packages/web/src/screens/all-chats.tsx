@@ -6,6 +6,7 @@ import { agentCatalog } from '../lib/agents';
 import { client } from '../lib/client';
 import { now } from '../lib/clock';
 import { resumeChat } from '../lib/harness';
+import { moveInList } from '../lib/keys';
 import { host } from '../lib/state';
 import { basename, haptic, relTime } from '../lib/util';
 import { Glyph, agentGlyph } from '../ui/glyph';
@@ -191,6 +192,14 @@ export default function AllChats({ text, onOpen }: { text: string; onOpen: () =>
             data-session-id={r.sessionId}
             data-archived={r.archived ? 'true' : undefined}
             onClick={() => open(r)}
+            onKeyDown={(e) =>
+              moveInList(
+                e,
+                e.currentTarget.parentElement ?? document,
+                '[data-testid="history-row"]',
+                document.querySelector<HTMLElement>('[data-testid="search-input"]'),
+              )
+            }
           >
             <span class="sb-glyph">
               <Glyph kind={agentGlyph(r.agent)} size={34} />

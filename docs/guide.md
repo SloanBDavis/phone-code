@@ -81,6 +81,8 @@ Notifications (Settings, Notifications) tell you when an agent finishes a turn o
 - **Terminal:** a real login shell, with a key bar (esc, tab, sticky ctrl and alt, arrows) and adjustable text size.
 - **Reconnects cleanly:** missed output is replayed after a dropped connection; chats survive a restart of `phonecode` (running terminals do not).
 - **Several phones** can pair; list and remove them with `phonecode devices` / `phonecode revoke`, or unpair from the phone.
+- **Sub-agents:** each one is a compact card in the chat (what it is doing now, then its report), and the ones at work are named above the message box. Tap either to watch it, or to read every step it took. Claude Code, Codex and Antigravity.
+- **Keyboard:** everything works from the keyboard, with shortcuts for the rest; press ⌘/ (Ctrl+/) for the list. The Mac app's menus have them too.
 - **Light and dark** themes, built for one-handed use.
 
 ## Agent support

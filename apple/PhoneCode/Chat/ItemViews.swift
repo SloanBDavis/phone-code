@@ -30,7 +30,9 @@ struct ItemRow: View {
     case .text(let t): AssistantText(item: t, sessionId: session.id)
     case .thinking(let t): ThinkingRow(item: t)
     case .tool(let t):
-      if case .document(let d) = t.detail, chat.latestDocument(d.path)?.id == t.id {
+      if t.name == "Task" {
+        SubagentCard(tool: t, chat: chat, session: session)
+      } else if case .document(let d) = t.detail, chat.latestDocument(d.path)?.id == t.id {
         DocumentCard(tool: t, doc: d, chat: chat, session: session)
       } else {
         ToolCard(tool: t, chat: chat, session: session)
@@ -252,23 +254,6 @@ struct ToolCard: View {
           .padding(.leading, 23)
           .padding(.bottom, 8)
       }
-      // What a sub-agent did and said, in order, hanging off a rule under its line.
-      let kids = chat.children[tool.id] ?? []
-      if !kids.isEmpty {
-        VStack(alignment: .leading, spacing: 0) {
-          ForEach(kids, id: \.self) { id in
-            if let b = chat.box(id) {
-              ItemRow(box: b, chat: chat, session: session)
-            }
-          }
-        }
-        .padding(.leading, 14)
-        .overlay(alignment: .leading) {
-          Rectangle().fill(Theme.hairline).frame(width: 1.5).padding(.vertical, 2)
-        }
-        .padding(.leading, 7)
-        .padding(.bottom, 6)
-      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .axContainer("chat-item-tool")
@@ -303,6 +288,215 @@ struct ToolCard: View {
     case "Todo", "TodoWrite": "checklist"
     case "Task": "person.2"
     default: "wrench.and.screwdriver"
+    }
+  }
+}
+
+// MARK: - Sub-agents
+
+/// What a sub-agent is doing now ("Running ls") and how many steps it took, from its nested items.
+@MainActor
+func subagentProgress(_ chat: ChatState, _ id: String) -> (doing: String, steps: Int) {
+  var steps = 0
+  var doing = ""
+  for k in chat.children[id] ?? [] {
+    guard case .tool(let t)? = chat.item(k) else { continue }
+    steps += 1
+    if t.status == .running { doing = "\(ToolCard.verb(t)) \(t.title)" }
+  }
+  return (doing, steps)
+}
+
+func stepsText(_ n: Int) -> String { "\(n) \(n == 1 ? "step" : "steps")" }
+
+/// One line about a sub-agent: what it does now, or how it ended.
+@MainActor
+func subagentStatus(_ chat: ChatState, _ tool: ToolItem) -> String {
+  let p = subagentProgress(chat, tool.id)
+  switch tool.status {
+  case .running: return [p.doing.isEmpty ? "Starting" : p.doing, p.steps > 0 ? stepsText(p.steps) : ""].filter { !$0.isEmpty }.joined(separator: " · ")
+  case .error: return "Failed · \(stepsText(p.steps))"
+  case .denied: return "Stopped"
+  default: return "Done · \(stepsText(p.steps))"
+  }
+}
+
+/// A sub-agent in the chat: one compact card with its name, what it is doing now (or
+/// how it ended) and its report. A tap opens it, to watch it work or read all it did.
+struct SubagentCard: View {
+  let tool: ToolItem
+  let chat: ChatState
+  let session: SessionInfo
+  @State private var watching = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        watching = true
+      } label: {
+        HStack(spacing: 10) {
+          Image(systemName: "person.2")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(width: 28, height: 28)
+            .background(Theme.chip, in: .rect(cornerRadius: 8))
+          VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+              Text("Agent").font(.callout.weight(.medium))
+              Text(tool.title).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Text(subagentStatus(chat, tool))
+              .font(.footnote)
+              .foregroundStyle(.tertiary)
+              .lineLimit(1)
+              .accessibilityIdentifier("task-status")
+          }
+          Spacer(minLength: 0)
+          ToolStatusIcon(status: tool.status)
+          Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.quaternary)
+        }
+        .padding(10)
+        .contentShape(.rect)
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("task-open")
+      if tool.status != .running, let report = tool.output?.trimmingCharacters(in: .whitespacesAndNewlines), !report.isEmpty {
+        Divider().padding(.horizontal, 12)
+        Text(Markdown.plain(report))
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .lineLimit(4)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(12)
+      }
+    }
+    .background(Theme.card, in: .rect(cornerRadius: 18))
+    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.hairline))
+    .padding(.vertical, 4)
+    .sheet(isPresented: $watching) { SubagentSheet(toolId: tool.id, chat: chat, session: session) }
+    .axContainer("chat-item-task")
+  }
+}
+
+/// A sub-agent, full screen: its brief, every step and what it said, in order, and its report.
+struct SubagentSheet: View {
+  let toolId: String
+  let chat: ChatState
+  let session: SessionInfo
+  @Environment(\.dismiss) private var dismiss
+
+  private var tool: ToolItem? {
+    if case .tool(let t)? = chat.box(toolId)?.item { return t }
+    return nil
+  }
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        if let t = tool {
+          let report = t.status == .running ? "" : (t.output ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+          VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+              if t.status == .running { ProgressView().controlSize(.mini) }
+              Text(subagentStatus(chat, t)).foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+            if let prompt = t.input?["prompt"]?.stringValue, !prompt.isEmpty {
+              Text(prompt)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.fill.tertiary, in: .rect(cornerRadius: 12))
+            }
+            ForEach(chat.children[t.id] ?? [], id: \.self) { id in
+              if let b = chat.box(id), !Self.isReport(b.item, report) {
+                ItemRow(box: b, chat: chat, session: session)
+              }
+            }
+            if !report.isEmpty {
+              Divider()
+              MarkdownView(text: report)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding()
+        }
+      }
+      .navigationTitle(tool?.title ?? "Agent")
+      #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+      #endif
+      .toolbar {
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Done") { dismiss() }.accessibilityIdentifier("watch-close")
+        }
+      }
+    }
+    .axContainer("watch-sheet")
+  }
+
+  /// The sub-agent's last message is its report: shown once, as the report.
+  private static func isReport(_ item: ChatItem, _ report: String) -> Bool {
+    guard !report.isEmpty, case .text(let t) = item else { return false }
+    return t.text.trimmingCharacters(in: .whitespacesAndNewlines) == report
+  }
+}
+
+/// The sub-agents at work in this chat, above the composer: each names itself and what
+/// it does now, and opens to watch.
+struct RunningStrip: View {
+  let chat: ChatState
+  let session: SessionInfo
+  @State private var watching: WatchTarget?
+
+  struct WatchTarget: Identifiable {
+    let id: String
+  }
+
+  private var running: [ToolItem] {
+    chat.ids.compactMap { id in
+      if case .tool(let t)? = chat.item(id), t.name == "Task", t.status == .running { return t }
+      return nil
+    }
+  }
+
+  var body: some View {
+    let list = running
+    if !list.isEmpty {
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 6) {
+          ProgressView().controlSize(.mini)
+          Text(list.count == 1 ? "Running" : "\(list.count) running")
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.secondary)
+          ForEach(list, id: \.id) { t in
+            Button {
+              watching = WatchTarget(id: t.id)
+            } label: {
+              HStack(spacing: 5) {
+                Image(systemName: "person.2").font(.caption2)
+                Text(t.title).font(.footnote.weight(.medium)).lineLimit(1)
+                let p = subagentProgress(chat, t.id)
+                let more = [p.doing, p.steps > 0 ? stepsText(p.steps) : ""].filter { !$0.isEmpty }.joined(separator: " · ")
+                if !more.isEmpty {
+                  Text(more).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                }
+              }
+              .padding(.horizontal, 10)
+              .padding(.vertical, 6)
+              .frame(maxWidth: 300)
+              .background(Theme.chip, in: .capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("running-chip")
+          }
+        }
+        .padding(.horizontal, 16)
+      }
+      .padding(.bottom, 6)
+      .sheet(item: $watching) { w in SubagentSheet(toolId: w.id, chat: chat, session: session) }
+      .axContainer("running-strip")
     }
   }
 }

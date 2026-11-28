@@ -39,10 +39,10 @@
   extension Notification.Name {
     /// The menu's "Pair a Phone…".
     static let pairPhone = Notification.Name("pc.pairPhone")
-    /// The menu's "New Chat": the page goes to its new-chat screen.
-    static let shellNewChat = Notification.Name("pc.shellNewChat")
     /// The menu's "Reload".
     static let shellReload = Notification.Name("pc.shellReload")
+    /// A menu item for one of the page's commands; the object is its name ("rename").
+    static let shellCommand = Notification.Name("pc.shellCommand")
   }
 
   struct WebShell: NSViewRepresentable {
@@ -139,12 +139,17 @@
         self.web = web
         let center = NotificationCenter.default
         observers.append(
-          center.addObserver(forName: .shellNewChat, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.run("location.hash = '#/';") }
-          })
-        observers.append(
           center.addObserver(forName: .shellReload, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
+          })
+        observers.append(
+          center.addObserver(forName: .shellCommand, object: nil, queue: .main) { [weak self] note in
+            guard let name = note.object as? String, name.allSatisfy({ $0.isLetter }) else { return }
+            // A page from an older phone-code has no commands: New Chat still goes to its new-chat screen.
+            let fallback = name == "newChat" ? "location.hash = '#/';" : ""
+            MainActor.assumeIsolated {
+              self?.run("if (window.phonecodeCommand) window.phonecodeCommand('\(name)'); else { \(fallback) }")
+            }
           })
       }
 

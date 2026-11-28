@@ -78,6 +78,39 @@ test("a command's output without Antigravity's report header, and its exit code"
   await expect(tool).not.toContainText('Command output');
 });
 
+test('a sub-agent: named by its role above the composer and in the chat, its steps inside it', async ({
+  phone,
+}) => {
+  await newChat(phone, 'antigravity');
+  await send(phone, 'delegate the file listing');
+  // At work: its role names it, with what it runs now.
+  const chip = phone.testId('running-chip');
+  await expect(chip).toContainText('Source Code Explorer (research)');
+  await expect(phone.testId('running-steps')).toHaveText(
+    /^Running ls src · 1 step$|^Running head -3 src\/math\.js · 2 steps$/,
+  );
+  const card = phone.testId('transcript').getByTestId('chat-item-task');
+  await expect(card).toHaveAttribute('data-status', 'running');
+  await shot(phone, 'agy-subagent-running');
+  await chip.click();
+  const sheet = phone.testId('watch-sheet');
+  await expect(sheet.locator('h2')).toHaveText('Source Code Explorer (research)');
+  await expect(sheet).toContainText('List the files in src and say what each does.');
+  await expect(sheet.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveCount(2, {
+    timeout: 10_000,
+  });
+  await sheet.getByTestId('watch-close').click();
+  await expect(sheet).toBeHidden();
+  await waitTurn(phone, 1);
+  // Done: its two steps are in its card, none in the main thread.
+  await expect(card).toHaveAttribute('data-status', 'done');
+  await expect(card.getByTestId('task-status')).toHaveText('Done · 2 steps');
+  await expect(phone.testId('running-strip')).toHaveCount(0);
+  await expect(phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveCount(0);
+  await expect(lastText(phone)).toContainText('The subagent found main.js and math.js.');
+  await shot(phone, 'agy-subagent-done');
+});
+
 test('"All chats" searches the text of Antigravity\'s own conversations', async ({ phone, daemon }) => {
   // A conversation started at the computer: only Antigravity's own files have it.
   const id = '7f4c2a10-0000-4000-8000-000000000001';

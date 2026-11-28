@@ -54,12 +54,28 @@ const clampWidth = (w: number): number => Math.min(SB_MAX, Math.max(SB_MIN, Math
 /** The sidebar's width on a wide screen, as the user left it. */
 const sidebarWidth = signal(clampWidth(load('pc.sidebarWidth', SB_DEFAULT, isNumber)));
 
+/** On a wide screen, the sidebar put away (⌘B), as the user left it. */
+export const sidebarHidden = signal(
+  load('pc.sidebarHidden', false, (v): v is boolean => typeof v === 'boolean'),
+);
+
+/** Shows or puts away the chats: the column on a wide screen, the drawer on a phone. */
+export function toggleSidebar(): void {
+  if (!wide.peek()) {
+    if (drawerOpen.peek()) closeDrawer();
+    else openDrawer();
+    return;
+  }
+  sidebarHidden.value = !sidebarHidden.peek();
+  save('pc.sidebarHidden', sidebarHidden.value);
+}
+
 /**
  * The line between the sidebar and the main pane: drag it to make the sidebar
  * narrower or wider (kept for next time), double-click for the usual width.
  */
 function SidebarResizer({ root }: { root: { current: HTMLDivElement | null } }): JSX.Element {
-  const w = sidebarWidth.value;
+  const w = sidebarHidden.value ? 0 : sidebarWidth.value;
   useLayoutEffect(() => {
     root.current?.style.setProperty('--sb-w', `${w}px`);
     // Also for what is drawn outside the shell (the Mac app's window strip).
@@ -290,13 +306,13 @@ export function Shell({
   return (
     <div
       ref={rootRef}
-      class={`shell ${isWide ? 'wide' : 'narrow'} ${open ? 'drawer-open' : ''}`}
+      class={`shell ${isWide ? 'wide' : 'narrow'} ${open ? 'drawer-open' : ''} ${isWide && sidebarHidden.value ? 'sb-hidden' : ''}`}
       data-testid="shell"
       data-drawer={open ? 'open' : 'closed'}
     >
       <aside
         class={`sidebar ${isWide ? '' : 'glass glass-regular'}`}
-        inert={!isWide && !open}
+        inert={isWide ? sidebarHidden.value : !open}
         aria-label="Chats"
         data-testid="sidebar"
       >
@@ -331,7 +347,17 @@ export function usePaneButtons(): { left: JSX.Element | null; right: JSX.Element
     const all = panes.value;
     const at = all.findIndex((p) => p.k === k);
     return {
-      left: null,
+      // The chats put away: a way back, on the first pane.
+      left:
+        sidebarHidden.value && at === 0 ? (
+          <GlassButton
+            icon="sidebar"
+            label="Show chats"
+            iconSize={22}
+            onClick={toggleSidebar}
+            testid="show-sidebar"
+          />
+        ) : null,
       right: (
         <>
           {all.length < MAX_PANES && (

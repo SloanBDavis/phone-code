@@ -198,13 +198,19 @@ test('resuming restores the sub-agent tool calls inside the agent card', async (
   });
   await waitTurn(phone, 1);
   const task = phone.testId('chat-item-task');
-  await expect(task.locator('.task-count')).toHaveText('1 step');
-  // What the sub-agent said and thought is inside its card, not in the main thread;
-  // its last message is the report, shown once.
-  await expect(task.getByTestId('task-say')).toHaveText('Looking at the top level first.');
-  await expect(task.getByTestId('task-thought')).toHaveText('A listing is enough here.');
+  // In the chat: one compact card, with how it went and its report.
+  await expect(task.getByTestId('task-status')).toHaveText('Done · 1 step');
   await expect(task.locator('.task-result')).toContainText('README.md, package.json and src');
+  await expect(task.locator('[data-testid="chat-item-tool"]')).toHaveCount(0);
+  // What the sub-agent said and thought is in its own view, not in the main thread;
+  // its last message is the report, shown once there.
+  const sheet = phone.testId('watch-sheet');
+  await task.getByTestId('task-open').click();
+  await expect(sheet.getByTestId('task-say')).toHaveText('Looking at the top level first.');
+  await expect(sheet.getByTestId('task-thought')).toHaveText('A listing is enough here.');
   await expect(phone.page.getByText('Looking at the top level first.')).toHaveCount(1);
+  await sheet.getByTestId('watch-close').click();
+  await expect(sheet).toBeHidden();
   await expect(phone.testId('chat-item-text')).toHaveCount(1);
   await phone.testId('chat-title').click();
   await phone.testId('menu-delete').click();
@@ -214,11 +220,13 @@ test('resuming restores the sub-agent tool calls inside the agent card', async (
 
   await (await searchAll(phone, 'walrus')).filter({ hasText: 'walrus' }).first().click();
   await expect(phone.testId('screen-chat')).toBeVisible();
-  await expect(task.locator('.task-count')).toHaveText('1 step');
-  await expect(task.getByTestId('task-say')).toHaveText('Looking at the top level first.');
-  const nested = task.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
+  await expect(task.getByTestId('task-status')).toHaveText('Done · 1 step');
+  // Nested only: no Bash row in the main thread.
+  await expect(phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveCount(0);
+  await task.getByTestId('task-open').click();
+  await expect(sheet.getByTestId('task-say')).toHaveText('Looking at the top level first.');
+  const nested = sheet.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
   await expect(nested).toHaveAttribute('data-status', 'done');
-  // Nested only: no top-level Bash row.
   await expect(phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveCount(1);
 });
 

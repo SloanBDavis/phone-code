@@ -368,13 +368,13 @@ function watch(chat: ChatState, id: string): void {
         <>
           <div class="sheet-head">
             <span class="glass-btn ghost" aria-hidden="true" />
-            <h2>{t?.kind === 'tool' && t.name === 'Task' ? 'Agent' : 'Running'}</h2>
+            <h2>{t?.kind === 'tool' ? (t.name === 'Task' ? t.title : 'Running') : 'Agent'}</h2>
             <GlassButton icon="close" label="Close" iconSize={18} onClick={close} testid="watch-close" />
           </div>
           <div class="sheet-scroll watch-body">
             {s &&
               (t?.kind === 'tool' && t.name === 'Task' ? (
-                <TaskCard chat={chat} item={s} startOpen />
+                <TaskCard chat={chat} item={s} full />
               ) : (
                 <ToolGroup chat={chat} ids={[id]} startOpen />
               ))}
@@ -413,27 +413,22 @@ export function RunningStrip({ chat }: { chat: ChatState }): JSX.Element | null 
 }
 
 function RunningChip({ chat, t }: { chat: ChatState; t: ToolItem }): JSX.Element {
-  const kids = childrenOf(chat, t.id).value;
-  const steps = kids.filter((id) => chat.kinds.get(id) === 'tool').length;
-  // What a sub-agent is doing right now: its latest step that is still going.
-  const now = kids
-    .map((id) => chat.items.get(id)?.value)
-    .findLast((k) => k?.kind === 'tool' && k.status === 'running');
-  const doing = now ? activityOf(now) : '';
+  const { doing, steps } = taskProgress(chat, t);
+  const task = t.name === 'Task';
   return (
     <button
       type="button"
       class="running-chip"
       data-testid="running-chip"
       title={doing || t.title}
+      aria-label={`${task ? 'Agent' : 'Running'}: ${t.title}${doing ? `, ${doing}` : ''}. Open to watch.`}
       onClick={() => watch(chat, t.id)}
     >
-      <Icon name={t.name === 'Task' ? 'sparkle' : toolIcon(t.name)} size={12} stroke={2.2} />
-      <span class="running-title">{t.title}</span>
-      {t.name === 'Task' && steps > 0 && (
+      <Icon name={task ? 'sparkle' : toolIcon(t.name)} size={12} stroke={2.2} />
+      <span class={`running-title ${task ? '' : 'mono'}`}>{t.title}</span>
+      {task && (doing || steps > 0) && (
         <span class="running-steps" data-testid="running-steps">
-          {doing ? `${doing} · ` : ''}
-          {steps} {steps === 1 ? 'step' : 'steps'}
+          {[doing, steps > 0 ? stepsText(steps) : ''].filter(Boolean).join(' · ')}
         </span>
       )}
     </button>
@@ -603,55 +598,100 @@ function TaskChild({ chat, id }: { chat: ChatState; id: string }): JSX.Element |
   return null;
 }
 
-/** Sub-agent: a card with what it did and said, in order, and its final report. */
+/** What a sub-agent is doing right now, and how far it is ("Running ls · 3 steps"). */
+function taskProgress(chat: ChatState, t: ToolItem): { doing: string; steps: number } {
+  const kids = childrenOf(chat, t.id).value;
+  const steps = kids.filter((id) => chat.kinds.get(id) === 'tool').length;
+  const now = kids
+    .map((id) => chat.items.get(id)?.value)
+    .findLast((k) => k !== undefined && activityOf(k) !== '');
+  return { doing: now ? activityOf(now) : '', steps };
+}
+
+const stepsText = (n: number): string => `${n} ${n === 1 ? 'step' : 'steps'}`;
+
+/**
+ * A sub-agent in the chat: one compact card with its name, what it is doing now (or
+ * how many steps it took) and, once done, its report. A tap opens it full screen, to
+ * watch it work or read everything it did. `full` is that view: its brief, every
+ * step and what it said, in order, and the report.
+ */
 export function TaskCard({
   chat,
   item,
-  startOpen = false,
+  full = false,
 }: {
   chat: ChatState;
   item: Signal<ChatItem>;
-  startOpen?: boolean;
+  full?: boolean;
 }): JSX.Element | null {
   const t = item.value;
   const kids = childrenOf(chat, t.id).value;
-  const [open, setOpen] = useState(startOpen);
   if (t.kind !== 'tool') return null;
-  const prompt = t.input && typeof t.input === 'object' && 'prompt' in t.input ? String(t.input.prompt) : '';
-  const steps = kids.filter((id) => chat.kinds.get(id) === 'tool').length;
+  const running = t.status === 'running';
+  const { doing, steps } = taskProgress(chat, t);
   // The report is the sub-agent's last message: shown once, as the report.
-  const report = t.status !== 'running' ? (t.output ?? '').trim() : '';
+  const report = running ? '' : (t.output ?? '').trim();
+  if (!full) {
+    const status = running
+      ? [doing || 'Starting', steps > 0 ? stepsText(steps) : ''].filter(Boolean).join(' · ')
+      : t.status === 'error'
+        ? `Failed · ${stepsText(steps)}`
+        : t.status === 'denied'
+          ? 'Stopped'
+          : `Done · ${stepsText(steps)}`;
+    return (
+      <div class={`task-card compact st-${t.status}`} data-testid="chat-item-task" data-status={t.status}>
+        <button
+          type="button"
+          class="task-head"
+          onClick={() => watch(chat, t.id)}
+          aria-label={`Open the agent: ${t.title}`}
+          data-testid="task-open"
+        >
+          <span class="tool-icon ti-task">
+            <Icon name="sparkle" size={15} stroke={2.1} />
+          </span>
+          <span class="task-main">
+            <span class="task-name">
+              <span class="tool-verb">Agent</span>
+              <span class="task-title">{t.title}</span>
+            </span>
+            <span class="task-status" data-testid="task-status">
+              {status}
+            </span>
+          </span>
+          <StatusMark t={t} />
+          <Icon name="forward" size={14} stroke={2.4} class="tool-chev" />
+        </button>
+        {report !== '' && (
+          <div class="task-result clamp">
+            <Markdown text={report} />
+          </div>
+        )}
+      </div>
+    );
+  }
+  const prompt = t.input && typeof t.input === 'object' && 'prompt' in t.input ? String(t.input.prompt) : '';
   const shown = kids.filter((id) => {
     const k = chat.items.get(id)?.value;
     return !(report !== '' && k?.kind === 'text' && k.text.trim() === report);
   });
   return (
-    <div class={`task-card st-${t.status}`} data-testid="chat-item-task" data-status={t.status}>
-      <button type="button" class="task-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span class="tool-icon ti-task">
-          <Icon name="sparkle" size={15} stroke={2.1} />
+    <div class={`task-full st-${t.status}`} data-testid="chat-item-task" data-status={t.status}>
+      <div class="task-status-line">
+        {running ? <Spinner size={13} /> : <StatusMark t={t} />}
+        <span data-testid="task-status">
+          {running ? doing || 'Starting' : t.status === 'error' ? 'Failed' : 'Done'}
         </span>
-        <span class="tool-label">
-          <span class="tool-verb">Agent</span>
-          <span class="task-title">{t.title}</span>
-        </span>
-        <span class="task-count">
-          {steps} {steps === 1 ? 'step' : 'steps'}
-        </span>
-        <StatusMark t={t} />
-        <Icon name={open ? 'up' : 'down'} size={14} stroke={2.4} class="tool-chev" />
-      </button>
-      {open && prompt && <div class="task-prompt">{prompt}</div>}
+        <span class="task-count">{stepsText(steps)}</span>
+      </div>
+      {prompt && <div class="task-prompt">{prompt}</div>}
       {shown.length > 0 && (
         <div class="task-children">
-          {(open ? shown : shown.slice(-3)).map((id) => (
+          {shown.map((id) => (
             <TaskChild key={id} chat={chat} id={id} />
           ))}
-          {!open && shown.length > 3 && (
-            <button type="button" class="task-more" onClick={() => setOpen(true)}>
-              {shown.length - 3} earlier
-            </button>
-          )}
         </div>
       )}
       {report !== '' && (

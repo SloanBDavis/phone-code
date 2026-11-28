@@ -79,6 +79,12 @@
   left: var(--sb-w, 320px);
 }
 
+/* The chats put away (⌘B): the main area takes the whole width. */
+.wide.sb-hidden > .sidebar,
+.wide.sb-hidden > .sb-resizer {
+  display: none;
+}
+
 /* The line between the two panes, to drag. Wider than it looks, so it is easy to catch. */
 .sb-resizer {
   position: absolute;

@@ -186,6 +186,7 @@ struct ChatView: View {
     VStack(spacing: 0) {
       ConnectionBanner()
       TranscriptView(chat: chat, session: session)
+      RunningStrip(chat: chat, session: session)
       ComposerView(mode: .session(session), prefill: $prefill)
     }
     .background(Color.appBackground)

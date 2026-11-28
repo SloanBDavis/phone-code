@@ -102,29 +102,31 @@ The demo host also has Antigravity not installed, slash commands, and All-chats 
 
 ## Chat
 
-| id                                                                                           | element                                             |
-| -------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `chat-title`, `chat-menu`                                                                    | title capsule (opens the menu), the menu            |
-| `menu-rename`, `menu-copy`, `menu-archive`, `menu-delete`                                    | menu items                                          |
-| `transcript`                                                                                 | transcript container                                |
-| `chat-item-user`, `chat-item-text` [`data-streaming`], `chat-item-thinking`                  | messages                                            |
-| `chat-item-tool` [`data-tool`, `data-status`], `tool-group`, `diff-view`                     | tool calls                                          |
-| `chat-item-todo`, `todo-list`, `chat-item-task` [`data-status`]                              | plan and sub-agent cards                            |
-| `chat-item-document` [`data-status`], `document-open`, `document-proceed`                    | a document the agent wrote, and Proceed on a plan   |
-| `document-sheet`, `document-view`, `document-close`                                          | the document, full screen                           |
-| `chat-item-permission` [`data-status`]                                                       | permission card                                     |
-| `permission-allow`, `permission-allow-always`, `permission-deny`                             | its buttons                                         |
-| `permission-deny-feedback`, `permission-deny-message`, `permission-deny-send`                | deny with a message (not for ACP agents)            |
-| `chat-item-question` [`data-status`]                                                         | question card                                       |
-| `question-option`, `question-other`, `question-other-input`, `question-submit`               | its controls                                        |
-| `chat-item-notice`, `chat-item-turn` [`data-outcome`]                                        | notices, turn footers                               |
-| `chat-item-pending` [`data-status`: sending, failed]                                         | optimistic user bubble                              |
-| `ask-bar` [`data-kind`], `askbar-allow`, `askbar-deny`, `askbar-answer`                      | sticky ask bar (hidden while its card is on screen) |
-| `jump-latest`                                                                                | jump-to-latest pill                                 |
-| `composer`, `composer-input`, `composer-send`, `composer-stop`                               | composer                                            |
-| `composer-attach`, `composer-file`, `composer-att`, `att-remove`                             | add photos, file input, a thumbnail, remove it      |
-| `chat-image` (class `loaded`), `upload-progress`                                             | an image in a bubble/message/tool card, upload ring |
-| `image-viewer` [`data-index`, `data-zoomed`], `viewer-count`, `viewer-close`, `viewer-share` | full-screen viewer                                  |
+| id                                                                                                         | element                                                                  |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `chat-title`, `chat-menu`                                                                                  | title capsule (opens the menu), the menu                                 |
+| `menu-rename`, `menu-copy`, `menu-archive`, `menu-delete`                                                  | menu items                                                               |
+| `transcript`                                                                                               | transcript container                                                     |
+| `chat-item-user`, `chat-item-text` [`data-streaming`], `chat-item-thinking`                                | messages                                                                 |
+| `chat-item-tool` [`data-tool`, `data-status`], `tool-group`, `diff-view`                                   | tool calls                                                               |
+| `chat-item-todo`, `todo-list`, `chat-item-task` [`data-status`]                                            | plan and sub-agent cards                                                 |
+| `task-open`, `task-status`, `running-strip`, `running-chip`, `running-steps`, `watch-sheet`, `watch-close` | a sub-agent's card, the strip of what runs, and the sheet that shows one |
+| `shortcuts-sheet`, `shortcuts-list`, `shortcuts-close`, `show-sidebar`                                     | the keyboard shortcuts (⌘/), and the chats put away (⌘B)                 |
+| `chat-item-document` [`data-status`], `document-open`, `document-proceed`                                  | a document the agent wrote, and Proceed on a plan                        |
+| `document-sheet`, `document-view`, `document-close`                                                        | the document, full screen                                                |
+| `chat-item-permission` [`data-status`]                                                                     | permission card                                                          |
+| `permission-allow`, `permission-allow-always`, `permission-deny`                                           | its buttons                                                              |
+| `permission-deny-feedback`, `permission-deny-message`, `permission-deny-send`                              | deny with a message (not for ACP agents)                                 |
+| `chat-item-question` [`data-status`]                                                                       | question card                                                            |
+| `question-option`, `question-other`, `question-other-input`, `question-submit`                             | its controls                                                             |
+| `chat-item-notice`, `chat-item-turn` [`data-outcome`]                                                      | notices, turn footers                                                    |
+| `chat-item-pending` [`data-status`: sending, failed]                                                       | optimistic user bubble                                                   |
+| `ask-bar` [`data-kind`], `askbar-allow`, `askbar-deny`, `askbar-answer`                                    | sticky ask bar (hidden while its card is on screen)                      |
+| `jump-latest`                                                                                              | jump-to-latest pill                                                      |
+| `composer`, `composer-input`, `composer-send`, `composer-stop`                                             | composer                                                                 |
+| `composer-attach`, `composer-file`, `composer-att`, `att-remove`                                           | add photos, file input, a thumbnail, remove it                           |
+| `chat-image` (class `loaded`), `upload-progress`                                                           | an image in a bubble/message/tool card, upload ring                      |
+| `image-viewer` [`data-index`, `data-zoomed`], `viewer-count`, `viewer-close`, `viewer-share`               | full-screen viewer                                                       |
 
 ## Terminal
 

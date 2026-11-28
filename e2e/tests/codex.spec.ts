@@ -183,13 +183,19 @@ test('a sub-agent: its card, what it did and said inside, and its report', async
   await expect(task).toHaveCount(1);
   await expect(task).toHaveAttribute('data-status', 'done');
   await expect(task.locator('.task-title')).toContainText('List the files');
-  await expect(task.locator('.task-count')).toHaveText('1 step');
-  const nested = task.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
-  await expect(nested).toHaveAttribute('data-status', 'done');
+  await expect(task.getByTestId('task-status')).toHaveText('Done · 1 step');
   await expect(task.locator('.task-result')).toContainText('Two entries: README.md and src.');
   // Its message is the report, shown once, and nothing of the agent's is in the main thread.
   await expect(phone.page.getByText('Two entries: README.md and src.')).toHaveCount(1);
-  await expect(phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveCount(1);
+  await expect(phone.page.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveCount(0);
   await expect(lastText(phone)).toContainText('2 entries');
   await shot(phone, 'codex-subagent');
+  // Its steps are in its own view.
+  await task.getByTestId('task-open').click();
+  const sheet = phone.testId('watch-sheet');
+  await expect(sheet.locator('h2')).toContainText('List the files');
+  const nested = sheet.locator('[data-testid="chat-item-tool"][data-tool="Bash"]');
+  await expect(nested).toHaveAttribute('data-status', 'done');
+  await shot(phone, 'codex-subagent-open');
+  await sheet.getByTestId('watch-close').click();
 });

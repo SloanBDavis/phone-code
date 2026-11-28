@@ -262,6 +262,23 @@ final class PhoneCodeUITests: XCTestCase {
     XCTAssertTrue(saidLow.waitForExistence(timeout: 30), "the change did not reach the agent")
   }
 
+  /// A sub-agent at work: named above the composer, a compact card in the chat, and a
+  /// sheet that shows its steps.
+  func test10Subagent() throws {
+    launch()
+    pair()
+    send("slow agent please")
+    let chip = wait("running-chip", 30)
+    wait("chat-item-task")
+    shot("22-subagent-running")
+    press(chip)
+    wait("watch-sheet")
+    XCTAssertTrue(said("List the files and report back.").waitForExistence(timeout: 10), "no brief in the sheet")
+    shot("23-subagent-sheet")
+    press(wait("watch-close"))
+    wait("chat-item-turn", 30)
+  }
+
   /// Antigravity's plan (the fake started as `agy acp` writes one): a card that opens the
   /// plan full screen, and Proceed, which answers it.
   func test09AntigravityPlan() throws {

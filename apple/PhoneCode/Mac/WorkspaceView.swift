@@ -524,6 +524,16 @@
   struct AppCommands: Commands {
     let model: AppModel
 
+    /// A menu item that runs one of the page's commands.
+    private func page(
+      _ title: String, _ command: String, _ key: KeyEquivalent, _ modifiers: EventModifiers = .command
+    ) -> some View {
+      Button(title) {
+        NotificationCenter.default.post(name: .shellCommand, object: command)
+      }
+      .keyboardShortcut(key, modifiers: modifiers)
+    }
+
     var body: some Commands {
       CommandGroup(after: .appInfo) {
         Button("Check for Updates…") {
@@ -531,10 +541,8 @@
         }
       }
       CommandGroup(replacing: .newItem) {
-        Button("New Chat") {
-          NotificationCenter.default.post(name: .shellNewChat, object: nil)
-        }
-        .keyboardShortcut("n", modifiers: .command)
+        page("New Chat", "newChat", "n")
+        page("New Chat Beside This One", "newChatBeside", "d")
         if model.hub.isLocal(model.creds) {
           Button("Pair a Phone…") {
             NotificationCenter.default.post(name: .pairPhone, object: nil)
@@ -542,11 +550,35 @@
           .keyboardShortcut("p", modifiers: [.command, .shift])
         }
       }
+      // The page's own commands (packages/web/src/screens/shortcuts.tsx), with the same keys:
+      // here so they can be found, and so the menu does not take a key the page would use.
+      CommandMenu("Chat") {
+        page("Search All Chats", "search", "k")
+        page("Previous Chat", "previousChat", .upArrow, [.option])
+        page("Next Chat", "nextChat", .downArrow, [.option])
+        Divider()
+        page("Rename…", "rename", "r", [.command, .shift])
+        page("Archive", "archive", "a", [.command, .shift])
+        page("Delete…", "delete", .delete)
+        Divider()
+        page("Go to Message Box", "focusComposer", "l")
+        page("Attach Photos or Files…", "attach", "o")
+        page("Stop the Agent", "stop", ".")
+        page("Copy Last Response", "copyLastResponse", "c", [.command, .shift])
+      }
       CommandGroup(after: .toolbar) {
+        page("Show or Hide Chats", "toggleSidebar", "b")
+        page("Previous Tile", "previousTile", .leftArrow, [.command, .option])
+        page("Next Tile", "nextTile", .rightArrow, [.command, .option])
+        page("Close Tile", "closeTile", "w", [.command, .option])
+        Divider()
         Button("Reload") {
           NotificationCenter.default.post(name: .shellReload, object: nil)
         }
         .keyboardShortcut("r", modifiers: .command)
+      }
+      CommandGroup(replacing: .help) {
+        page("Keyboard Shortcuts", "shortcuts", "/")
       }
     }
   }

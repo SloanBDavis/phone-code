@@ -93,11 +93,16 @@ test('a sub-agent at work is named above the composer, with what it is doing, an
   await expect(chip).toContainText('Inspect the repo');
   // How far it is and what it is running right now.
   await expect(phone.testId('running-steps')).toHaveText('Running ls · 1 step');
+  // In the chat, the same in one compact line: none of its steps spill into the thread.
+  const card = phone.testId('chat-item-task');
+  await expect(card.getByTestId('task-status')).toHaveText('Running ls · 1 step');
+  await expect(card.locator('[data-testid="chat-item-tool"]')).toHaveCount(0);
   await shot(phone, 'agent-running');
 
   await chip.click();
   const sheet = phone.testId('watch-sheet');
   await expect(sheet).toBeVisible();
+  await expect(sheet.locator('h2')).toHaveText('Inspect the repo');
   await expect(sheet.getByTestId('chat-item-task')).toHaveAttribute('data-status', 'running');
   await expect(sheet).toContainText('List the files and report back.');
   await expect(sheet.locator('[data-testid="chat-item-tool"][data-tool="Bash"]')).toHaveAttribute(

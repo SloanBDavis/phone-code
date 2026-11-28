@@ -8,12 +8,13 @@ import { exitDemo } from '../lib/boot';
 import { client } from '../lib/client';
 import { now } from '../lib/clock';
 import { connectionOf } from '../lib/connection';
+import { moveInList } from '../lib/keys';
 import { MAX_PANES, openBeside, openIds, openNew, panes, route } from '../lib/nav';
 import { canPairPhone, pairPhone } from '../lib/shell';
 import { conn, host, isDemo, sessions, sessionsLoaded } from '../lib/state';
 import { creds } from '../lib/storage';
 import { relTime } from '../lib/util';
-import { SESSION_DRAG, closeDrawer, openDrawer, wide } from '../ui/drawer';
+import { SESSION_DRAG, closeDrawer, wide } from '../ui/drawer';
 import { GlassButton } from '../ui/glass';
 import { Glyph, glyphOf } from '../ui/glyph';
 import { Icon, Spinner } from '../ui/icons';
@@ -170,6 +171,38 @@ function rowMenu(anchor: Element, s: SessionInfo): void {
   );
 }
 
+/**
+ * A chat row from the keyboard: ↑ ↓ Home End move between rows, ⌘⏎ opens beside, F2
+ * renames, ⇧F10 or the menu key shows its actions, ⌫ archives (⌘⌫ deletes, asking).
+ */
+function rowKey(e: KeyboardEvent & { currentTarget: HTMLButtonElement }, s: SessionInfo): void {
+  const row = e.currentTarget;
+  const list = row.closest('[data-testid="sidebar-list"]') ?? document;
+  const search = document.querySelector<HTMLElement>('[data-testid="search-input"]');
+  if (moveInList(e, list, '[data-testid="session-row"]', search)) return;
+  const mod = e.metaKey || e.ctrlKey;
+  if (e.altKey) return;
+  if (e.key === 'Enter' && mod && wide.peek()) {
+    e.preventDefault();
+    openBeside({ name: 'session', id: s.id });
+    return;
+  }
+  if (e.key === 'F2') {
+    e.preventDefault();
+    void renameSession(s);
+    return;
+  }
+  if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+    e.preventDefault();
+    rowMenu(row, s);
+    return;
+  }
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    e.preventDefault();
+    void (mod ? deleteSession(s) : archiveSession(s));
+  }
+}
+
 function SessionRow({ s, active, open }: { s: SessionInfo; active: boolean; open: boolean }): JSX.Element {
   const press = useLongPress((el) => rowMenu(el, s));
   const sub =
@@ -204,6 +237,7 @@ function SessionRow({ s, active, open }: { s: SessionInfo; active: boolean; open
         data-agent={s.kind === 'agent' ? (s.agent ?? DEFAULT_AGENT) : undefined}
         data-status={s.status}
         {...press.handlers}
+        onKeyDown={(e) => rowKey(e, s)}
         onClick={(e) => {
           if (press.fired()) return;
           // Cmd/Ctrl-click: beside the open chats, in a pane of its own.
@@ -284,19 +318,6 @@ export function Sidebar(): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null);
   const c = conn.value.status;
 
-  // Cmd/Ctrl+K from anywhere: search the chats.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      e.preventDefault();
-      if (!wide.peek()) openDrawer();
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  }, []);
-
   const stopSearch = (): void => {
     setQuery('');
     setSearching(false);
@@ -358,16 +379,26 @@ export function Sidebar(): JSX.Element {
             enterkeyhint="search"
             autocomplete="off"
             data-testid="search-input"
-            onFocus={() => {
-              void AllChats.preload();
-              setSearching(true);
-            }}
+            onFocus={() => void AllChats.preload()}
+            // A tap or click opens "All chats"; reaching the field with Tab does not
+            // (the list below would change under the keyboard). Typing does either way.
+            onPointerDown={() => setSearching(true)}
             onInput={(e) => {
               setQuery(e.currentTarget.value);
               setSearching(true);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') stopSearch();
+              // ↓ from the field: into the list below it.
+              if (e.key === 'ArrowDown') {
+                const first = document.querySelector<HTMLElement>(
+                  '[data-testid="sidebar-list"] [data-testid="session-row"], [data-testid="sidebar-list"] [data-testid="history-row"]',
+                );
+                if (first) {
+                  e.preventDefault();
+                  first.focus();
+                }
+              }
             }}
           />
         </label>

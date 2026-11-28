@@ -250,6 +250,53 @@ async function listFiles(c) {
   await c.say('Two entries.');
 }
 
+/**
+ * A sub-agent the way agy 1.5.18 runs one: `invoke_subagent` (Prompt, Role, TypeName)
+ * completes at once, the agent says it delegated, then the sub-agent's own calls arrive
+ * with ids `<its conversation id>:<call id>`, and the agent reports when it is done.
+ */
+async function delegate(c) {
+  const id = `call_${randomUUID().slice(0, 8)}`;
+  const rawInput = {
+    Prompt: 'List the files in src and say what each does.',
+    Role: 'Source Code Explorer',
+    TypeName: 'research',
+  };
+  c.tool(id, {
+    name: 'invoke_subagent',
+    title: 'Run invoke_subagent',
+    kind: 'other',
+    status: 'in_progress',
+    rawInput,
+  });
+  c.toolUpdate(id, { name: 'invoke_subagent', status: 'completed', rawInput });
+  await c.say('I have delegated that to a research subagent. ');
+  const sub = randomUUID();
+  for (const [cmd, out] of [
+    ['ls src', 'main.js\r\nmath.js\r\n'],
+    ['head -3 src/math.js', 'export function add(a, b) {\r\n'],
+  ]) {
+    const call = `${sub}:call_${randomUUID().slice(0, 8)}`;
+    const input = { CommandLine: cmd, WaitMsBeforeAsync: 5000, toolSummary: cmd };
+    c.tool(call, {
+      name: 'run_command',
+      title: cmd,
+      kind: 'execute',
+      status: 'in_progress',
+      rawInput: input,
+    });
+    await sleep(1500);
+    c.check();
+    const text = `Created At: now\nCompleted At: now\nCommand exited with code 0.\n\nCommand output:\n${out}`;
+    c.toolUpdate(call, {
+      status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text } }],
+      rawOutput: { output: text, exit_code: 0 },
+    });
+  }
+  await c.say('The subagent found main.js and math.js.');
+}
+
 /** agy's transcript of the conversation (what "All chats" searches). */
 function logTranscript(s, type, content) {
   if (!AGY) return;
@@ -617,6 +664,7 @@ const SCENARIOS = [
   [/edit file/i, editFile],
   [/read outside/i, readOutside],
   [/terminal/i, terminal],
+  [/delegate/i, delegate],
   [/write a plan/i, writePlan],
   [/update the task list/i, updateTasks],
   [/list files/i, listFiles],

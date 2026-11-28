@@ -179,6 +179,14 @@ class AcpSession implements AgentSession {
   private readonly tools = new Map<string, AcpToolState>();
   private readonly toolImageRefs = new Map<string, { count: number; refs: ImageRef[] }>();
   private readonly toolTs = new Map<string, number>();
+  /**
+   * Sub-agents started this session, by the toolCallId that started them. Antigravity runs
+   * them in the background: the call that starts one completes at once, and the
+   * sub-agent's own calls come later with ids `<its conversation id>:<call id>`. The first
+   * such prefix that shows up goes to the earliest sub-agent that has none yet. One is at
+   * work until the agent speaks again with none of its calls running, or the turn ends.
+   */
+  private readonly subagents = new Map<string, { prefix?: string; calls: Set<string>; done: boolean }>();
   /** A document's text read from disk (the call that changed it did not carry it), by toolCallId. */
   private readonly docText = new Map<string, string | null>();
   private readonly denied = new Set<string>();
@@ -596,6 +604,7 @@ class AcpSession implements AgentSession {
           return;
         }
         if (this.replay === 'history') this.replayAgentSinceUser = true;
+        if (kind === 'agent_message_chunk' && text.trim() !== '') this.finishSubagents(true);
         this.appendText(kind === 'agent_message_chunk' ? 'text' : 'thinking', text, str(u.messageId));
         return;
       }
@@ -853,6 +862,17 @@ class AcpSession implements AgentSession {
     });
     const images = this.toolImages(toolCallId, state.content);
     if (images) item.images = images;
+    if (item.name === 'Task') {
+      let sub = this.subagents.get(toolCallId);
+      if (sub === undefined) {
+        sub = { calls: new Set(), done: false };
+        this.subagents.set(toolCallId, sub);
+      }
+      // A replayed conversation's sub-agents are long over.
+      if (!sub.done && item.status === 'done' && this.replay === 'none') item.status = 'running';
+    }
+    const parent = this.subagentOf(toolCallId);
+    if (parent !== undefined) item.parentId = this.toolItemId(parent);
     if (item.detail?.type === 'document' && item.detail.text === undefined) {
       const d = item.detail;
       const read = this.docText.get(toolCallId);
@@ -870,6 +890,51 @@ class AcpSession implements AgentSession {
     // The question card is this tool call's UI: nest the generic row under it, where it is not shown.
     const ask = this.askTools.get(toolCallId);
     this.upsertItem(ask === undefined ? item : { ...item, parentId: ask });
+  }
+
+  /** The sub-agent a call belongs to, by its `<conversation id>:` prefix (see `subagents`). */
+  private subagentOf(toolCallId: string): string | undefined {
+    const at = toolCallId.indexOf(':');
+    if (at <= 0) return undefined;
+    const prefix = toolCallId.slice(0, at);
+    let found: string | undefined;
+    for (const [id, sub] of this.subagents) {
+      if (sub.prefix === prefix) {
+        found = id;
+        break;
+      }
+    }
+    if (found === undefined) {
+      for (const [id, sub] of this.subagents) {
+        if (sub.prefix === undefined && !sub.done) {
+          sub.prefix = prefix;
+          found = id;
+          break;
+        }
+      }
+    }
+    if (found !== undefined) this.subagents.get(found)?.calls.add(toolCallId);
+    return found;
+  }
+
+  /**
+   * Sub-agents whose work is over: every one at the end of a turn; when the agent speaks
+   * again (`idleOnly`), the ones that did something and have nothing running.
+   */
+  private finishSubagents(idleOnly: boolean): void {
+    for (const [id, sub] of this.subagents) {
+      if (sub.done) continue;
+      if (idleOnly) {
+        if (sub.calls.size === 0) continue;
+        const busy = [...sub.calls].some((c) => {
+          const st = this.tools.get(c)?.status;
+          return st !== 'completed' && st !== 'failed';
+        });
+        if (busy) continue;
+      }
+      sub.done = true;
+      this.renderTool(id);
+    }
   }
 
   /**
@@ -1120,6 +1185,7 @@ class AcpSession implements AgentSession {
   }
 
   private emitTurn(outcome: TurnItem['outcome'], error?: string, usage?: Rec): void {
+    this.finishSubagents(false);
     const live = this.replay === 'none';
     const cost =
       live && this.costNow !== undefined && this.costAtTurnStart !== undefined

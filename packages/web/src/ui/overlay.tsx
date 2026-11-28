@@ -49,6 +49,85 @@ export function OverlayHost(): JSX.Element {
 
 const ANIM_MS = 320;
 
+/** Whether a sheet, menu or dialog is open (shortcuts of the page wait while one is). */
+export const overlayOpen = (): boolean => layers.peek().some((l) => !l.closing);
+
+// ------------------------------------------------------------ keyboard focus
+
+/** The open layers' elements, newest last: Escape and Tab belong to the top one. */
+const focusStack: HTMLElement[] = [];
+
+const FOCUSABLE =
+  'button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+function focusables(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => el.offsetParent !== null || el === document.activeElement,
+  );
+}
+
+/**
+ * A layer's keyboard focus: it takes focus when it opens (`initial`, else its first
+ * control), keeps Tab inside, closes on Escape when it is the top layer, and gives
+ * focus back to what had it when it closes.
+ */
+function useLayerFocus(
+  ref: { current: HTMLElement | null },
+  close: () => void,
+  initial?: (el: HTMLElement) => HTMLElement | null | undefined,
+): void {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  // Before the first paint: a key pressed as the layer appears already goes to it.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    focusStack.push(el);
+    // A menu is hidden until it is placed, and a hidden element cannot take focus: try
+    // again on the next frames until it has it.
+    let tries = 10;
+    let frame = 0;
+    const take = (): void => {
+      if (el.contains(document.activeElement) || !el.isConnected) return;
+      const first = initial?.(el) ?? focusables(el)[0] ?? el;
+      first.focus({ preventScroll: true });
+      if (!el.contains(document.activeElement) && --tries > 0) frame = requestAnimationFrame(take);
+    };
+    take();
+    const onKey = (e: KeyboardEvent): void => {
+      if (focusStack.at(-1) !== el) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const all = focusables(el);
+      if (all.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const active = document.activeElement;
+      const at = active instanceof HTMLElement ? all.indexOf(active) : -1;
+      const next = e.shiftKey ? (at <= 0 ? all.length - 1 : at - 1) : at === all.length - 1 ? 0 : at + 1;
+      e.preventDefault();
+      all[next]?.focus();
+    };
+    // Capture: before the page's own keys, so Escape closes this layer only.
+    addEventListener('keydown', onKey, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      removeEventListener('keydown', onKey, true);
+      focusStack.splice(focusStack.indexOf(el), 1);
+      if (opener?.isConnected && !focusStack.some((x) => x.contains(document.activeElement)))
+        opener.focus({ preventScroll: true });
+    };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per layer
+  }, []);
+}
+
 function LayerCtx({ layer }: { layer: Layer }): JSX.Element {
   useEffect(() => {
     if (!layer.closing) return undefined;
@@ -116,13 +195,7 @@ function Sheet({
   // The slide-in is decoration: `entered` flips on the next frame or a timer, never on an animation event.
   useLayoutEffect(() => soon(() => setEntered(true)), []);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close();
-    };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  }, [close]);
+  useLayerFocus(sheetRef, close);
 
   const setY = (y: number, animate: boolean): void => {
     const el = sheetRef.current;
@@ -195,6 +268,7 @@ function Sheet({
         open
         ref={sheetRef}
         class={`sheet glass glass-regular ${opts.large ? 'sheet-large' : ''}`}
+        tabIndex={-1}
         aria-modal="true"
         aria-label={opts.label}
         data-testid={opts.testid}
@@ -334,13 +408,34 @@ function Menu({
     };
   }, [anchor]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close();
-    };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  }, [close]);
+  useLayerFocus(menuRef, close, (el) => {
+    const items = [...el.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
+    return items.find((x) => x.classList.contains('checked')) ?? items[0];
+  });
+
+  /** Arrow keys, Home and End move between the items; typing a letter goes to the next that starts with it. */
+  const onMenuKey = (e: KeyboardEvent): void => {
+    const el = menuRef.current;
+    if (!el) return;
+    const items = [...el.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
+    if (items.length === 0) return;
+    const active = document.activeElement;
+    const at = active instanceof HTMLElement ? items.indexOf(active) : -1;
+    let next = -1;
+    if (e.key === 'ArrowDown') next = at < 0 ? 0 : (at + 1) % items.length;
+    else if (e.key === 'ArrowUp') next = at <= 0 ? items.length - 1 : at - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    else if (e.key.length === 1 && /\S/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const k = e.key.toLowerCase();
+      const order = [...items.slice(at + 1), ...items.slice(0, at + 1)];
+      const hit = order.find((x) => x.textContent.trim().toLowerCase().startsWith(k));
+      if (hit) next = items.indexOf(hit);
+    }
+    if (next < 0) return;
+    e.preventDefault();
+    items[next]?.focus();
+  };
 
   const state = closing ? 'out' : entered ? 'in' : 'pre';
   return (
@@ -355,6 +450,8 @@ function Menu({
         ref={menuRef}
         class="menu glass glass-regular"
         role="menu"
+        tabIndex={-1}
+        onKeyDown={onMenuKey}
         data-testid={testid}
         style={
           pos
@@ -465,10 +562,19 @@ function Alert({
   }, [opts.input]);
   const cancel = (): void => done(opts.input ? null : false);
   const ok = (): void => done(opts.input ? value.trim() || null : true);
+  const alertRef = useRef<HTMLDivElement>(null);
+  // The field when there is one, else the confirming button (Cancel when confirming would
+  // destroy something): Return answers, Escape cancels.
+  useLayerFocus(alertRef, cancel, (el) =>
+    opts.input
+      ? null
+      : el.querySelector<HTMLElement>(opts.destructive ? '.alert-btn:not(.strong)' : '.alert-btn.strong'),
+  );
   return (
     <div class={`alert-layer ${closing ? 'out' : entered ? 'in' : 'pre'}`}>
       <div class="alert-backdrop" aria-hidden="true" onClick={cancel} />
       <div
+        ref={alertRef}
         class="alert glass glass-regular"
         role="alertdialog"
         aria-label={opts.title}

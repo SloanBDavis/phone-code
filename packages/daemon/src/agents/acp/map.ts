@@ -257,9 +257,31 @@ function toolStatus(s: string): ToolStatus {
 }
 
 /** Name, title and detail for a tool call, normalized across agents by ACP's `kind`. */
+/**
+ * A sub-agent the agent started (Antigravity's `invoke_subagent`, with its brief in
+ * `Prompt`, a `Role` and a `TypeName`): a Task, named by its role.
+ */
+export function subagentView(t: AcpToolState): { title: string; prompt?: string } | undefined {
+  if (!/subagent/i.test(t.name ?? '')) return undefined;
+  const input = rec(t.rawInput);
+  const prompt = firstStr(input, ['Prompt', 'prompt', 'Task', 'task']);
+  const role = firstStr(input, ['Role', 'role']);
+  const type = firstStr(input, ['TypeName', 'subagent_type', 'type']);
+  const name = role ?? (prompt === undefined ? undefined : oneLine(prompt, 60)) ?? 'Sub-agent';
+  return {
+    title:
+      type && type !== 'general' && !name.toLowerCase().includes(type.toLowerCase())
+        ? `${name} (${type})`
+        : name,
+    ...(prompt === undefined ? {} : { prompt }),
+  };
+}
+
 export function toolView(t: AcpToolState, cwd: string): { name: string; title: string; detail?: ToolDetail } {
   const input = rec(t.rawInput);
   const title = t.title || t.name || 'Tool';
+  const sub = subagentView(t);
+  if (sub) return { name: 'Task', title: sub.title };
   switch (t.kind) {
     case 'execute': {
       const command = commandOf(t);
@@ -360,8 +382,12 @@ export function toolItem(
     name: view.name,
     title: view.title,
     status,
-    // A document's input is its text again: the detail has it.
-    ...(t.rawInput !== undefined && view.detail?.type !== 'document' ? { input: t.rawInput } : {}),
+    // A document's input is its text again: the detail has it. A sub-agent's is its brief.
+    ...(view.name === 'Task'
+      ? { input: { prompt: subagentView(t)?.prompt ?? '' } }
+      : t.rawInput !== undefined && view.detail?.type !== 'document'
+        ? { input: t.rawInput }
+        : {}),
     ...(view.detail ? { detail: view.detail } : {}),
     ...(output ? { output } : {}),
     ...(truncated ? { outputTruncated: true } : {}),

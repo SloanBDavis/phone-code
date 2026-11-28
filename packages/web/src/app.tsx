@@ -16,6 +16,7 @@ import {
 import { ChatScreen } from './screens/chat/chat';
 import { PairScreen } from './screens/pair';
 import { LoadingScreen } from './screens/placeholder';
+import { useShortcuts } from './screens/shortcuts';
 import { Sidebar } from './screens/sidebar';
 import { PaneContext, SESSION_DRAG, Shell, wide } from './ui/drawer';
 import { lazy } from './ui/lazy';
@@ -210,6 +211,7 @@ function Main(): JSX.Element {
 }
 
 export function App(): JSX.Element {
+  useShortcuts();
   const status = conn.value.status;
   useEffect(() => {
     if (status === 'unauthorized')

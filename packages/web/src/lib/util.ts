@@ -39,6 +39,8 @@ export function basename(path: string): string {
 let hapticEl: HTMLLabelElement | null = null;
 export function haptic(kind: 'light' | 'medium' | 'success' | 'warning' = 'light'): void {
   try {
+    // Nothing to feel without a touch screen (the Mac app, a desktop browser).
+    if (!matchMedia('(pointer: coarse)').matches) return;
     if ('vibrate' in navigator && !/iPhone|iPad/.test(navigator.userAgent)) {
       navigator.vibrate(kind === 'light' ? 8 : kind === 'medium' ? 14 : [10, 40, 14]);
       return;
@@ -54,7 +56,14 @@ export function haptic(kind: 'light' | 'medium' | 'success' | 'warning' = 'light
       hapticEl.appendChild(input);
       document.body.appendChild(hapticEl);
     }
+    // The click moves focus to the hidden switch: give it back (a keyboard user loses
+    // their place otherwise).
+    const had = document.activeElement;
     hapticEl.click();
+    const now = document.activeElement;
+    if (now === had || !(now instanceof HTMLElement) || !hapticEl.contains(now)) return;
+    if (had instanceof HTMLElement) had.focus({ preventScroll: true });
+    else now.blur();
   } catch {
     // no haptics available
   }

@@ -54,6 +54,15 @@ function preview(p: PermissionItem): JSX.Element | null {
   return null;
 }
 
+/** The number key that answers with this button, shown where there is a keyboard. */
+function KeyHint({ n }: { n: number }): JSX.Element | null {
+  return n <= 9 ? (
+    <kbd class="kbd-hint" aria-hidden="true">
+      {n}
+    </kbd>
+  ) : null;
+}
+
 export function PermissionCard({
   sessionId,
   item,
@@ -135,6 +144,7 @@ export function PermissionCard({
               data-testid="permission-deny"
             >
               Deny
+              <KeyHint n={p.canAllowAlways ? 3 : 2} />
             </button>
             {p.canAllowAlways && (
               <button
@@ -144,6 +154,7 @@ export function PermissionCard({
                 data-testid="permission-allow-always"
               >
                 Always allow
+                <KeyHint n={2} />
               </button>
             )}
             <button
@@ -153,6 +164,7 @@ export function PermissionCard({
               data-testid="permission-allow"
             >
               Allow
+              <KeyHint n={1} />
             </button>
           </div>
           {p.canDenyWithMessage !== false && (
@@ -230,6 +242,8 @@ export function QuestionCard({
     <div class="q-card" data-testid="chat-item-question" data-status="pending" id={`ask-${q.id}`}>
       {q.questions.map((x, qi) => {
         const multi = !!x.multiSelect;
+        // The options are numbered across the questions, for the number keys (screens/shortcuts.tsx).
+        const first = q.questions.slice(0, qi).reduce((n, y) => n + y.options.length, 0);
         const cur = picked[qi] ?? [];
         return (
           <fieldset key={x.question} class="q-block" aria-labelledby={`q-${q.id}-${qi}`}>
@@ -239,7 +253,7 @@ export function QuestionCard({
             </div>
             {multi && <div class="q-hint">Choose any</div>}
             <div class="q-options" role={multi ? 'group' : 'radiogroup'}>
-              {x.options.map((o) => {
+              {x.options.map((o, oi) => {
                 const on = cur.includes(o.label);
                 return (
                   <button
@@ -258,6 +272,7 @@ export function QuestionCard({
                       <span class="q-label">{o.label}</span>
                       {o.description && <span class="q-desc">{o.description}</span>}
                     </span>
+                    <KeyHint n={first + oi + 1} />
                   </button>
                 );
               })}

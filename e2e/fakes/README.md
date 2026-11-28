@@ -121,25 +121,22 @@ under `untrusted` and `on-request`. File edits are asked about under
 `untrusted`, and under `on-request` only when the sandbox is read-only.
 `acceptForSession` lasts until the process exits.
 
-| prompt contains        | what happens                                                                                                                                                                                                                                             |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `close input`          | answers, then closes its stdin and keeps running                                                                                                                                                                                                         |
-| `late ask`             | answers, then after `turn/completed` sends a `git fetch` command approval request                                                                                                                                                                        |
-| `background decision`  | reports the decision the host sent for that late request                                                                                                                                                                                                 |
-| `crash`                | streams a message, then exits with code 3                                                                                                                                                                                                                |
-| `hello`                | streams an `agentMessage`                                                                                                                                                                                                                                |
-| `think`                | reasoning summary deltas, then the answer                                                                                                                                                                                                                |
-| `run tests`            | a `commandExecution` (`/bin/bash -lc 'npm test'`) with an approval request, streamed `outputDelta`, exit code 0                                                                                                                                          |
-| `failing`              | a command that exits with code 2, with no approval                                                                                                                                                                                                       |
-| `edit file`            | a `fileChange` (an add of `notes.md`, or an update with a unified diff) with an approval request, then writes the file                                                                                                                                   |
-| `ask me`               | `item/tool/requestUserInput` with 2 options                                                                                                                                                                                                              |
-| `write a plan`         | started as `acp` (Antigravity): an `implementation_plan.md` artifact written with `write_file` and `ArtifactMetadata` (summary, `RequestFeedback`) into `~/.gemini/antigravity-cli/brain/<session>/`, then an answer linking to it with a `file://` link |
-| `update the task list` | a `task.md` artifact, then an in-place edit of it whose call carries only the changed line (the file on disk has the whole text)                                                                                                                         |
-| `list files`           | an `execute` tool call whose output comes in agy's report: `Created At` / `Completed At` / `Command exited with code 0.` / `Command output:` header, CRLF line ends                                                                                      |
-| `todo` / `plan`        | `turn/plan/updated` 4 times as the steps progress                                                                                                                                                                                                        |
-| `search`               | a `webSearch` item and an `mcpToolCall` item                                                                                                                                                                                                             |
-| `long`                 | streams for about 10 s                                                                                                                                                                                                                                   |
-| anything else          | `You said: …`                                                                                                                                                                                                                                            |
+| prompt contains       | what happens                                                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `close input`         | answers, then closes its stdin and keeps running                                                                       |
+| `late ask`            | answers, then after `turn/completed` sends a `git fetch` command approval request                                      |
+| `background decision` | reports the decision the host sent for that late request                                                               |
+| `crash`               | streams a message, then exits with code 3                                                                              |
+| `hello`               | streams an `agentMessage`                                                                                              |
+| `think`               | reasoning summary deltas, then the answer                                                                              |
+| `run tests`           | a `commandExecution` (`/bin/bash -lc 'npm test'`) with an approval request, streamed `outputDelta`, exit code 0        |
+| `failing`             | a command that exits with code 2, with no approval                                                                     |
+| `edit file`           | a `fileChange` (an add of `notes.md`, or an update with a unified diff) with an approval request, then writes the file |
+| `ask me`              | `item/tool/requestUserInput` with 2 options                                                                            |
+| `todo` / `plan`       | `turn/plan/updated` 4 times as the steps progress                                                                      |
+| `search`              | a `webSearch` item and an `mcpToolCall` item                                                                           |
+| `long`                | streams for about 10 s                                                                                                 |
+| anything else         | `You said: …`                                                                                                          |
 
 Every turn ends with `thread/tokenUsage/updated` and then `turn/completed`.
 
@@ -207,6 +204,7 @@ method by itself when an `*_API_KEY` variable is present).
 | `edit file`            | reads `notes.md` in cwd through `fs/read_text_file`, sends an `edit` tool call with `diff` content (new file, or `hello world` → `hello phone-code` plus a line), asks, then writes it through `fs/write_text_file`                                      |
 | `read outside`         | asks the client to read `/etc/hostname` (the adapter refuses: outside the session folder)                                                                                                                                                                |
 | `terminal`             | asks, then runs `echo … && ls` through `terminal/create`, embeds the terminal in the tool call, waits for exit and releases it                                                                                                                           |
+| `delegate`             | an Antigravity sub-agent: `invoke_subagent` (`Prompt`, `Role`, `TypeName`) completes at once, then two `execute` calls with ids `<sub-agent id>:call_…`, 1.5 s each, then the report                                                                     |
 | `write a plan`         | started as `acp` (Antigravity): an `implementation_plan.md` artifact written with `write_file` and `ArtifactMetadata` (summary, `RequestFeedback`) into `~/.gemini/antigravity-cli/brain/<session>/`, then an answer linking to it with a `file://` link |
 | `update the task list` | a `task.md` artifact, then an in-place edit of it whose call carries only the changed line (the file on disk has the whole text)                                                                                                                         |
 | `list files`           | an `execute` tool call whose output comes in agy's report: `Created At` / `Completed At` / `Command exited with code 0.` / `Command output:` header, CRLF line ends                                                                                      |
