@@ -9,8 +9,9 @@ import { client } from '../lib/client';
 import { now } from '../lib/clock';
 import { connectionOf } from '../lib/connection';
 import { MAX_PANES, openBeside, openIds, openNew, panes, route } from '../lib/nav';
+import { canPairPhone, pairPhone } from '../lib/shell';
 import { conn, host, isDemo, sessions, sessionsLoaded } from '../lib/state';
-import { creds, load, save } from '../lib/storage';
+import { creds } from '../lib/storage';
 import { relTime } from '../lib/util';
 import { SESSION_DRAG, closeDrawer, openDrawer, wide } from '../ui/drawer';
 import { GlassButton } from '../ui/glass';
@@ -19,8 +20,6 @@ import { Icon, Spinner } from '../ui/icons';
 import { lazy } from '../ui/lazy';
 import { openMenu, openSheet } from '../ui/overlay';
 import { SwipeRow } from '../ui/swipe-row';
-
-const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
 
 const AllChats = lazy(() => import('./all-chats'));
 const ComputerSheet = lazy(() => import('./settings'));
@@ -235,16 +234,12 @@ function SessionRow({ s, active, open }: { s: SessionInfo; active: boolean; open
 function ChatList(): JSX.Element {
   const groups = useComputed(() => {
     const shown = sessions.value.filter((s) => !s.archived);
-    const rest = shown.filter((s) => s.status !== 'waiting');
     return {
       waiting: shown.filter((s) => s.status === 'waiting'),
-      // The chats started here. Cursor's app adds one for every chat in Cursor: those
-      // are a folded section of their own (one that waits for a reply is above, like any).
-      rest: rest.filter((s) => !isCursorChat(s)),
-      cursor: rest.filter((s) => isCursorChat(s)),
+      // Every other chat, whatever harness it is (Cursor's app included).
+      rest: shown.filter((s) => s.status !== 'waiting'),
     };
   });
-  const [cursorOpen, setCursorOpen] = useState(() => load('pc.sidebar.cursorOpen', false, isBoolean));
   const r = route.value;
   const activeId = r.name === 'session' ? r.id : null;
   const open = openIds.value;
@@ -255,7 +250,7 @@ function ChatList(): JSX.Element {
         <Spinner size={20} />
       </div>
     );
-  if (!g.waiting.length && !g.rest.length && !g.cursor.length)
+  if (!g.waiting.length && !g.rest.length)
     return (
       <p class="sb-empty" data-testid="sessions-empty">
         Your chats show up here. Search above to find the ones you started on your computer.
@@ -277,27 +272,6 @@ function ChatList(): JSX.Element {
           {g.rest.map((s) => (
             <SessionRow key={s.id} s={s} active={s.id === activeId} open={open.has(s.id)} />
           ))}
-        </section>
-      )}
-      {g.cursor.length > 0 && (
-        <section class="sb-section" data-testid="section-cursor">
-          <button
-            type="button"
-            class="sb-head sb-fold"
-            aria-expanded={cursorOpen}
-            data-testid="section-cursor-toggle"
-            onClick={() => {
-              save('pc.sidebar.cursorOpen', !cursorOpen);
-              setCursorOpen(!cursorOpen);
-            }}
-          >
-            <Icon name={cursorOpen ? 'down' : 'forward'} size={11} stroke={2.6} />
-            Cursor · {g.cursor.length}
-          </button>
-          {cursorOpen &&
-            g.cursor.map((s) => (
-              <SessionRow key={s.id} s={s} active={s.id === activeId} open={open.has(s.id)} />
-            ))}
         </section>
       )}
     </>
@@ -350,6 +324,16 @@ export function Sidebar(): JSX.Element {
           </button>
         )}
         <span class="spacer" />
+        {canPairPhone() && (
+          <GlassButton
+            icon="qr"
+            label="Pair a phone"
+            title="Pair a phone (⇧⌘P)"
+            iconSize={19}
+            testid="sidebar-pair-phone"
+            onClick={pairPhone}
+          />
+        )}
         <GlassButton
           icon="compose"
           label="New chat"

@@ -97,17 +97,9 @@ function hook(daemon: Daemon, event: string, input: Record<string, unknown>): Pr
 const cursorRow = (phone: Phone) =>
   phone.page.locator('[data-testid="session-row"][data-agent="cursor-app"]');
 
-/** Cursor's chats are a folded section of the sidebar: open it (once; it stays open). */
-async function showCursorChats(phone: Phone): Promise<void> {
-  const toggle = phone.testId('section-cursor-toggle');
-  await expect(toggle).toBeVisible();
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-}
-
 /** Opens the Cursor chat from the sidebar and waits for its transcript (the phone follows it). */
 async function openCursorChat(phone: Phone): Promise<void> {
   await openSidebar(phone);
-  await showCursorChats(phone);
   await cursorRow(phone).click();
   await expect(phone.testId('screen-chat')).toHaveAttribute('data-session-id', /.+/);
   await expect(phone.testId('chat-item-user').first()).toContainText(PROMPT);
@@ -159,11 +151,9 @@ test('a Cursor chat shows up live: the prompt as its title, thinking, a command,
 }) => {
   expect(await hook(daemon, 'beforeSubmitPrompt', { generation_id: 'g1', prompt: PROMPT })).toEqual({});
   await openSidebar(phone);
-  // Not mixed in with the chats started here: a folded section, with how many.
-  await expect(phone.testId('section-cursor-toggle')).toContainText('Cursor · 1');
-  await expect(cursorRow(phone)).toHaveCount(0);
-  await showCursorChats(phone);
-  const row = cursorRow(phone);
+  // In the chat list like a chat of any other harness: no section of its own.
+  await expect(phone.testId('section-cursor')).toHaveCount(0);
+  const row = phone.testId('section-chats').locator('[data-testid="session-row"][data-agent="cursor-app"]');
   await expect(row).toHaveCount(1);
   await expect(row.locator('.sb-title')).toHaveText(PROMPT);
   await expect(row.locator('[data-glyph="cursor-app"]')).toHaveText('Cu');

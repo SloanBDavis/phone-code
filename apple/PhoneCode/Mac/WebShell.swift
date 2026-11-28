@@ -17,7 +17,7 @@
     var body: some View {
       Group {
         if let creds = model.creds {
-          WebShell(creds: creds)
+          WebShell(creds: creds, canPair: model.hub.isLocal(creds))
             // Another computer or a new pairing: a fresh page with that pairing.
             .id("\(creds.baseURL.absoluteString)|\(creds.token)")
         }
@@ -47,6 +47,8 @@
 
   struct WebShell: NSViewRepresentable {
     let creds: HostCredentials
+    /// phone-code runs on this Mac: the page gets a "Pair a phone" button that asks the app for its QR code.
+    var canPair = false
 
     static let dragStripHeight: CGFloat = 28
 
@@ -57,6 +59,9 @@
       config.websiteDataStore = .default()
       config.userContentController.addUserScript(
         WKUserScript(source: Self.bootScript(creds), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+      // What the page asks the app for (packages/web/src/lib/shell.ts): only main-frame pages
+      // of this app's own phone-code reach it (the coordinator checks).
+      if canPair { config.userContentController.add(context.coordinator, name: Coordinator.handlerName) }
       let web = WKWebView(frame: .zero, configuration: config)
       web.navigationDelegate = context.coordinator
       web.uiDelegate = context.coordinator
@@ -84,6 +89,7 @@
     func updateNSView(_ web: WKWebView, context: Context) {}
 
     static func dismantleNSView(_ web: WKWebView, coordinator: Coordinator) {
+      web.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.handlerName)
       coordinator.detach()
     }
 
@@ -120,7 +126,8 @@
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+      static let handlerName = "phonecode"
       private let base: URL
       private weak var web: WKWebView?
       private var observers: [NSObjectProtocol] = []
@@ -193,6 +200,16 @@
       }
 
       // MARK: what the page asks the app for
+
+      /// `webkit.messageHandlers.phonecode.postMessage({ type: 'pairPhone' })`: the QR code sheet.
+      func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        let origin = message.frameInfo.securityOrigin
+        guard message.frameInfo.isMainFrame, origin.protocol == base.scheme, origin.host == base.host,
+          origin.port == (base.port ?? 0)
+        else { return }
+        guard let body = message.body as? [String: Any], body["type"] as? String == "pairPhone" else { return }
+        NotificationCenter.default.post(name: .pairPhone, object: nil)
+      }
 
       /// A link that opens a new window (target="_blank"): the browser's.
       func webView(

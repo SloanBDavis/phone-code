@@ -266,17 +266,6 @@
   color: var(--label-2);
 }
 
-/* A section that folds (the chats followed from Cursor's app). */
-.sb-fold {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-
 .sb-head.attention {
   color: var(--attention);
 }

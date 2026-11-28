@@ -153,6 +153,39 @@ test('the sidebar resizes by its edge, the computer opens as a dialog, the conte
   await shot(phone, 'mac-composer-file');
 });
 
+/** The app's message handler (WebShell.swift), as far as the page sees it: what the page posts, kept on <html>. */
+const SHELL_HANDLER = `window.webkit = { messageHandlers: { phonecode: { postMessage: function (m) {
+  var el = document.documentElement;
+  el.dataset.shellMessages = (el.dataset.shellMessages || '') + JSON.stringify(m) + ';';
+} } } };`;
+
+test('pairing a phone: a button in the sidebar and in "This computer" asks the app for the QR code', async ({
+  phone,
+}) => {
+  const posted = () => phone.page.locator('html').getAttribute('data-shell-messages');
+  // A browser (or the phone) has no app to ask: no button.
+  await expect(phone.testId('sidebar-pair-phone')).toHaveCount(0);
+  await phone.page.addInitScript({ content: SHELL_HANDLER });
+  await asMacApp(phone);
+
+  const button = phone.testId('sidebar-pair-phone');
+  await expect(button).toBeVisible();
+  await expect(button).toHaveAttribute('aria-label', 'Pair a phone');
+  // Next to New chat, at the top of the sidebar, clear of the window's strip.
+  const box = await button.boundingBox();
+  expect(box?.y).toBeGreaterThanOrEqual(28);
+  await bothThemes(phone, 'mac-pair-button');
+  await button.click();
+  expect(await posted()).toBe('{"type":"pairPhone"};');
+
+  await phone.testId('open-computer').click();
+  const row = phone.testId('settings-pair-phone');
+  await expect(row).toContainText('Pair a phone');
+  await row.click();
+  await expect(phone.testId('computer-sheet')).toBeHidden();
+  expect(await posted()).toBe('{"type":"pairPhone"};{"type":"pairPhone"};');
+});
+
 test('tiles: chats side by side, opened from the sidebar, kept for next time, closed one by one', async ({
   phone,
 }) => {

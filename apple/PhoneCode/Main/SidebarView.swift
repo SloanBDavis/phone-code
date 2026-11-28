@@ -13,8 +13,6 @@ struct SidebarView: View {
   @State private var deleting: SessionInfo?
   /// Looking through every conversation on the computer, without a search text.
   @State private var browsing = false
-  /// Chats followed from Cursor's app: folded away until asked for.
-  @AppStorage("pc.sidebar.cursorOpen") private var cursorOpen = false
   @FocusState private var searchFocused: Bool
 
   var body: some View {
@@ -108,14 +106,6 @@ struct SidebarView: View {
         } header: {
           if !groups.needsYou.isEmpty { Text("Chats").font(.footnote.weight(.semibold)) }
         }
-        if !groups.cursor.isEmpty {
-          Section(isExpanded: $cursorOpen) {
-            ForEach(groups.cursor) { row($0) }
-          } header: {
-            Text("Cursor · \(groups.cursor.count)").font(.footnote.weight(.semibold))
-          }
-          .axContainer("section-cursor")
-        }
         if model.client.sessionsLoaded {
           Section {
             Button {
@@ -137,7 +127,7 @@ struct SidebarView: View {
         .listSectionSpacing(.compact)
       #endif
       .overlay {
-        if model.client.sessionsLoaded && groups.needsYou.isEmpty && groups.chats.isEmpty && groups.cursor.isEmpty {
+        if model.client.sessionsLoaded && groups.needsYou.isEmpty && groups.chats.isEmpty {
           ContentUnavailableView("No chats yet", systemImage: "bubble.left.and.text.bubble.right", description: Text("Start one with the composer."))
         } else if !model.client.sessionsLoaded {
           ProgressView()

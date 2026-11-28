@@ -54,9 +54,10 @@ The rest of this page is for building the apps yourself, which is the only way t
    `phonecode pair` uses) and connects by itself, with no code to type. If
    phone-code is installed but not running, the app offers **Start
    phone-code**; if it is not installed, it shows the install command.
-8. Pair your phone from the Mac: click the QR-code button in the toolbar
-   (**Pair a phone**) and scan it with the iPhone app. **Settings > Phones**
-   lists paired devices and revokes them.
+8. Pair your phone from the Mac: click the QR-code button at the top of the
+   sidebar, next to New chat (**Pair a phone**; also in **This computer**
+   and **File > Pair a Phone…**, ⇧⌘P), and scan it with the iPhone app.
+   **Settings > Phones** lists paired devices and revokes them.
 
 The Mac app is not sandboxed: it reads `~/.phonecode` and can launch
 `phonecode`. To drive phone-code on a *different* computer instead, use

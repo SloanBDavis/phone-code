@@ -369,11 +369,19 @@ final class PhoneCodeUITests: XCTestCase {
       try XCTSkipIf(stateHome == nil, "needs PC_UITEST_HOME")
       launch()
       XCTAssertTrue(inPage("Message").waitForExistence(timeout: 30), "the page did not get to a chat")
-      app.typeKey("p", modifierFlags: [.command, .shift])
+      // The page's own button, at the top of the sidebar: it asks the app for the QR code.
+      let pair = inPage("Pair a phone")
+      XCTAssertTrue(pair.waitForExistence(timeout: 10), "no Pair a phone button in the page")
+      pair.click()
       wait("pair-phone-qr", 15)
       let code = el("pair-phone-code")
       XCTAssertFalse(code.label.isEmpty && (code.value as? String ?? "").isEmpty, "no pairing code shown")
       shot("03-shell-pair-a-phone")
+      app.typeKey(.escape, modifierFlags: [])
+      sleep(1)
+      // And the menu's shortcut.
+      app.typeKey("p", modifierFlags: [.command, .shift])
+      wait("pair-phone-qr", 15)
     }
   #endif
 }

@@ -7,6 +7,7 @@ import { exitDemo, unpairDevice } from '../lib/boot';
 import { connectionOf } from '../lib/connection';
 import { harnessList } from '../lib/harness';
 import { pushSupport, disablePush, enablePush } from '../lib/push';
+import { canPairPhone, pairPhone } from '../lib/shell';
 import { conn, host, isDemo } from '../lib/state';
 import { creds, settings, updateSettings, type ThemePref } from '../lib/storage';
 import { haptic, isStandalone } from '../lib/util';
@@ -186,6 +187,26 @@ export default function ComputerSheet({ close }: { close: () => void }): JSX.Ele
                   {PLATFORM[h.platform] ?? h.platform} · phone-code {h.daemonVersion}
                 </span>
               </div>
+            )}
+            {canPairPhone() && (
+              <button
+                type="button"
+                class="cell"
+                onClick={() => {
+                  close();
+                  pairPhone();
+                }}
+                data-testid="settings-pair-phone"
+              >
+                <span class="cell-icon">
+                  <Icon name="qr" size={17} stroke={2} />
+                </span>
+                <span class="cell-main">
+                  <span class="cell-title">Pair a phone</span>
+                  <span class="cell-sub">Show the QR code your iPhone scans</span>
+                </span>
+                <Icon name="forward" size={15} stroke={2.4} class="cell-chev" />
+              </button>
             )}
           </div>
         </section>

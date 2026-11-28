@@ -241,18 +241,11 @@ public final class PhoneCodeClient {
 
   public func session(_ id: String) -> SessionInfo? { sessions.first { $0.id == id } }
 
-  /// Sidebar order: sessions that need the user first, then the chats started
-  /// in phone-code; archived hidden. Chats followed from Cursor's app are a
-  /// group of their own (there is one for every chat in Cursor), except one
-  /// that waits for a reply, which needs the user like any other.
-  public var sidebar: (needsYou: [SessionInfo], chats: [SessionInfo], cursor: [SessionInfo]) {
+  /// Sidebar order: sessions that need the user first, then every other chat
+  /// (whatever harness it is, Cursor's app included); archived hidden.
+  public var sidebar: (needsYou: [SessionInfo], chats: [SessionInfo]) {
     let shown = sessions.filter { !$0.isArchived }
-    let rest = shown.filter { $0.status != .waiting }
-    return (
-      shown.filter { $0.status == .waiting },
-      rest.filter { $0.agent != Agents.cursorApp },
-      rest.filter { $0.agent == Agents.cursorApp }
-    )
+    return (shown.filter { $0.status == .waiting }, shown.filter { $0.status != .waiting })
   }
 
   public var agents: [AgentInfo] { Agents.catalog(host) }
